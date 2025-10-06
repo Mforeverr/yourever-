@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { ChevronDown, ChevronUp, ArrowLeft, Check } from 'lucide-react'
+import { Analytics } from "@vercel/analytics/next"
 
 const FAQ = () => {
   const [openIndex, setOpenIndex] = useState<number | null>(null)
@@ -205,6 +206,7 @@ export default function JoinWaitlist() {
         {/* FAQ Section */}
         <FAQ />
       </div>
+      <Analytics />
     </div>
   )
 }

@@ -1,11 +1,15 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import PixelBlast from '@/components/PixelBlast'
+import PixelBlastMobile from '@/components/PixelBlastMobile'
+import { useMobileDetection } from '@/hooks/use-mobile-detection'
+import useViewportSize from '@/hooks/use-viewport-size'
+import { cn } from '@/lib/utils'
 import {
   ArrowRight,
   Check,
@@ -25,62 +29,82 @@ import {
   Github
 } from 'lucide-react'
 
+const SCROLL_THRESHOLD = 120
+
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
 
   useEffect(() => {
-    let lastScrollY = 0
-    let ticking = false
-
     const handleScroll = () => {
-      if (!ticking) {
-        requestAnimationFrame(() => {
-          const scrollY = window.scrollY
-          const scrollThreshold = 50
-
-          // Smooth transition based on scroll position
-          const scrollProgress = Math.min(scrollY / scrollThreshold, 1)
-          setIsScrolled(scrollProgress > 0.8)
-
-          lastScrollY = scrollY
-          ticking = false
-        })
-        ticking = true
-      }
+      const scrollY =
+        window.scrollY ??
+        window.pageYOffset ??
+        document.documentElement.scrollTop ??
+        document.body.scrollTop ??
+        0
+      const shouldBeScrolled = scrollY > SCROLL_THRESHOLD
+      setIsScrolled(prev => (prev === shouldBeScrolled ? prev : shouldBeScrolled))
     }
 
+    handleScroll()
     window.addEventListener('scroll', handleScroll, { passive: true })
-    return () => window.removeEventListener('scroll', handleScroll)
+    document.addEventListener('scroll', handleScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      document.removeEventListener('scroll', handleScroll)
+    }
   }, [])
 
   return (
-    <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ease-in-out ${
-      isScrolled
-        ? 'top-4 mx-auto max-w-4xl rounded-full bg-background/95 backdrop-blur-md border border-border/40 shadow-lg'
-        : 'border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60'
-    }`}>
-      <div className={`${isScrolled ? 'px-8 max-w-4xl mx-auto' : 'container mx-auto px-6 max-w-7xl'} flex h-16 items-center justify-between`}>
+    <header
+      className={cn(
+        'fixed z-50 transition-all duration-500 ease-out',
+        isScrolled
+          ? 'top-5 left-1/2 right-auto w-[min(90vw,70rem)] -translate-x-1/2 rounded-full border border-border/40 bg-background/90 shadow-[0_25px_80px_-30px_rgba(0,0,0,0.65)] backdrop-blur-xl'
+          : 'top-0 left-0 right-0 w-full translate-x-0 border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60'
+      )}
+    >
+      <div
+        className={cn(
+          'flex w-full items-center justify-between gap-4 transition-all duration-500',
+          isScrolled
+            ? 'mx-auto h-14 max-w-5xl px-6'
+            : 'mx-auto h-16 max-w-7xl px-6'
+        )}
+      >
         <Link href="/" className="flex items-center space-x-2">
-          <img src="/logo.png" alt="Yourever" className="h-10 w-10 rounded-lg" />
-          <span className="font-bold text-xl">Yourever</span>
+          <img src="/logo.png" alt="Yourever" className={`${isScrolled ? 'h-8 w-8' : 'h-10 w-10'} rounded-lg transition-all duration-300`} />
+          {!isScrolled && <span className="font-bold text-xl transition-all duration-300">Yourever</span>}
         </Link>
-        
-        <nav className="hidden md:flex items-center gap-6 ml-auto">
-          <Link href="#product" className="text-sm font-medium hover:text-primary transition-colors">Product</Link>
-          <Link href="#solutions" className="text-sm font-medium hover:text-primary transition-colors">Solutions</Link>
-          <Link href="#docs" className="text-sm font-medium hover:text-primary transition-colors">Docs</Link>
-          <Link href="#security" className="text-sm font-medium hover:text-primary transition-colors">Security</Link>
-          <Link href="#contact" className="text-sm font-medium hover:text-primary transition-colors">Contact</Link>
+
+        <nav
+          className={cn(
+            'hidden items-center gap-6 md:flex transition-all duration-300',
+            isScrolled ? 'text-sm' : 'ml-auto text-sm'
+          )}
+        >
+          <Link href="#product" className="font-medium transition-colors hover:text-primary">Product</Link>
+          <Link href="#solutions" className="font-medium transition-colors hover:text-primary">Solutions</Link>
+          <Link href="#docs" className="font-medium transition-colors hover:text-primary">Docs</Link>
+          <Link href="#security" className="font-medium transition-colors hover:text-primary">Security</Link>
+          <Link href="#contact" className="font-medium transition-colors hover:text-primary">Contact</Link>
         </nav>
 
-        <div className="flex items-center gap-4 ml-6">
-          <div className="hidden md:flex items-center gap-2">
-            <Button size="sm" className="bg-white text-black hover:bg-gray-100" asChild>
+        <div className="flex items-center gap-3">
+          <div className="hidden md:flex items-center">
+            <Button
+              size="sm"
+              className={cn(
+                'bg-white text-black transition-all hover:bg-gray-100',
+                isScrolled ? 'px-4 py-1 text-xs font-semibold shadow-sm' : ''
+              )}
+              asChild
+            >
               <Link href="/joinwaitlist">Join Waitlist</Link>
             </Button>
           </div>
-          
+
           <Button
             variant="ghost"
             size="icon"
@@ -93,10 +117,18 @@ const Header = () => {
       </div>
 
       {isMenuOpen && (
-        <div className={`md:hidden border-t border-border/40 bg-background/95 backdrop-blur ${
-          isScrolled ? 'rounded-b-3xl mx-4 mt-2' : ''
-        }`}>
-          <nav className={`${isScrolled ? 'px-8 max-w-4xl mx-auto' : 'container mx-auto px-6 max-w-7xl'} flex flex-col gap-4 p-4`}>
+        <div
+          className={cn(
+            'md:hidden border-t border-border/40 bg-background/95 backdrop-blur',
+            isScrolled ? 'mx-4 mt-2 rounded-b-3xl' : ''
+          )}
+        >
+          <nav
+            className={cn(
+              'flex flex-col gap-4 p-4',
+              isScrolled ? 'mx-auto max-w-4xl px-8' : 'mx-auto max-w-7xl px-6'
+            )}
+          >
             <Link href="#product" className="text-sm font-medium hover:text-primary transition-colors">Product</Link>
             <Link href="#solutions" className="text-sm font-medium hover:text-primary transition-colors">Solutions</Link>
             <Link href="#docs" className="text-sm font-medium hover:text-primary transition-colors">Docs</Link>
@@ -115,30 +147,70 @@ const Header = () => {
 }
 
 const Hero = () => {
+  const deviceInfo = useMobileDetection()
+  const viewport = useViewportSize()
+  const heroHeight = viewport?.height
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const heroStyles = useMemo<React.CSSProperties>(() => {
+    // Always use 100dvh initially to match SSR, then update on client after mount
+    if (mounted && heroHeight && heroHeight > 0) {
+      return { minHeight: heroHeight, height: heroHeight }
+    }
+    return { minHeight: '100dvh', height: '100dvh' }
+  }, [heroHeight, mounted])
+
   return (
-    <section className="relative w-full min-h-screen overflow-hidden">
-      <div className="absolute inset-0 w-full h-full">
-        <PixelBlast
-          variant="circle"
-          pixelSize={6}
-          color="#70b9e6"
-          patternScale={3}
-          patternDensity={1.2}
-          pixelSizeJitter={0.5}
-          enableRipples
-          rippleSpeed={0.4}
-          rippleThickness={0.12}
-          rippleIntensityScale={1.5}
-          liquid
-          liquidStrength={0.12}
-          liquidRadius={1.2}
-          liquidWobbleSpeed={5}
-          speed={0.6}
-          edgeFade={0.25}
-          transparent
-        />
+    <section
+      className="relative w-full min-h-screen overflow-hidden"
+      style={heroStyles}
+    >
+      {/* Mobile-responsive PixelBlast container */}
+      <div
+        className="absolute inset-0 w-full h-full min-h-screen"
+        style={heroStyles}
+      >
+        {deviceInfo.isMobile || deviceInfo.isLowEnd ? (
+          <PixelBlastMobile
+            variant="diamond"  // Square is fastest to render
+            pixelSize={5}     // Much larger pixels = way less calculations
+            color="#70b9e6"
+            patternScale={3}   // Even smaller scale = simpler patterns
+            patternDensity={0.8} // Much lower density = lighter load
+            speed={1}        // Slightly slower = less CPU usage
+            edgeFade={0.02}    // Almost no edge processing
+            transparent
+          />
+        ) : (
+          <PixelBlast
+            variant="circle"
+            pixelSize={6}
+            color="#70b9e6"
+            patternScale={3}
+            patternDensity={1.2}
+            pixelSizeJitter={0.5}
+            enableRipples
+            rippleSpeed={0.4}
+            rippleThickness={0.12}
+            rippleIntensityScale={1.5}
+            liquid
+            liquidStrength={0.12}
+            liquidRadius={1.2}
+            liquidWobbleSpeed={5}
+            speed={0.6}
+            edgeFade={0.25}
+            transparent
+          />
+        )}
       </div>
-      <div className="relative z-10 w-full h-screen flex items-center justify-center">
+      <div
+        className="relative z-10 flex w-full min-h-screen items-center justify-center"
+        style={heroStyles}
+      >
         <div className="text-center space-y-8 px-6 max-w-6xl mx-auto">
           <div className="space-y-4">
             <Badge variant="outline" className="px-3 py-1 bg-white/10 backdrop-blur-sm text-white border-white/20">
