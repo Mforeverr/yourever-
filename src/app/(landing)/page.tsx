@@ -615,7 +615,7 @@ const FinalCTA = () => {
             Ready to transform your workspace?
           </h2>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
-            Join thousands of teams already using Yourever to work better together.
+            Join us using Yourever to work better together.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button size="lg" className="gap-2 bg-white text-black hover:bg-gray-100" asChild>
