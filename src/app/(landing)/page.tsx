@@ -29,22 +29,36 @@ import {
   Github
 } from 'lucide-react'
 
-const SCROLL_THRESHOLD = 120
+const SCROLL_ACTIVATE_THRESHOLD = 140
+const SCROLL_DEACTIVATE_THRESHOLD = 60
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
 
   useEffect(() => {
+    let ticking = false
+
     const handleScroll = () => {
-      const scrollY =
-        window.scrollY ??
-        window.pageYOffset ??
-        document.documentElement.scrollTop ??
-        document.body.scrollTop ??
-        0
-      const shouldBeScrolled = scrollY > SCROLL_THRESHOLD
-      setIsScrolled(prev => (prev === shouldBeScrolled ? prev : shouldBeScrolled))
+      if (ticking) return
+
+      ticking = true
+      requestAnimationFrame(() => {
+        const scrollY =
+          window.scrollY ??
+          window.pageYOffset ??
+          document.documentElement.scrollTop ??
+          document.body.scrollTop ??
+          0
+
+        setIsScrolled(prev => {
+          if (!prev && scrollY > SCROLL_ACTIVATE_THRESHOLD) return true
+          if (prev && scrollY < SCROLL_DEACTIVATE_THRESHOLD) return false
+          return prev
+        })
+
+        ticking = false
+      })
     }
 
     handleScroll()
@@ -59,18 +73,18 @@ const Header = () => {
   return (
     <header
       className={cn(
-        'fixed z-50 transition-all duration-500 ease-out',
+        'fixed inset-x-0 top-0 z-50 flex justify-center px-4 transition-transform duration-500 ease-out will-change-transform',
         isScrolled
-          ? 'top-5 left-1/2 right-auto w-[min(90vw,70rem)] -translate-x-1/2 rounded-full border border-border/40 bg-background/90 shadow-[0_25px_80px_-30px_rgba(0,0,0,0.65)] backdrop-blur-xl'
-          : 'top-0 left-0 right-0 w-full translate-x-0 border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60'
+          ? 'translate-y-5 bg-transparent'
+          : 'translate-y-0 border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60'
       )}
     >
       <div
         className={cn(
           'flex w-full items-center justify-between gap-4 transition-all duration-500',
           isScrolled
-            ? 'mx-auto h-14 max-w-5xl px-6'
-            : 'mx-auto h-16 max-w-7xl px-6'
+            ? 'mx-auto max-w-5xl rounded-full border border-border/40 bg-background/90 px-6 py-3 shadow-[0_25px_80px_-30px_rgba(0,0,0,0.65)] backdrop-blur-xl'
+            : 'mx-auto max-w-7xl px-6 py-4'
         )}
       >
         <Link href="/" className="flex items-center space-x-2">
@@ -120,13 +134,13 @@ const Header = () => {
         <div
           className={cn(
             'md:hidden border-t border-border/40 bg-background/95 backdrop-blur',
-            isScrolled ? 'mx-4 mt-2 rounded-b-3xl' : ''
+            isScrolled ? 'mx-auto mt-2 max-w-5xl rounded-b-3xl px-4' : ''
           )}
         >
           <nav
             className={cn(
               'flex flex-col gap-4 p-4',
-              isScrolled ? 'mx-auto max-w-4xl px-8' : 'mx-auto max-w-7xl px-6'
+              isScrolled ? 'mx-auto max-w-4xl px-4' : 'mx-auto max-w-7xl px-6'
             )}
           >
             <Link href="#product" className="text-sm font-medium hover:text-primary transition-colors">Product</Link>
