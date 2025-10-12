@@ -6,6 +6,10 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.users.constants import (
+    CURRENT_ONBOARDING_STATUS_VERSION,
+    LEGACY_ONBOARDING_STATUS_VERSION,
+)
 from app.modules.users.repository import UserRepository
 from app.modules.users.schemas import (
     StoredOnboardingStatus,
@@ -105,6 +109,7 @@ class TestUserRepository:
         assert result.completedAt is None
         assert result.status is not None
         assert isinstance(result.status, StoredOnboardingStatus)
+        assert result.status.version == CURRENT_ONBOARDING_STATUS_VERSION
 
     async def test_get_or_create_onboarding_session_existing(self, test_db_session: AsyncSession):
         """Test getting an existing onboarding session."""
@@ -146,6 +151,36 @@ class TestUserRepository:
         assert updated_session.currentStep == "preferences"
         assert updated_session.status.completedSteps == ["profile", "work-profile"]
         assert updated_session.status.lastStep == "preferences"
+        assert updated_session.status.version == CURRENT_ONBOARDING_STATUS_VERSION
+
+    async def test_complete_onboarding(self, test_db_session: AsyncSession):
+        """Test marking onboarding as complete persists answers and status."""
+        repository = UserRepository(test_db_session)
+        user_id = "88801234-1234-1234-1234-123456789abc"
+
+        await repository.get_or_create_onboarding_session(user_id)
+
+        status = StoredOnboardingStatus(
+            completedSteps=["profile", "work-profile", "preferences", "workspace-hub"],
+            skippedSteps=["tools"],
+            lastStep="workspace-hub",
+            completed=False,
+            data={
+                "profile": {"firstName": "Ada", "lastName": "Lovelace", "role": "Founder"},
+            },
+        )
+
+        answers = {
+            "profile": {"firstName": "Ada"},
+            "workspaceHub": {"choice": "create-new"},
+        }
+
+        completed_session = await repository.complete_onboarding(user_id, status, answers)
+
+        assert completed_session.isCompleted is True
+        assert completed_session.status.completed is True
+        assert completed_session.status.lastStep == "workspace-hub"
+        assert completed_session.status.version == CURRENT_ONBOARDING_STATUS_VERSION
 
     def test_normalize_status_payload(self):
         """Test status payload normalization."""
@@ -166,6 +201,7 @@ class TestUserRepository:
         assert normalized["completedSteps"] == ["profile"]
         assert normalized["skippedSteps"] == []
         assert normalized["lastStep"] == "work-profile"
+        assert normalized["version"] == LEGACY_ONBOARDING_STATUS_VERSION
 
     def test_merge_divisions(self):
         """Test merging division lists."""

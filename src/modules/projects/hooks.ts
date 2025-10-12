@@ -13,6 +13,7 @@ import {
   type UseQueryOptions,
 } from "@tanstack/react-query"
 import { useScope } from "@/contexts/scope-context"
+import { getApiBaseUrl } from "@/lib/api/endpoints"
 import { isFeatureEnabled } from "@/lib/feature-flags"
 import {
   type ProjectDetailResponse,
@@ -34,7 +35,7 @@ export interface ProjectScopeKey {
   divisionId: string | null
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? ""
+const API_BASE_URL = getApiBaseUrl()
 const PROJECT_DETAIL_FLAG = "projects.detail"
 const PROJECT_DETAIL_API_FLAG = "projects.detail.api"
 

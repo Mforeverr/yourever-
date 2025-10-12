@@ -4,6 +4,8 @@
 
 import type { QuickAddType } from "@/types/command-palette"
 import { resolveAuthToken } from "@/lib/api/client"
+import { notifyUnauthorized } from "@/lib/api/unauthorized-handler"
+import { resolveApiUrl } from "@/lib/api/endpoints"
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
 
@@ -53,7 +55,7 @@ const DEFAULT_HEADERS = {
 export async function httpRequest<TResponse>(
   method: HttpMethod,
   endpoint: string,
-  { signal, body, headers, meta }: RequestOptions = {}
+  { signal, body, headers, meta }: RequestOptions = {},
 ): Promise<TResponse> {
   const requestId = meta?.requestId ?? generateRequestId()
   const requestInit: RequestInit = {
@@ -83,8 +85,10 @@ export async function httpRequest<TResponse>(
     requestInit.body = typeof body === "string" ? body : JSON.stringify(body)
   }
 
+  const requestUrl = endpoint.startsWith("http") ? endpoint : resolveApiUrl(endpoint)
+
   try {
-    const response = await fetch(endpoint, requestInit)
+    const response = await fetch(requestUrl, requestInit)
     if (!response.ok) {
       let errorBody: ApiErrorBody | undefined
       try {
@@ -93,9 +97,13 @@ export async function httpRequest<TResponse>(
         errorBody = undefined
       }
 
+      if (response.status === 401) {
+        notifyUnauthorized()
+      }
+
       logApiError({
         status: response.status,
-        endpoint,
+        endpoint: requestUrl,
         method,
         body: errorBody,
         meta: {
@@ -105,7 +113,7 @@ export async function httpRequest<TResponse>(
       })
 
       throw new ApiError(
-        errorBody?.detail ?? `Request to ${endpoint} failed with status ${response.status}`,
+        errorBody?.detail ?? `Request to ${requestUrl} failed with status ${response.status}`,
         response.status,
         errorBody
       )
@@ -130,7 +138,7 @@ export async function httpRequest<TResponse>(
 
     logApiError({
       status: 0,
-      endpoint,
+      endpoint: requestUrl,
       method,
       body: { detail: error instanceof Error ? error.message : "Unknown network error" },
       meta: {

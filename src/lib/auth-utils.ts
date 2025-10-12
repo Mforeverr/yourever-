@@ -4,12 +4,40 @@ const DIVISION_STORAGE_KEY = 'mock_active_division_id'
 const LAST_ROUTE_STORAGE_KEY = 'mock_last_authed_route'
 const ONBOARDING_STATUS_STORAGE_KEY = 'mock_onboarding_status'
 
+import {
+  CURRENT_ONBOARDING_STATUS_VERSION,
+  coerceOnboardingStatusVersion,
+} from '@/lib/onboarding-version'
+
 export interface StoredOnboardingStatus {
+  version: number
   completed: boolean
   completedSteps: string[]
   skippedSteps: string[]
   data: Record<string, unknown>
   lastStep?: string
+}
+
+const normalizeOnboardingStatus = (
+  status: Partial<StoredOnboardingStatus> | null | undefined,
+): StoredOnboardingStatus | null => {
+  if (!status) return null
+
+  const completedSteps = Array.isArray(status.completedSteps)
+    ? status.completedSteps.map((value) => String(value))
+    : []
+  const skippedSteps = Array.isArray(status.skippedSteps)
+    ? status.skippedSteps.map((value) => String(value))
+    : []
+
+  return {
+    version: coerceOnboardingStatusVersion(status.version),
+    completed: Boolean(status.completed),
+    completedSteps,
+    skippedSteps,
+    data: typeof status.data === 'object' && status.data !== null ? status.data : {},
+    lastStep: typeof status.lastStep === 'string' ? status.lastStep : undefined,
+  }
 }
 
 const isBrowser = () => typeof window !== 'undefined'
@@ -81,12 +109,15 @@ export const authStorage = {
   getOnboardingStatus: (userId: string): StoredOnboardingStatus | null => {
     if (!userId) return null
     const map = getOnboardingStatusMap()
-    return map[userId] ?? null
+    return normalizeOnboardingStatus(map[userId])
   },
   setOnboardingStatus: (userId: string, status: StoredOnboardingStatus) => {
     if (!userId) return
     const map = getOnboardingStatusMap()
-    map[userId] = status
+    map[userId] = {
+      ...status,
+      version: coerceOnboardingStatusVersion(status.version ?? CURRENT_ONBOARDING_STATUS_VERSION),
+    }
     setOnboardingStatusMap(map)
   },
   clearOnboardingStatus: (userId: string) => {

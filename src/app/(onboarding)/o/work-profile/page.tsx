@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useRef } from 'react'
-import type { ChangeEvent } from 'react'
+import { Controller, useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -10,6 +11,8 @@ import { OnboardingShell } from '@/components/onboarding/onboarding-shell'
 import { useOnboardingStep } from '@/hooks/use-onboarding-step'
 import { useCurrentUser } from '@/hooks/use-auth'
 import type { WorkProfileStepData } from '@/lib/onboarding'
+import { workProfileStepSchema } from '@/lib/onboarding-schemas'
+import { deepEqual } from '@/lib/object-utils'
 
 const TIMEZONES = ['UTC−08:00 (PT)', 'UTC−05:00 (ET)', 'UTC±00:00', 'UTC+01:00', 'UTC+05:30', 'UTC+08:00']
 const TEAM_SIZES = ['1-5', '6-15', '16-50', '51-200', '200+']
@@ -19,8 +22,31 @@ const EXPERIENCE_LEVELS = ['New to role', '1-3 years', '4-7 years', '8+ years']
 
 export default function WorkProfileOnboardingPage() {
   const { user } = useCurrentUser()
-  const { data, completeStep, updateData, previousStep, goPrevious, isSaving } = useOnboardingStep('work-profile')
+  const {
+    data,
+    completeStep,
+    updateData,
+    previousStep,
+    goPrevious,
+    isSaving,
+    completedSteps,
+    skippedSteps,
+    goToStepId,
+    canNavigateToStep,
+  } = useOnboardingStep('work-profile')
   const hasPrefilledRef = useRef(false)
+  const form = useForm<WorkProfileStepData>({
+    resolver: zodResolver(workProfileStepSchema),
+    mode: 'onChange',
+    defaultValues: data,
+  })
+  const {
+    control,
+    formState: { isValid, errors },
+  } = form
+  const watchJobTitle = form.watch('jobTitle') ?? ''
+  const watchFunctions = form.watch('functions') ?? []
+  const watchIntents = form.watch('intents') ?? []
 
   useEffect(() => {
     if (!user) return
@@ -30,17 +56,46 @@ export default function WorkProfileOnboardingPage() {
       return
     }
 
-    updateData({
-      ...data,
+    const next: WorkProfileStepData = {
+      ...form.getValues(),
       teamName: user.organizations[0]?.name ?? '',
       jobTitle: user.role ?? '',
       role: user.role ?? '',
-    })
+    }
+    form.reset(next)
+    updateData(next)
     hasPrefilledRef.current = true
-  }, [user, data, updateData])
+  }, [user, data, form, updateData])
+
+  useEffect(() => {
+    void form.trigger()
+  }, [form])
+
+  useEffect(() => {
+    const subscription = form.watch((values) => {
+      updateData(values as WorkProfileStepData)
+    })
+    return () => subscription.unsubscribe()
+  }, [form, updateData])
+
+  useEffect(() => {
+    const currentValues = form.getValues()
+    if (deepEqual(currentValues, data)) {
+      return
+    }
+    form.reset(data)
+    void form.trigger()
+  }, [data, form])
+
+  useEffect(() => {
+    const currentRole = form.getValues('role') ?? ''
+    if (watchJobTitle && currentRole !== watchJobTitle) {
+      form.setValue('role', watchJobTitle, { shouldDirty: false })
+    }
+  }, [form, watchJobTitle])
 
   const suggestedFunctions = useMemo(() => {
-    const title = data.jobTitle.toLowerCase()
+    const title = watchJobTitle.toLowerCase()
     if (!title) return [] as string[]
     if (title.includes('product')) return ['Product', 'Engineering', 'Design']
     if (title.includes('engineer')) return ['Engineering', 'Product', 'Design']
@@ -48,62 +103,25 @@ export default function WorkProfileOnboardingPage() {
     if (title.includes('customer')) return ['Customer Success', 'Revenue Ops']
     if (title.includes('ops')) return ['Revenue Ops', 'Finance', 'People']
     return []
-  }, [data.jobTitle])
-
-  const isValid = useMemo(() => {
-    return (
-      Boolean(data.teamName.trim()) &&
-      Boolean(data.jobTitle.trim()) &&
-      Boolean(data.timezone) &&
-      Boolean(data.teamSize) &&
-      data.functions.length > 0 &&
-      data.intents.length > 0 &&
-      Boolean(data.experience)
-    )
-  }, [data.experience, data.functions.length, data.intents.length, data.jobTitle, data.teamName, data.teamSize, data.timezone])
-
-  const handleInputChange = (field: keyof WorkProfileStepData) => (
-    event: ChangeEvent<HTMLInputElement | HTMLSelectElement>,
-  ) => {
-    updateData({
-      ...data,
-      [field]: event.target.value,
-    })
-  }
+  }, [watchJobTitle])
 
   const toggleSelection = (field: 'functions' | 'intents', value: string) => {
-    const current = data[field]
-    const next = current.includes(value) ? current.filter((item) => item !== value) : [...current, value]
-    updateData({
-      ...data,
-      [field]: next,
-    })
+    const current = form.getValues(field) ?? []
+    const next = current.includes(value) ? current.filter((item: string) => item !== value) : [...current, value]
+    form.setValue(field, next, { shouldDirty: true, shouldValidate: true })
   }
 
   const applySuggestion = (suggestion: string) => {
-    if (data.functions.includes(suggestion)) return
-    updateData({
-      ...data,
-      functions: [...data.functions, suggestion],
-    })
+    const current = form.getValues('functions') ?? []
+    if (current.includes(suggestion)) return
+    form.setValue('functions', [...current, suggestion], { shouldDirty: true, shouldValidate: true })
   }
 
-  const handleJobTitleChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value
-    updateData({
-      ...data,
-      jobTitle: value,
-      role: value,
-    })
-  }
-
-  const handleSubmit = async () => {
-    if (!isValid || isSaving) return
-    await completeStep({
-      ...data,
-      role: data.jobTitle,
-    })
-  }
+  const handleSubmit = form.handleSubmit(async (values) => {
+    if (!isSaving) {
+      await completeStep({ ...values, role: values.jobTitle })
+    }
+  })
 
   return (
     <OnboardingShell
@@ -113,65 +131,98 @@ export default function WorkProfileOnboardingPage() {
       onNext={handleSubmit}
       onBack={previousStep ? goPrevious : undefined}
       isNextDisabled={!isValid || isSaving}
+      isBackDisabled={isSaving}
+      completedSteps={completedSteps}
+      skippedSteps={skippedSteps}
+      onStepSelect={goToStepId}
+      canNavigateToStep={canNavigateToStep}
     >
-      <div className="grid grid-cols-1 gap-6">
+      <form className="grid grid-cols-1 gap-6" onSubmit={(event) => event.preventDefault()}>
         <div className="space-y-2">
           <Label htmlFor="teamName">Team or department</Label>
-          <Input
-            id="teamName"
-            value={data.teamName}
-            onChange={handleInputChange('teamName')}
-            placeholder="Customer Experience"
+          <Controller
+            control={control}
+            name="teamName"
+            render={({ field }) => (
+              <Input id="teamName" placeholder="Customer Experience" {...field} value={field.value ?? ''} />
+            )}
           />
+          {errors.teamName && <p className="text-xs text-destructive">{errors.teamName.message}</p>}
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="jobTitle">Your role title</Label>
-          <Input
-            id="jobTitle"
-            value={data.jobTitle}
-            onChange={handleJobTitleChange}
-            placeholder="Head of Operations"
+          <Controller
+            control={control}
+            name="jobTitle"
+            render={({ field }) => (
+              <Input
+                id="jobTitle"
+                placeholder="Head of Operations"
+                {...field}
+                value={field.value ?? ''}
+                onChange={(event) => {
+                  const value = event.target.value
+                  field.onChange(value)
+                  form.setValue('role', value, { shouldDirty: false })
+                }}
+              />
+            )}
           />
+          {errors.jobTitle && <p className="text-xs text-destructive">{errors.jobTitle.message}</p>}
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="timezone">Primary timezone</Label>
-            <select
-              id="timezone"
-              value={data.timezone}
-              onChange={handleInputChange('timezone')}
-              className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
-            >
-              <option value="" disabled>
-                Select timezone
-              </option>
-              {TIMEZONES.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+            <Controller
+              control={control}
+              name="timezone"
+              render={({ field }) => (
+                <select
+                  id="timezone"
+                  {...field}
+                  value={field.value ?? ''}
+                  className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
+                >
+                  <option value="" disabled>
+                    Select timezone
+                  </option>
+                  {TIMEZONES.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              )}
+            />
+            {errors.timezone && <p className="text-xs text-destructive">{errors.timezone.message}</p>}
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="teamSize">Team size</Label>
-            <select
-              id="teamSize"
-              value={data.teamSize}
-              onChange={handleInputChange('teamSize')}
-              className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
-            >
-              <option value="" disabled>
-                Select team size
-              </option>
-              {TEAM_SIZES.map((option) => (
-                <option key={option} value={option}>
-                  {option} people
-                </option>
-              ))}
-            </select>
+            <Controller
+              control={control}
+              name="teamSize"
+              render={({ field }) => (
+                <select
+                  id="teamSize"
+                  {...field}
+                  value={field.value ?? ''}
+                  className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
+                >
+                  <option value="" disabled>
+                    Select team size
+                  </option>
+                  {TEAM_SIZES.map((option) => (
+                    <option key={option} value={option}>
+                      {option} people
+                    </option>
+                  ))}
+                </select>
+              )}
+            />
+            {errors.teamSize && <p className="text-xs text-destructive">{errors.teamSize.message}</p>}
           </div>
         </div>
 
@@ -198,7 +249,7 @@ export default function WorkProfileOnboardingPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             {FUNCTION_OPTIONS.map((option) => {
-              const isSelected = data.functions.includes(option)
+              const isSelected = watchFunctions.includes(option)
               return (
                 <Button
                   key={option}
@@ -218,7 +269,7 @@ export default function WorkProfileOnboardingPage() {
           <Label>What do you want to accomplish?</Label>
           <div className="flex flex-wrap gap-2">
             {INTENT_OPTIONS.map((option) => {
-              const isSelected = data.intents.includes(option)
+              const isSelected = watchIntents.includes(option)
               return (
                 <Button
                   key={option}
@@ -236,28 +287,35 @@ export default function WorkProfileOnboardingPage() {
 
         <div className="space-y-2">
           <Label htmlFor="experience">Experience in this role</Label>
-          <select
-            id="experience"
-            value={data.experience}
-            onChange={handleInputChange('experience')}
-            className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
-          >
-            <option value="" disabled>
-              Select experience level
-            </option>
-            {EXPERIENCE_LEVELS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+          <Controller
+            control={control}
+            name="experience"
+            render={({ field }) => (
+              <select
+                id="experience"
+                {...field}
+                value={field.value ?? ''}
+                className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
+              >
+                <option value="" disabled>
+                  Select experience level
+                </option>
+                {EXPERIENCE_LEVELS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            )}
+          />
+          {errors.experience && <p className="text-xs text-destructive">{errors.experience.message}</p>}
         </div>
 
-        {data.functions.length > 0 && (
+        {watchFunctions.length > 0 && (
           <div className="space-y-2 text-xs text-muted-foreground">
             <p>We&apos;ll prioritise templates and automations for:</p>
             <div className="flex flex-wrap gap-2">
-              {data.functions.map((fn) => (
+              {watchFunctions.map((fn) => (
                 <Badge key={fn} variant="secondary">
                   {fn}
                 </Badge>
@@ -265,7 +323,7 @@ export default function WorkProfileOnboardingPage() {
             </div>
           </div>
         )}
-      </div>
+      </form>
     </OnboardingShell>
   )
 }

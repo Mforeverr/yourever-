@@ -1,4 +1,8 @@
 import type { StoredOnboardingStatus } from '@/lib/auth-utils'
+import {
+  CURRENT_ONBOARDING_STATUS_VERSION,
+  coerceOnboardingStatusVersion,
+} from '@/lib/onboarding-version'
 
 export type OnboardingStepId =
   | 'profile'
@@ -167,9 +171,19 @@ export const getFirstIncompleteStep = (status: StoredOnboardingStatus | null) =>
 }
 
 export const defaultOnboardingStatus = (): StoredOnboardingStatus => ({
+  version: CURRENT_ONBOARDING_STATUS_VERSION,
   completed: false,
   completedSteps: [],
   skippedSteps: [],
   data: {},
-  lastStep: undefined
+  lastStep: undefined,
 })
+
+export const getOnboardingStatusVersion = (status: StoredOnboardingStatus | null | undefined) => {
+  return coerceOnboardingStatusVersion(status?.version)
+}
+
+export const isLegacyOnboardingStatus = (status: StoredOnboardingStatus | null | undefined) => {
+  if (!status) return false
+  return getOnboardingStatusVersion(status) < CURRENT_ONBOARDING_STATUS_VERSION
+}

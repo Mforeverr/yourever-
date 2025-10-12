@@ -7,6 +7,7 @@ from httpx import AsyncClient
 from fastapi import status
 
 from app.dependencies import CurrentPrincipal
+from app.modules.users.constants import CURRENT_ONBOARDING_STATUS_VERSION
 
 
 @pytest.mark.integration
@@ -91,6 +92,52 @@ class TestUserEndpoints:
         response = await test_client.patch("/api/users/me/onboarding-progress", headers=headers, json=invalid_payload)
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    async def test_post_onboarding_complete_unauthorized(self, test_client: AsyncClient):
+        """Test POST /api/onboarding/complete without authentication returns 401."""
+        payload = {
+            "status": {
+                "completedSteps": ["profile"],
+                "skippedSteps": [],
+                "data": {},
+            },
+            "answers": {},
+        }
+
+        response = await test_client.post("/api/onboarding/complete", json=payload)
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.json()["detail"] == "Missing bearer token"
+
+    async def test_post_onboarding_complete_authorized(self, test_client: AsyncClient, mock_principal: CurrentPrincipal):
+        """Test POST /api/onboarding/complete with valid authentication."""
+        headers = {"Authorization": f"Bearer {mock_principal.id}"}
+        payload = {
+            "status": {
+                "version": CURRENT_ONBOARDING_STATUS_VERSION,
+                "completed": True,
+                "completedSteps": ["profile", "work-profile", "workspace-hub"],
+                "skippedSteps": ["tools"],
+                "lastStep": "workspace-hub",
+                "data": {
+                    "profile": {"firstName": "Ada"},
+                },
+            },
+            "answers": {
+                "profile": {"firstName": "Ada"},
+                "workspaceHub": {"choice": "join-existing"},
+            },
+        }
+
+        response = await test_client.post("/api/onboarding/complete", headers=headers, json=payload)
+
+        assert response.status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED]
+
+        if response.status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED]:
+            data = response.json()
+            assert "session" in data
+            assert data["session"]["userId"] == mock_principal.id
+            assert data["session"]["isCompleted"] is True
 
     async def test_health_check(self, test_client: AsyncClient):
         """Test that health endpoint is working."""

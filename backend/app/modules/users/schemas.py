@@ -11,6 +11,7 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from ...core.config import Settings
+from .constants import CURRENT_ONBOARDING_STATUS_VERSION
 
 
 class WorkspaceDivision(BaseModel):
@@ -56,6 +57,7 @@ class UserProfileResponse(BaseModel):
 
 
 class StoredOnboardingStatus(BaseModel):
+    version: int = Field(default=CURRENT_ONBOARDING_STATUS_VERSION)
     completed: bool = False
     completedSteps: List[str] = Field(default_factory=list)
     skippedSteps: List[str] = Field(default_factory=list)

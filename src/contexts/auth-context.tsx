@@ -1,22 +1,35 @@
 'use client'
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import type { Session } from '@supabase/supabase-js'
 import { useQueryClient } from '@tanstack/react-query'
 import { getDevUser, mockUsers } from '@/lib/mock-users'
 import { authStorage, type StoredOnboardingStatus } from '@/lib/auth-utils'
 import { localStorageService, sessionStorageService } from '@/lib/storage'
-import { defaultOnboardingStatus, ONBOARDING_STEPS, type OnboardingStepId } from '@/lib/onboarding'
+import {
+  defaultOnboardingStatus,
+  getFirstIncompleteStep,
+  ONBOARDING_STEPS,
+  type OnboardingStepId,
+  isLegacyOnboardingStatus,
+} from '@/lib/onboarding'
+import {
+  CURRENT_ONBOARDING_STATUS_VERSION,
+  coerceOnboardingStatusVersion,
+} from '@/lib/onboarding-version'
 import { createSupabaseAuthGateway, type SupabaseAuthGateway } from '@/modules/auth/supabase-gateway'
 import { clearAuthTokenResolver, setAuthTokenResolver } from '@/lib/api/client'
 import type { WorkspaceUser } from '@/modules/auth/types'
-import { fetchOrCreateOnboardingSession } from '@/modules/onboarding/session'
+import { fetchOrCreateOnboardingSession, persistOnboardingStatus } from '@/modules/onboarding/session'
 import { useOnboardingStore } from '@/state/onboarding.store'
 import { ApiError } from '@/lib/api/http'
 import {
   CURRENT_USER_QUERY_KEY,
   useCurrentUserQuery,
 } from '@/hooks/api/use-current-user-query'
+import { clearUnauthorizedHandler, setUnauthorizedHandler } from '@/lib/api/unauthorized-handler'
+import { toast } from '@/hooks/use-toast'
 
 interface AuthContextValue {
   user: WorkspaceUser | null
@@ -50,8 +63,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabaseSessionRef = React.useRef<Session | null>(null)
   const isMountedRef = React.useRef(true)
   const supabaseGatewayRef = React.useRef<SupabaseAuthGateway | null>(null)
+  const onboardingStatusRef = React.useRef<StoredOnboardingStatus | null>(null)
+  const legacyResetVersionRef = React.useRef<number | null>(null)
   const isDevMode = process.env.NODE_ENV === 'development'
   const queryClient = useQueryClient()
+  const router = useRouter()
 
   useEffect(() => {
     return () => {
@@ -79,27 +95,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (userId: string, mode: AuthStrategy, session: Session | null) => {
       userIdRef.current = userId
 
+      const applyStatus = (status: StoredOnboardingStatus) => {
+        setOnboardingStatus(status)
+        onboardingStatusRef.current = status
+        authStorage.setOnboardingStatus(userId, status)
+        useOnboardingStore.getState().hydrateFromStatus(status)
+      }
+
+      const resetForNewVersion = async (previousVersion?: number): Promise<StoredOnboardingStatus> => {
+        const resetStatus = defaultOnboardingStatus()
+        useOnboardingStore.getState().reset()
+        if (legacyResetVersionRef.current !== previousVersion) {
+          toast({
+            title: 'Onboarding refreshed',
+            description: 'We updated the onboarding flow with new questions. Please review your details and continue.',
+          })
+          legacyResetVersionRef.current = previousVersion ?? null
+        }
+
+        if (mode === 'supabase' && session?.access_token) {
+          try {
+            await persistOnboardingStatus(session.access_token, resetStatus)
+          } catch (error) {
+            console.error('[auth] failed to persist onboarding reset', error)
+          }
+        }
+
+        return resetStatus
+      }
+
       if (mode === 'supabase') {
         if (!session) {
           const fallback = defaultOnboardingStatus()
-          setOnboardingStatus(fallback)
-          authStorage.setOnboardingStatus(userId, fallback)
-          useOnboardingStore.getState().hydrateFromStatus(fallback)
+          applyStatus(fallback)
           return
         }
 
         const onboardingSession = await fetchOrCreateOnboardingSession(session.access_token)
-        const status = onboardingSession?.status ?? defaultOnboardingStatus()
-        setOnboardingStatus(status)
-        authStorage.setOnboardingStatus(userId, status)
-        useOnboardingStore.getState().hydrateFromStatus(status)
+        const sessionStatus = onboardingSession?.status ?? defaultOnboardingStatus()
+        const nextStatus = isLegacyOnboardingStatus(sessionStatus)
+          ? await resetForNewVersion(coerceOnboardingStatusVersion(sessionStatus.version))
+          : sessionStatus
+        applyStatus(nextStatus)
         return
       }
 
       const storedStatus = authStorage.getOnboardingStatus(userId)
-      const status = storedStatus ?? defaultOnboardingStatus()
-      setOnboardingStatus(status)
-      useOnboardingStore.getState().hydrateFromStatus(status)
+      const nextStatus = isLegacyOnboardingStatus(storedStatus)
+        ? await resetForNewVersion(coerceOnboardingStatusVersion(storedStatus?.version))
+        : storedStatus
+      applyStatus(nextStatus ?? defaultOnboardingStatus())
     },
     [],
   )
@@ -107,6 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const clearUserState = useCallback(() => {
     setUser(null)
     setOnboardingStatus(null)
+    onboardingStatusRef.current = null
     authStorage.clearAll()
     localStorageService.clearByPrefix('yourever-')
     sessionStorageService.clearByPrefix('yourever-')
@@ -115,6 +161,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     useOnboardingStore.getState().reset()
     queryClient.removeQueries({ queryKey: CURRENT_USER_QUERY_KEY })
     setMockLoading(false)
+    legacyResetVersionRef.current = null
   }, [queryClient])
 
   const applyUser = useCallback(
@@ -324,11 +371,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setOnboardingStatus((prev) => {
         const base = prev ?? defaultOnboardingStatus()
         const next = updater(base)
+        const normalized = {
+          ...next,
+          version: CURRENT_ONBOARDING_STATUS_VERSION,
+        }
+        onboardingStatusRef.current = normalized
         const userId = userIdRef.current
         if (userId) {
-          authStorage.setOnboardingStatus(userId, next)
+          authStorage.setOnboardingStatus(userId, normalized)
         }
-        return next
+        return normalized
       })
     },
     [],
@@ -342,6 +394,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       )
       return {
         ...current,
+        version: CURRENT_ONBOARDING_STATUS_VERSION,
         completed: true,
         completedSteps: allStepIds,
         skippedSteps: filteredSkipped,
@@ -353,6 +406,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isSupabaseLoading =
     strategy === 'supabase' && (isCheckingSession || (shouldFetchUser && (userStatus === 'pending' || isFetching)))
   const isLoading = strategy === 'supabase' ? isSupabaseLoading : mockLoading
+
+  useEffect(() => {
+    if (onboardingStatus) {
+      onboardingStatusRef.current = onboardingStatus
+    }
+  }, [onboardingStatus])
+
+  useEffect(() => {
+    const unauthorizedHandler = () => {
+      setShouldFetchUser(false)
+      const snapshot = onboardingStatusRef.current ?? defaultOnboardingStatus()
+      const nextStep = getFirstIncompleteStep(snapshot) ?? ONBOARDING_STEPS[0]
+      clearUserState()
+      const gateway = supabaseGatewayRef.current
+      if (gateway) {
+        void gateway.signOut()
+      }
+      if (typeof window !== 'undefined') {
+        const redirectPath = nextStep.path
+        const loginUrl = new URL('/login', window.location.origin)
+        loginUrl.searchParams.set('redirect', redirectPath)
+        router.replace(`${loginUrl.pathname}${loginUrl.search}`)
+      }
+    }
+
+    setUnauthorizedHandler(unauthorizedHandler)
+    return () => {
+      clearUnauthorizedHandler()
+    }
+  }, [clearUserState, router])
 
   return (
     <AuthContext.Provider
