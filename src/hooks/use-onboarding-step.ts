@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCurrentUser } from '@/hooks/use-auth'
 import {
@@ -24,11 +24,24 @@ import type { OnboardingValidationSummary } from '@/modules/onboarding/session'
 import { toast } from '@/hooks/use-toast'
 import { useResilientMutation } from '@/lib/react-query/resilient-mutation'
 import { ApiError } from '@/lib/api/http'
+import {
+  trackOnboardingSaveFailed,
+  trackOnboardingSaveStarted,
+  trackOnboardingSaveSucceeded,
+} from '@/lib/telemetry/onboarding'
 
 const allStepIds = ONBOARDING_STEPS.map((step) => step.id)
 
 const isOnboardingStepId = (value: unknown): value is OnboardingStepId =>
   typeof value === 'string' && allStepIds.includes(value as OnboardingStepId)
+
+type PersistProgressIntent = 'complete-step' | 'skip-step'
+
+type PersistProgressVariables = {
+  status: StoredOnboardingStatus
+  originStepId: OnboardingStepId
+  intent: PersistProgressIntent
+}
 
 type ValidationDispatchPayload = {
   blockingStepId: OnboardingStepId
@@ -91,6 +104,20 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
   const setStepData = useOnboardingStore((state) => state.setStepData)
   const setValidationIssues = useOnboardingValidationStore((state) => state.setStepIssues)
   const clearValidationIssues = useOnboardingValidationStore((state) => state.clearAll)
+  const persistAttemptRef = useRef({
+    startedAt: 0,
+    retries: 0,
+    intent: 'complete-step' as PersistProgressIntent,
+    originStepId: stepId as OnboardingStepId,
+  })
+
+  const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
+
+  const computeDurationMs = () => {
+    const startedAt = persistAttemptRef.current.startedAt
+    if (!startedAt) return undefined
+    return Math.max(0, Math.round(now() - startedAt))
+  }
 
   const step = useMemo(() => getStepById(stepId), [stepId])
   const nextStep = useMemo(() => getNextStep(stepId), [stepId])
@@ -159,8 +186,8 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     }
   }, [onboardingStatus, router, status, step, stepId, user])
 
-  const persistProgress = useResilientMutation({
-    mutationFn: async (status: StoredOnboardingStatus) => {
+  const persistProgress = useResilientMutation<StoredOnboardingStatus, unknown, PersistProgressVariables>({
+    mutationFn: async ({ status }) => {
       const token = await getAccessToken()
       if (!token) {
         throw new Error('Authentication expired. Please sign in again.')
@@ -171,8 +198,46 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
       }
       return status
     },
-    onSuccess: (status) => {
+    onMutate: (variables) => {
+      persistAttemptRef.current = {
+        startedAt: now(),
+        retries: 0,
+        intent: variables.intent,
+        originStepId: variables.originStepId,
+      }
+      trackOnboardingSaveStarted({
+        status: variables.status,
+        stepId: variables.originStepId,
+        intent: variables.intent,
+      })
+    },
+    onRetry: (failureCount) => {
+      persistAttemptRef.current = {
+        ...persistAttemptRef.current,
+        retries: failureCount,
+      }
+    },
+    onSuccess: (status, variables) => {
+      trackOnboardingSaveSucceeded({
+        status,
+        stepId: variables.originStepId,
+        intent: variables.intent,
+        durationMs: computeDurationMs(),
+        retries: persistAttemptRef.current.retries,
+      })
       updateOnboardingStatus(() => status)
+    },
+    onError: (error, variables) => {
+      trackOnboardingSaveFailed({
+        status: variables.status,
+        stepId: variables.originStepId,
+        intent: variables.intent,
+        durationMs: computeDurationMs(),
+        retries: persistAttemptRef.current.retries,
+        errorName: error instanceof Error ? error.name : undefined,
+        errorMessage: error instanceof Error ? error.message : undefined,
+        errorStatus: error instanceof ApiError ? error.status : null,
+      })
     },
     messages: {
       pending: () => ({
@@ -249,7 +314,11 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     setStepData(stepId, payload)
     const nextStatus = buildNextStatus(payload, { markCompleted: !nextStep })
     try {
-      await persistProgress.mutateAsync(nextStatus)
+      await persistProgress.mutateAsync({
+        status: nextStatus,
+        originStepId: stepId,
+        intent: 'complete-step',
+      })
       if (!nextStep) {
         setIsCompleting(true)
         try {
@@ -296,7 +365,11 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     if (persistProgress.isPending || isInvalidatingUser || isCompleting) return
     const nextStatus = buildSkippedStatus()
     try {
-      await persistProgress.mutateAsync(nextStatus)
+      await persistProgress.mutateAsync({
+        status: nextStatus,
+        originStepId: stepId,
+        intent: 'skip-step',
+      })
       await invalidateUser()
       await goNext()
     } catch {

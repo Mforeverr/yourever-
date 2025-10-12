@@ -6,6 +6,7 @@
 User service orchestrating repository access.
 """
 
+import logging
 from typing import Any, Dict, Optional
 
 from ...dependencies import CurrentPrincipal
@@ -14,6 +15,19 @@ from .schemas import OnboardingSession, StoredOnboardingStatus, WorkspaceUser
 from ..onboarding.errors import OnboardingValidationError
 from ..onboarding.schemas import OnboardingCompletionResponse
 from ..onboarding.validation import evaluate_completion_validation
+
+
+logger = logging.getLogger(__name__)
+
+
+def _status_metrics(status: StoredOnboardingStatus) -> Dict[str, Any]:
+    return {
+        "status_version": status.version,
+        "status_completed": bool(status.completed),
+        "status_completed_steps": len(status.completedSteps),
+        "status_skipped_steps": len(status.skippedSteps),
+        "status_last_step": status.lastStep or None,
+    }
 
 
 class UserService:
@@ -31,7 +45,20 @@ class UserService:
 
     async def get_onboarding_session(self, principal: CurrentPrincipal) -> OnboardingSession:
         await self._ensure_user(principal)
-        return await self._repository.get_or_create_onboarding_session(principal.id)
+        session = await self._repository.get_or_create_onboarding_session(principal.id)
+        logger.info(
+            "onboarding.session.resumed",
+            extra={
+                "user_id": principal.id,
+                "session_id": session.id,
+                "current_step": session.currentStep,
+                "session_completed": bool(session.isCompleted),
+                "session_started_at": session.startedAt,
+                "session_completed_at": session.completedAt,
+                **_status_metrics(session.status),
+            },
+        )
+        return session
 
     async def update_onboarding_progress(
         self,
@@ -39,7 +66,23 @@ class UserService:
         status: StoredOnboardingStatus,
     ) -> OnboardingSession:
         await self._ensure_user(principal)
-        return await self._repository.update_onboarding_status(principal.id, status)
+        submitted_metrics = {f"submitted_{key}": value for key, value in _status_metrics(status).items()}
+        session = await self._repository.update_onboarding_status(principal.id, status)
+        persisted_metrics = {f"persisted_{key}": value for key, value in _status_metrics(session.status).items()}
+        logger.info(
+            "onboarding.progress_saved",
+            extra={
+                "user_id": principal.id,
+                "session_id": session.id,
+                "current_step": session.currentStep,
+                "session_completed": bool(session.isCompleted),
+                "session_started_at": session.startedAt,
+                "session_completed_at": session.completedAt,
+                **submitted_metrics,
+                **persisted_metrics,
+            },
+        )
+        return session
 
     async def complete_onboarding(
         self,
@@ -53,4 +96,19 @@ class UserService:
             raise OnboardingValidationError(validation)
 
         session = await self._repository.complete_onboarding(principal.id, status, answers)
+        submitted_metrics = {f"submitted_{key}": value for key, value in _status_metrics(status).items()}
+        persisted_metrics = {f"persisted_{key}": value for key, value in _status_metrics(session.status).items()}
+        logger.info(
+            "onboarding.completion_succeeded",
+            extra={
+                "user_id": principal.id,
+                "session_id": session.id,
+                "current_step": session.currentStep,
+                "session_completed": bool(session.isCompleted),
+                "session_started_at": session.startedAt,
+                "session_completed_at": session.completedAt,
+                **submitted_metrics,
+                **persisted_metrics,
+            },
+        )
         return OnboardingCompletionResponse(session=session, validation=validation)

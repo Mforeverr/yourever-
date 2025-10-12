@@ -41,6 +41,8 @@ export interface ResilientMutationOptions<TData, TError, TVariables, TContext>
   maxRetryDelayMs?: number
   /** Optional toast messaging hooks that display optimistic feedback during the mutation lifecycle. */
   messages?: ResilientMessages<TData, TError, TVariables, TContext>
+  /** Called whenever the mutation schedules another retry attempt. */
+  onRetry?: (failureCount: number, error: TError) => void
 }
 
 const isPromise = <T,>(value: unknown): value is Promise<T> =>
@@ -100,6 +102,7 @@ export function useResilientMutation<
     onError,
     onSuccess,
     onSettled,
+    onRetry,
     ...rest
   } = options
 
@@ -139,6 +142,7 @@ export function useResilientMutation<
               toastController.current.update({ ...message })
             }
           }
+          onRetry?.(failureCount, error)
         }
         return allow
       }),

@@ -30,6 +30,12 @@ import {
 } from '@/hooks/api/use-current-user-query'
 import { clearUnauthorizedHandler, setUnauthorizedHandler } from '@/lib/api/unauthorized-handler'
 import { toast } from '@/hooks/use-toast'
+import {
+  trackOnboardingResume,
+  trackOnboardingSaveFailed,
+  trackOnboardingSaveStarted,
+  trackOnboardingSaveSucceeded,
+} from '@/lib/telemetry/onboarding'
 
 interface AuthContextValue {
   user: WorkspaceUser | null
@@ -95,11 +101,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (userId: string, mode: AuthStrategy, session: Session | null) => {
       userIdRef.current = userId
 
+      type ResumeSource = Parameters<typeof trackOnboardingResume>[0]['source']
+      type ResumeReason = Parameters<typeof trackOnboardingResume>[0]['reason']
+
       const applyStatus = (status: StoredOnboardingStatus) => {
         setOnboardingStatus(status)
         onboardingStatusRef.current = status
         authStorage.setOnboardingStatus(userId, status)
         useOnboardingStore.getState().hydrateFromStatus(status)
+      }
+
+      const emitResume = (
+        status: StoredOnboardingStatus,
+        source: ResumeSource,
+        details?: {
+          reason?: ResumeReason
+          sessionStartedAt?: string | null
+          sessionCompletedAt?: string | null
+        },
+      ) => {
+        trackOnboardingResume({
+          status,
+          source,
+          mode,
+          reason: details?.reason,
+          sessionStartedAt: details?.sessionStartedAt,
+          sessionCompletedAt: details?.sessionCompletedAt,
+        })
       }
 
       const resetForNewVersion = async (previousVersion?: number): Promise<StoredOnboardingStatus> => {
@@ -114,9 +142,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (mode === 'supabase' && session?.access_token) {
+          const fallbackStep = (resetStatus.lastStep ?? 'profile') as OnboardingStepId
+          trackOnboardingSaveStarted({
+            status: resetStatus,
+            stepId: fallbackStep,
+            intent: 'version-reset',
+          })
           try {
             await persistOnboardingStatus(session.access_token, resetStatus)
+            trackOnboardingSaveSucceeded({
+              status: resetStatus,
+              stepId: fallbackStep,
+              intent: 'version-reset',
+            })
           } catch (error) {
+            trackOnboardingSaveFailed({
+              status: resetStatus,
+              stepId: fallbackStep,
+              intent: 'version-reset',
+              errorName: error instanceof Error ? error.name : undefined,
+              errorMessage: error instanceof Error ? error.message : undefined,
+              errorStatus: error instanceof ApiError ? error.status : null,
+            })
             console.error('[auth] failed to persist onboarding reset', error)
           }
         }
@@ -128,23 +175,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!session) {
           const fallback = defaultOnboardingStatus()
           applyStatus(fallback)
+          emitResume(fallback, 'remote-default', { reason: 'seed' })
           return
         }
 
         const onboardingSession = await fetchOrCreateOnboardingSession(session.access_token)
         const sessionStatus = onboardingSession?.status ?? defaultOnboardingStatus()
-        const nextStatus = isLegacyOnboardingStatus(sessionStatus)
+        const requiresReset = isLegacyOnboardingStatus(sessionStatus)
+        const nextStatus = requiresReset
           ? await resetForNewVersion(coerceOnboardingStatusVersion(sessionStatus.version))
           : sessionStatus
         applyStatus(nextStatus)
+        emitResume(nextStatus, onboardingSession ? 'remote-session' : 'remote-default', {
+          reason: requiresReset ? 'version-reset' : onboardingSession ? 'resume' : 'seed',
+          sessionStartedAt: onboardingSession?.startedAt ?? null,
+          sessionCompletedAt: onboardingSession?.completedAt ?? null,
+        })
         return
       }
 
       const storedStatus = authStorage.getOnboardingStatus(userId)
-      const nextStatus = isLegacyOnboardingStatus(storedStatus)
+      const requiresReset = isLegacyOnboardingStatus(storedStatus)
+      const nextStatus = requiresReset
         ? await resetForNewVersion(coerceOnboardingStatusVersion(storedStatus?.version))
         : storedStatus
-      applyStatus(nextStatus ?? defaultOnboardingStatus())
+      const finalStatus = nextStatus ?? defaultOnboardingStatus()
+      applyStatus(finalStatus)
+      emitResume(finalStatus, storedStatus ? 'local-cache' : 'local-default', {
+        reason: requiresReset ? 'version-reset' : storedStatus ? 'resume' : 'seed',
+      })
     },
     [],
   )
