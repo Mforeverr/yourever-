@@ -10,7 +10,8 @@ import { createSupabaseAuthGateway, type SupabaseAuthGateway } from '@/modules/a
 import { clearAuthTokenResolver, setAuthTokenResolver } from '@/lib/api/client'
 import type { WorkspaceUser } from '@/modules/auth/types'
 import { loadWorkspaceUser } from '@/modules/auth/user-loader'
-import { fetchOrCreateOnboardingSession, persistOnboardingStatus } from '@/modules/onboarding/session'
+import { fetchOrCreateOnboardingSession } from '@/modules/onboarding/session'
+import { useOnboardingStore } from '@/state/onboarding.store'
 
 interface AuthContextValue {
   user: WorkspaceUser | null
@@ -49,19 +50,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const fallback = defaultOnboardingStatus()
           setOnboardingStatus(fallback)
           authStorage.setOnboardingStatus(userId, fallback)
+          useOnboardingStore.getState().hydrateFromStatus(fallback)
           return
         }
 
-        const onboardingSession = await fetchOrCreateOnboardingSession(session)
+        const onboardingSession = await fetchOrCreateOnboardingSession(session.access_token)
         const status = onboardingSession?.status ?? defaultOnboardingStatus()
         setOnboardingStatus(status)
         authStorage.setOnboardingStatus(userId, status)
+        useOnboardingStore.getState().hydrateFromStatus(status)
         return
       }
 
       const storedStatus = authStorage.getOnboardingStatus(userId)
       const status = storedStatus ?? defaultOnboardingStatus()
       setOnboardingStatus(status)
+      useOnboardingStore.getState().hydrateFromStatus(status)
     },
     []
   )
@@ -74,6 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     sessionStorageService.clearByPrefix("yourever-")
     userIdRef.current = null
     supabaseSessionRef.current = null
+    useOnboardingStore.getState().reset()
   }, [])
 
   const applyUser = useCallback(
@@ -238,29 +243,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [strategy])
 
-  const persistStatus = useCallback(
-    async (status: StoredOnboardingStatus) => {
-      const userId = userIdRef.current
-      if (!userId) return
-
-      if (strategyRef.current === 'supabase') {
-        await persistOnboardingStatus(supabaseSessionRef.current, status)
-      }
-      authStorage.setOnboardingStatus(userId, status)
-    },
-    []
-  )
-
   const updateOnboardingStatus = useCallback(
     (updater: (current: StoredOnboardingStatus) => StoredOnboardingStatus) => {
       setOnboardingStatus((prev) => {
         const base = prev ?? defaultOnboardingStatus()
         const next = updater(base)
-        void persistStatus(next)
+        const userId = userIdRef.current
+        if (userId) {
+          authStorage.setOnboardingStatus(userId, next)
+        }
         return next
       })
     },
-    [persistStatus]
+    []
   )
 
   const markOnboardingComplete = useCallback(() => {

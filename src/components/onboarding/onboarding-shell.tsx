@@ -11,11 +11,12 @@ interface OnboardingShellProps {
   title: string
   description: string
   children: ReactNode
-  onNext: () => void
-  onBack?: () => void
-  onSkip?: () => void
+  onNext: () => void | Promise<void>
+  onBack?: () => void | Promise<void>
+  onSkip?: () => void | Promise<void>
   isNextDisabled?: boolean
   canSkip?: boolean
+  isSkipDisabled?: boolean
   nextLabel?: string
 }
 
@@ -29,6 +30,7 @@ export function OnboardingShell({
   onSkip,
   isNextDisabled,
   canSkip,
+  isSkipDisabled,
   nextLabel = 'Continue'
 }: OnboardingShellProps) {
   const stepIndex = useMemo(() => Math.max(getStepIndex(stepId), 0), [stepId])
@@ -74,7 +76,7 @@ export function OnboardingShell({
               </Button>
             )}
             {canSkip && onSkip && (
-              <Button variant="ghost" onClick={onSkip}>
+              <Button variant="ghost" onClick={onSkip} disabled={isSkipDisabled}>
                 Skip for now
               </Button>
             )}

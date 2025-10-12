@@ -1,50 +1,17 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo } from 'react'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { OnboardingShell } from '@/components/onboarding/onboarding-shell'
 import { useOnboardingStep } from '@/hooks/use-onboarding-step'
-import type { PreferencesStepData } from '@/lib/onboarding'
-
-const defaultPreferences: PreferencesStepData = {
-  weeklySummary: true,
-  enableNotifications: true,
-  defaultTheme: 'dark'
-}
 
 export default function PreferencesOnboardingPage() {
-  const { data, completeStep, updateData, goNext, previousStep, goPrevious } = useOnboardingStep('preferences')
-  const [form, setForm] = useState<PreferencesStepData>(data ?? defaultPreferences)
-  const previousDataRef = useRef<string | null>(null)
-  const lastSyncedRef = useRef<string | null>(null)
+  const { data, completeStep, updateData, previousStep, goPrevious, isSaving } = useOnboardingStep('preferences')
 
-  useEffect(() => {
-    if (!data) return
-    const merged = { ...defaultPreferences, ...data }
-    const serialized = JSON.stringify(merged)
-    if (previousDataRef.current === serialized) return
-    previousDataRef.current = serialized
-    lastSyncedRef.current = serialized
-    setForm((prev) => {
-      if (JSON.stringify(prev) === serialized) {
-        return prev
-      }
-      return merged
-    })
-  }, [data])
-
-  useEffect(() => {
-    const serialized = JSON.stringify(form)
-    if (lastSyncedRef.current === serialized) return
-    lastSyncedRef.current = serialized
-    updateData(form)
-  }, [form, updateData])
-
-  const handleSubmit = () => {
-    // TODO: connect preference persistence to backend settings service when available.
-    completeStep(form)
-    goNext()
+  const handleSubmit = async () => {
+    if (isSaving) return
+    await completeStep(data)
   }
 
   const nextLabel = useMemo(() => 'Finish onboarding', [])
@@ -56,6 +23,7 @@ export default function PreferencesOnboardingPage() {
       description="Choose how you want updates and the workspace to behave."
       onNext={handleSubmit}
       onBack={previousStep ? goPrevious : undefined}
+      isNextDisabled={isSaving}
       nextLabel={nextLabel}
     >
       <div className="space-y-6">
@@ -65,8 +33,8 @@ export default function PreferencesOnboardingPage() {
             <p className="text-xs text-muted-foreground">Get a digest every Monday with highlights across your teams.</p>
           </div>
           <Switch
-            checked={form.weeklySummary}
-            onCheckedChange={(value) => setForm((prev) => ({ ...prev, weeklySummary: Boolean(value) }))}
+            checked={data.weeklySummary}
+            onCheckedChange={(value) => updateData({ ...data, weeklySummary: Boolean(value) })}
           />
         </div>
 
@@ -76,8 +44,8 @@ export default function PreferencesOnboardingPage() {
             <p className="text-xs text-muted-foreground">Receive inbox and push notifications for important updates.</p>
           </div>
           <Switch
-            checked={form.enableNotifications}
-            onCheckedChange={(value) => setForm((prev) => ({ ...prev, enableNotifications: Boolean(value) }))}
+            checked={data.enableNotifications}
+            onCheckedChange={(value) => updateData({ ...data, enableNotifications: Boolean(value) })}
           />
         </div>
 
@@ -85,8 +53,8 @@ export default function PreferencesOnboardingPage() {
           <Label htmlFor="theme">Default theme</Label>
           <select
             id="theme"
-            value={form.defaultTheme}
-            onChange={(event) => setForm((prev) => ({ ...prev, defaultTheme: event.target.value as PreferencesStepData['defaultTheme'] }))}
+            value={data.defaultTheme}
+            onChange={(event) => updateData({ ...data, defaultTheme: event.target.value as typeof data.defaultTheme })}
             className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
           >
             <option value="dark">Dark</option>

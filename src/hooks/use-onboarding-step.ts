@@ -11,23 +11,28 @@ import {
   getStepById,
   type BaseOnboardingStep,
   type OnboardingStepId,
-  type StepDataMap
+  type StepDataMap,
+  defaultOnboardingStatus,
 } from '@/lib/onboarding'
+import type { StoredOnboardingStatus } from '@/lib/auth-utils'
+import { selectStepData, useOnboardingStore } from '@/state/onboarding.store'
+import { useMutation } from '@tanstack/react-query'
+import { persistOnboardingStatus } from '@/modules/onboarding/session'
+import { toast } from '@/hooks/use-toast'
 
 const allStepIds = ONBOARDING_STEPS.map((step) => step.id)
 
 export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
-  const { onboardingStatus, updateOnboardingStatus, markOnboardingComplete, user } = useCurrentUser()
+  const { onboardingStatus, updateOnboardingStatus, markOnboardingComplete, user, getAccessToken } = useCurrentUser()
   const router = useRouter()
+  const stepData = useOnboardingStore(selectStepData(stepId))
+  const setStepData = useOnboardingStore((state) => state.setStepData)
 
   const step = useMemo(() => getStepById(stepId), [stepId])
   const nextStep = useMemo(() => getNextStep(stepId), [stepId])
   const previousStep = useMemo(() => getPreviousStep(stepId), [stepId])
 
-  const data = useMemo(() => {
-    if (!onboardingStatus) return undefined
-    return onboardingStatus.data?.[stepId] as StepDataMap[T] | undefined
-  }, [onboardingStatus, stepId])
+  const data = stepData
 
   useEffect(() => {
     if (!user || !onboardingStatus) return
@@ -49,44 +54,83 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     }
   }, [onboardingStatus, router, step, stepId, user])
 
+  const persistProgress = useMutation({
+    mutationFn: async (status: StoredOnboardingStatus) => {
+      const token = await getAccessToken()
+      if (!token) {
+        throw new Error('Authentication expired. Please sign in again.')
+      }
+      const response = await persistOnboardingStatus(token, status)
+      if (!response) {
+        throw new Error('Failed to sync onboarding progress.')
+      }
+      return status
+    },
+    onSuccess: (status) => {
+      updateOnboardingStatus(() => status)
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Unable to save onboarding progress.'
+      toast({
+        title: 'Progress not saved',
+        description: message,
+        variant: 'destructive',
+      })
+    },
+  })
+
   const updateData = (payload: StepDataMap[T]) => {
-    updateOnboardingStatus((current) => ({
-      ...current,
+    setStepData(stepId, payload)
+  }
+
+  const buildNextStatus = (payload: StepDataMap[T]) => {
+    const base = onboardingStatus ?? defaultOnboardingStatus()
+    const completedSteps = Array.from(new Set([...base.completedSteps, stepId]))
+    return {
+      ...base,
       data: {
-        ...current.data,
-        [stepId]: payload
+        ...base.data,
+        [stepId]: payload,
       },
-      lastStep: stepId
-    }))
+      completedSteps,
+      skippedSteps: base.skippedSteps.filter((id) => id !== stepId),
+      lastStep: stepId,
+    }
   }
 
-  const completeStep = (payload: StepDataMap[T]) => {
-    updateOnboardingStatus((current) => {
-      const completedSteps = Array.from(new Set([...current.completedSteps, stepId]))
-      return {
-        ...current,
-        data: {
-          ...current.data,
-          [stepId]: payload
-        },
-        completedSteps,
-        skippedSteps: current.skippedSteps.filter((id) => id !== stepId),
-        lastStep: stepId
-      }
-    })
+  const buildSkippedStatus = () => {
+    const base = onboardingStatus ?? defaultOnboardingStatus()
+    const completedSteps = Array.from(new Set([...base.completedSteps, stepId]))
+    const skippedSteps = Array.from(new Set([...base.skippedSteps, stepId]))
+    return {
+      ...base,
+      completedSteps,
+      skippedSteps,
+      lastStep: stepId,
+    }
   }
 
-  const skipStep = () => {
-    updateOnboardingStatus((current) => {
-      const completedSteps = Array.from(new Set([...current.completedSteps, stepId]))
-      const skippedSteps = Array.from(new Set([...current.skippedSteps, stepId]))
-      return {
-        ...current,
-        completedSteps,
-        skippedSteps,
-        lastStep: stepId
-      }
-    })
+  const completeStep = async (payload: StepDataMap[T]) => {
+    if (persistProgress.isPending) return
+    setStepData(stepId, payload)
+    const nextStatus = buildNextStatus(payload)
+    try {
+      await persistProgress.mutateAsync(nextStatus)
+      goNext()
+    } catch {
+      // error handled in mutation onError
+    }
+  }
+
+  const skipStep = async () => {
+    if (persistProgress.isPending) return
+    const nextStatus = buildSkippedStatus()
+    try {
+      await persistProgress.mutateAsync(nextStatus)
+      goNext()
+    } catch {
+      // error handled in mutation onError
+    }
   }
 
   const goToStep = (target?: BaseOnboardingStep) => {
@@ -134,6 +178,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     isSkipped,
     isLastStep,
     onboardingStatus,
-    allStepIds
+    allStepIds,
+    isSaving: persistProgress.isPending,
   }
 }

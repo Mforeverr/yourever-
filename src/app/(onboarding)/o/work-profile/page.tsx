@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
+import type { ChangeEvent } from 'react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -16,104 +17,92 @@ const FUNCTION_OPTIONS = ['Product', 'Engineering', 'Design', 'Revenue Ops', 'Cu
 const INTENT_OPTIONS = ['Plan projects', 'Run meetings', 'Coordinate async work', 'Ship releases', 'Track goals', 'Support customers']
 const EXPERIENCE_LEVELS = ['New to role', '1-3 years', '4-7 years', '8+ years']
 
-const defaultWorkProfile: WorkProfileStepData = {
-  teamName: '',
-  jobTitle: '',
-  timezone: '',
-  teamSize: '',
-  functions: [],
-  intents: [],
-  experience: '',
-  role: ''
-}
-
 export default function WorkProfileOnboardingPage() {
   const { user } = useCurrentUser()
-  const { data, completeStep, updateData, goNext, previousStep, goPrevious } = useOnboardingStep('work-profile')
-  const [form, setForm] = useState<WorkProfileStepData>(data ?? defaultWorkProfile)
-  const previousDataRef = useRef<string | null>(null)
-  const lastSyncedRef = useRef<string | null>(null)
+  const { data, completeStep, updateData, previousStep, goPrevious, isSaving } = useOnboardingStep('work-profile')
   const hasPrefilledRef = useRef(false)
 
   useEffect(() => {
     if (!user) return
     if (hasPrefilledRef.current) return
-    setForm((prev) => {
-      const next = {
-        ...prev,
-        teamName: prev.teamName || (user.organizations[0]?.name ?? ''),
-        jobTitle: prev.jobTitle || (user.role ?? ''),
-      }
-      if (prev.teamName === next.teamName && prev.jobTitle === next.jobTitle) {
-        return prev
-      }
+    if (data.teamName || data.jobTitle) {
       hasPrefilledRef.current = true
-      return next
-    })
-  }, [user])
+      return
+    }
 
-  useEffect(() => {
-    if (!data) return
-    const merged = { ...defaultWorkProfile, ...data }
-    const serialized = JSON.stringify(merged)
-    if (previousDataRef.current === serialized) return
-    previousDataRef.current = serialized
-    lastSyncedRef.current = serialized
+    updateData({
+      ...data,
+      teamName: user.organizations[0]?.name ?? '',
+      jobTitle: user.role ?? '',
+      role: user.role ?? '',
+    })
     hasPrefilledRef.current = true
-    setForm((prev) => {
-      if (JSON.stringify(prev) === serialized) {
-        return prev
-      }
-      return merged
-    })
-  }, [data])
-
-  useEffect(() => {
-    const serialized = JSON.stringify(form)
-    if (lastSyncedRef.current === serialized) return
-    lastSyncedRef.current = serialized
-    updateData(form)
-  }, [form, updateData])
+  }, [user, data, updateData])
 
   const suggestedFunctions = useMemo(() => {
-    const title = form.jobTitle.toLowerCase()
-    if (!title) return []
+    const title = data.jobTitle.toLowerCase()
+    if (!title) return [] as string[]
     if (title.includes('product')) return ['Product', 'Engineering', 'Design']
     if (title.includes('engineer')) return ['Engineering', 'Product', 'Design']
     if (title.includes('marketing')) return ['Marketing', 'Revenue Ops', 'Design']
     if (title.includes('customer')) return ['Customer Success', 'Revenue Ops']
     if (title.includes('ops')) return ['Revenue Ops', 'Finance', 'People']
     return []
-  }, [form.jobTitle])
+  }, [data.jobTitle])
 
   const isValid = useMemo(() => {
     return (
-      Boolean(form.teamName.trim()) &&
-      Boolean(form.jobTitle.trim()) &&
-      Boolean(form.timezone) &&
-      Boolean(form.teamSize) &&
-      form.functions.length > 0 &&
-      form.intents.length > 0 &&
-      Boolean(form.experience)
+      Boolean(data.teamName.trim()) &&
+      Boolean(data.jobTitle.trim()) &&
+      Boolean(data.timezone) &&
+      Boolean(data.teamSize) &&
+      data.functions.length > 0 &&
+      data.intents.length > 0 &&
+      Boolean(data.experience)
     )
-  }, [form.experience, form.functions.length, form.intents.length, form.jobTitle, form.teamName, form.teamSize, form.timezone])
+  }, [data.experience, data.functions.length, data.intents.length, data.jobTitle, data.teamName, data.teamSize, data.timezone])
 
-  const toggleSelection = (list: string[], value: string) => {
-    return list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
+  const handleInputChange = (field: keyof WorkProfileStepData) => (
+    event: ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+  ) => {
+    updateData({
+      ...data,
+      [field]: event.target.value,
+    })
+  }
+
+  const toggleSelection = (field: 'functions' | 'intents', value: string) => {
+    const current = data[field]
+    const next = current.includes(value) ? current.filter((item) => item !== value) : [...current, value]
+    updateData({
+      ...data,
+      [field]: next,
+    })
   }
 
   const applySuggestion = (suggestion: string) => {
-    setForm((prev) => ({ ...prev, functions: Array.from(new Set([...prev.functions, suggestion])) }))
+    if (data.functions.includes(suggestion)) return
+    updateData({
+      ...data,
+      functions: [...data.functions, suggestion],
+    })
   }
 
-  const handleSubmit = () => {
-    if (!isValid) return
-    // TODO: Wire this submission to the real onboarding profile endpoint when available.
-    completeStep({
-      ...form,
-      role: form.jobTitle
+  const handleJobTitleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value
+    updateData({
+      ...data,
+      jobTitle: value,
+      role: value,
     })
-    goNext()
+  }
+
+  const handleSubmit = async () => {
+    if (!isValid || isSaving) return
+    await completeStep({
+      ...data,
+      role: data.jobTitle,
+    })
   }
 
   return (
@@ -123,15 +112,15 @@ export default function WorkProfileOnboardingPage() {
       description="Share how your team works so we can tailor the workspace experience."
       onNext={handleSubmit}
       onBack={previousStep ? goPrevious : undefined}
-      isNextDisabled={!isValid}
+      isNextDisabled={!isValid || isSaving}
     >
       <div className="grid grid-cols-1 gap-6">
         <div className="space-y-2">
           <Label htmlFor="teamName">Team or department</Label>
           <Input
             id="teamName"
-            value={form.teamName}
-            onChange={(event) => setForm((prev) => ({ ...prev, teamName: event.target.value }))}
+            value={data.teamName}
+            onChange={handleInputChange('teamName')}
             placeholder="Customer Experience"
           />
         </div>
@@ -140,11 +129,8 @@ export default function WorkProfileOnboardingPage() {
           <Label htmlFor="jobTitle">Your role title</Label>
           <Input
             id="jobTitle"
-            value={form.jobTitle}
-            onChange={(event) => {
-              const value = event.target.value
-              setForm((prev) => ({ ...prev, jobTitle: value, role: value }))
-            }}
+            value={data.jobTitle}
+            onChange={handleJobTitleChange}
             placeholder="Head of Operations"
           />
         </div>
@@ -154,8 +140,8 @@ export default function WorkProfileOnboardingPage() {
             <Label htmlFor="timezone">Primary timezone</Label>
             <select
               id="timezone"
-              value={form.timezone}
-              onChange={(event) => setForm((prev) => ({ ...prev, timezone: event.target.value }))}
+              value={data.timezone}
+              onChange={handleInputChange('timezone')}
               className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
             >
               <option value="" disabled>
@@ -173,8 +159,8 @@ export default function WorkProfileOnboardingPage() {
             <Label htmlFor="teamSize">Team size</Label>
             <select
               id="teamSize"
-              value={form.teamSize}
-              onChange={(event) => setForm((prev) => ({ ...prev, teamSize: event.target.value }))}
+              value={data.teamSize}
+              onChange={handleInputChange('teamSize')}
               className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
             >
               <option value="" disabled>
@@ -212,14 +198,14 @@ export default function WorkProfileOnboardingPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             {FUNCTION_OPTIONS.map((option) => {
-              const isSelected = form.functions.includes(option)
+              const isSelected = data.functions.includes(option)
               return (
                 <Button
                   key={option}
                   type="button"
                   variant={isSelected ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setForm((prev) => ({ ...prev, functions: toggleSelection(prev.functions, option) }))}
+                  onClick={() => toggleSelection('functions', option)}
                 >
                   {option}
                 </Button>
@@ -232,14 +218,14 @@ export default function WorkProfileOnboardingPage() {
           <Label>What do you want to accomplish?</Label>
           <div className="flex flex-wrap gap-2">
             {INTENT_OPTIONS.map((option) => {
-              const isSelected = form.intents.includes(option)
+              const isSelected = data.intents.includes(option)
               return (
                 <Button
                   key={option}
                   type="button"
                   variant={isSelected ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setForm((prev) => ({ ...prev, intents: toggleSelection(prev.intents, option) }))}
+                  onClick={() => toggleSelection('intents', option)}
                 >
                   {option}
                 </Button>
@@ -252,8 +238,8 @@ export default function WorkProfileOnboardingPage() {
           <Label htmlFor="experience">Experience in this role</Label>
           <select
             id="experience"
-            value={form.experience}
-            onChange={(event) => setForm((prev) => ({ ...prev, experience: event.target.value }))}
+            value={data.experience}
+            onChange={handleInputChange('experience')}
             className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
           >
             <option value="" disabled>
@@ -267,11 +253,11 @@ export default function WorkProfileOnboardingPage() {
           </select>
         </div>
 
-        {form.functions.length > 0 && (
+        {data.functions.length > 0 && (
           <div className="space-y-2 text-xs text-muted-foreground">
             <p>We&apos;ll prioritise templates and automations for:</p>
             <div className="flex flex-wrap gap-2">
-              {form.functions.map((fn) => (
+              {data.functions.map((fn) => (
                 <Badge key={fn} variant="secondary">
                   {fn}
                 </Badge>

@@ -1,13 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { OnboardingShell } from '@/components/onboarding/onboarding-shell'
 import { useOnboardingStep } from '@/hooks/use-onboarding-step'
-import type { ToolsStepData } from '@/lib/onboarding'
 import {
   Slack,
   Github,
@@ -16,7 +15,7 @@ import {
   Zap,
   PanelsTopLeft,
   FileText,
-  Cloud
+  Cloud,
 } from 'lucide-react'
 
 const TOOL_OPTIONS = [
@@ -24,144 +23,113 @@ const TOOL_OPTIONS = [
     id: 'slack',
     name: 'Slack',
     description: 'Sync channels and automate standup recaps.',
-    icon: Slack
+    icon: Slack,
   },
   {
     id: 'github',
     name: 'GitHub',
     description: 'Bring pull requests and deployments into one view.',
-    icon: Github
+    icon: Github,
   },
   {
     id: 'jira',
     name: 'Jira',
     description: 'Link issues and sprint progress to your workspace.',
-    icon: PanelsTopLeft
+    icon: PanelsTopLeft,
   },
   {
     id: 'notion',
     name: 'Notion',
     description: 'Embed docs and sync meeting notes automatically.',
-    icon: NotebookText
+    icon: NotebookText,
   },
   {
     id: 'asana',
     name: 'Asana',
     description: 'Mirror projects and tasks without duplicate updates.',
-    icon: Workflow
+    icon: Workflow,
   },
   {
     id: 'linear',
     name: 'Linear',
     description: 'Bring in issue timelines and cycle analytics.',
-    icon: Zap
+    icon: Zap,
   },
   {
     id: 'gdrive',
     name: 'Google Drive',
     description: 'Attach docs and proposals without context switching.',
-    icon: Cloud
+    icon: Cloud,
   },
   {
     id: 'docs',
     name: 'Confluence / Docs',
     description: 'Stay aligned with synced pages and decision logs.',
-    icon: FileText
-  }
+    icon: FileText,
+  },
 ]
-
-const defaultTools: ToolsStepData = {
-  tools: [],
-  customTool: '',
-  integrations: []
-}
 
 type IntegrationStatus = 'not-started' | 'in-progress' | 'connected'
 
 export default function ToolsOnboardingPage() {
-  const { data, completeStep, updateData, skipStep, goNext, previousStep, goPrevious } = useOnboardingStep('tools')
-  const [form, setForm] = useState<ToolsStepData>(data ?? defaultTools)
-  const previousDataRef = useRef<string | null>(null)
-  const lastSyncedRef = useRef<string | null>(null)
-
-  useEffect(() => {
-    if (!data) return
-    const merged = { ...defaultTools, ...data }
-    const serialized = JSON.stringify(merged)
-    if (previousDataRef.current === serialized) return
-    previousDataRef.current = serialized
-    lastSyncedRef.current = serialized
-    setForm((prev) => {
-      if (JSON.stringify(prev) === serialized) {
-        return prev
-      }
-      return merged
-    })
-  }, [data])
-
-  useEffect(() => {
-    const serialized = JSON.stringify(form)
-    if (lastSyncedRef.current === serialized) return
-    lastSyncedRef.current = serialized
-    updateData(form)
-  }, [form, updateData])
-
-  const handleToggleTool = (toolId: string, checked: boolean) => {
-    setForm((prev) => {
-      const nextTools = checked
-        ? Array.from(new Set([...prev.tools, toolId]))
-        : prev.tools.filter((item) => item !== toolId)
-
-      const existingIntegrations = prev.integrations ?? []
-      const integrationExists = existingIntegrations.some((integration) => integration.id === toolId)
-
-      const toolDefinition = TOOL_OPTIONS.find((option) => option.id === toolId)
-      const nextIntegrations = checked
-        ? integrationExists
-          ? existingIntegrations
-          : [
-              ...existingIntegrations,
-              {
-                id: toolId,
-                name: toolDefinition?.name ?? toolId,
-                status: 'not-started' as IntegrationStatus
-              }
-            ]
-        : existingIntegrations.filter((integration) => integration.id !== toolId)
-
-      return { ...prev, tools: nextTools, integrations: nextIntegrations }
-    })
-  }
+  const { data, completeStep, updateData, skipStep, previousStep, goPrevious, isSaving } = useOnboardingStep('tools')
 
   const hasSelection = useMemo(
-    () => form.tools.length > 0 || Boolean(form.customTool?.trim()),
-    [form.customTool, form.tools]
+    () => data.tools.length > 0 || Boolean(data.customTool?.trim()),
+    [data.customTool, data.tools.length],
   )
 
-  const handleIntegrationStatus = (toolId: string, status: IntegrationStatus) => {
-    setForm((prev) => ({
-      ...prev,
-      integrations: (prev.integrations ?? []).map((integration) =>
-        integration.id === toolId ? { ...integration, status } : integration
-      )
-    }))
-  }
+  const handleToggleTool = (toolId: string) => {
+    const isSelected = data.tools.includes(toolId)
+    const nextTools = isSelected ? data.tools.filter((item) => item !== toolId) : [...data.tools, toolId]
 
-  const handleSubmit = () => {
-    // Optional step: allow advancing even without selection
-    completeStep({
-      ...form,
-      tools: form.tools,
-      customTool: form.customTool?.trim() ?? '',
-      integrations: form.integrations ?? []
+    const existingIntegrations = data.integrations ?? []
+    const integrationExists = existingIntegrations.some((integration) => integration.id === toolId)
+    const toolDefinition = TOOL_OPTIONS.find((option) => option.id === toolId)
+
+    const nextIntegrations = isSelected
+      ? existingIntegrations.filter((integration) => integration.id !== toolId)
+      : integrationExists
+      ? existingIntegrations
+      : [
+          ...existingIntegrations,
+          {
+            id: toolId,
+            name: toolDefinition?.name ?? toolId,
+            status: 'not-started' as IntegrationStatus,
+          },
+        ]
+
+    updateData({
+      ...data,
+      tools: nextTools,
+      integrations: nextIntegrations,
     })
-    goNext()
   }
 
-  const handleSkip = () => {
-    // TODO: Swap this mock skip logic with backend signal when onboarding API is in place.
-    skipStep()
-    goNext()
+  const handleIntegrationStatus = (toolId: string, status: IntegrationStatus) => {
+    const integrations = (data.integrations ?? []).map((integration) =>
+      integration.id === toolId ? { ...integration, status } : integration,
+    )
+    updateData({
+      ...data,
+      integrations,
+    })
+  }
+
+  const handleSubmit = async () => {
+    if (isSaving) return
+    await completeStep({
+      ...data,
+      tools: data.tools,
+      customTool: data.customTool?.trim() ?? '',
+      integrations: data.integrations ?? [],
+    })
+  }
+
+  const handleSkip = async () => {
+    if (isSaving) return
+    await skipStep()
   }
 
   return (
@@ -173,14 +141,16 @@ export default function ToolsOnboardingPage() {
       onBack={previousStep ? goPrevious : undefined}
       onSkip={handleSkip}
       canSkip
+      isNextDisabled={isSaving}
+      isSkipDisabled={isSaving}
       nextLabel={hasSelection ? 'Continue' : 'Skip & continue'}
     >
       <div className="space-y-6">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {TOOL_OPTIONS.map((tool) => {
             const Icon = tool.icon
-            const checked = form.tools.includes(tool.id)
-            const integration = form.integrations?.find((entry) => entry.id === tool.id)
+            const checked = data.tools.includes(tool.id)
+            const integration = (data.integrations ?? []).find((entry) => entry.id === tool.id)
             return (
               <Card
                 key={tool.id}
@@ -203,7 +173,7 @@ export default function ToolsOnboardingPage() {
                     type="button"
                     variant={checked ? 'default' : 'outline'}
                     size="sm"
-                    onClick={() => handleToggleTool(tool.id, !checked)}
+                    onClick={() => handleToggleTool(tool.id)}
                   >
                     {checked ? 'Selected' : 'Select'}
                   </Button>
@@ -213,27 +183,20 @@ export default function ToolsOnboardingPage() {
                     <p className="text-xs text-muted-foreground">
                       We&apos;ll walk you through authentication after onboarding. Mark anything you want to set up now.
                     </p>
-                    <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2 text-sm">
-                      <span>
-                        Status: {integration?.status === 'connected' ? 'Connected' : integration?.status === 'in-progress' ? 'In progress' : 'Not started'}
-                      </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-foreground">Status:</span>
                       <div className="flex gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleIntegrationStatus(tool.id, 'in-progress')}
-                        >
-                          Set up now
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleIntegrationStatus(tool.id, 'not-started')}
-                        >
-                          Later
-                        </Button>
+                        {(['not-started', 'in-progress', 'connected'] as IntegrationStatus[]).map((statusOption) => (
+                          <Button
+                            key={statusOption}
+                            type="button"
+                            variant={integration?.status === statusOption ? 'default' : 'outline'}
+                            size="xs"
+                            onClick={() => handleIntegrationStatus(tool.id, statusOption)}
+                          >
+                            {statusOption.replace('-', ' ')}
+                          </Button>
+                        ))}
                       </div>
                     </div>
                   </CardContent>
@@ -243,17 +206,14 @@ export default function ToolsOnboardingPage() {
           })}
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="customTool">Other tools</Label>
+        <div className="space-y-3">
+          <Label htmlFor="customTool">Is there any other tool we should know about?</Label>
           <Input
             id="customTool"
-            value={form.customTool ?? ''}
-            onChange={(event) => setForm((prev) => ({ ...prev, customTool: event.target.value }))}
-            placeholder="Add other tools you rely on"
+            value={data.customTool ?? ''}
+            onChange={(event) => updateData({ ...data, customTool: event.target.value })}
+            placeholder="Tool name"
           />
-          <p className="text-xs text-muted-foreground">
-            We&apos;ll reach out to connect these once integrations are available.
-          </p>
         </div>
       </div>
     </OnboardingShell>

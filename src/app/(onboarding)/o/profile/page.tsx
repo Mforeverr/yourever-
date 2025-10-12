@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
+import type { ChangeEvent } from 'react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { OnboardingShell } from '@/components/onboarding/onboarding-shell'
@@ -10,70 +11,43 @@ import { useCurrentUser } from '@/hooks/use-auth'
 
 const ROLE_OPTIONS = ['Founder', 'Executive', 'Manager', 'Individual Contributor', 'Operations', 'Other']
 
-const defaultProfile: ProfileStepData = {
-  firstName: '',
-  lastName: '',
-  role: '',
-  avatarUrl: ''
-}
-
 export default function ProfileOnboardingPage() {
   const { user } = useCurrentUser()
-  const { data, completeStep, updateData, goNext, previousStep, goPrevious } = useOnboardingStep('profile')
-  const [form, setForm] = useState<ProfileStepData>(data ?? defaultProfile)
-  const previousDataRef = useRef<string | null>(null)
-  const lastSyncedRef = useRef<string | null>(null)
+  const { data, completeStep, updateData, previousStep, goPrevious, isSaving } = useOnboardingStep('profile')
   const hasPrefilledRef = useRef(false)
 
   useEffect(() => {
     if (!user) return
     if (hasPrefilledRef.current) return
-    setForm((prev) => {
-      const next = {
-        ...prev,
-        firstName: prev.firstName || user.firstName || '',
-        lastName: prev.lastName || user.lastName || '',
-      }
-      if (prev.firstName === next.firstName && prev.lastName === next.lastName) {
-        return prev
-      }
+    if (data.firstName || data.lastName) {
       hasPrefilledRef.current = true
-      return next
-    })
-  }, [user])
+      return
+    }
 
-  useEffect(() => {
-    if (!data) return
-    const merged = { ...defaultProfile, ...data }
-    const serialized = JSON.stringify(merged)
-    if (previousDataRef.current === serialized) return
-    previousDataRef.current = serialized
-    lastSyncedRef.current = serialized
+    updateData({
+      ...data,
+      firstName: user.firstName || '',
+      lastName: user.lastName || '',
+    })
     hasPrefilledRef.current = true
-    setForm((prev) => {
-      if (JSON.stringify(prev) === serialized) {
-        return prev
-      }
-      return merged
-    })
-  }, [data])
-
-  useEffect(() => {
-    const serialized = JSON.stringify(form)
-    if (lastSyncedRef.current === serialized) return
-    lastSyncedRef.current = serialized
-    updateData(form)
-  }, [form, updateData])
+  }, [user, data, updateData])
 
   const isValid = useMemo(() => {
-    return Boolean(form.firstName.trim()) && Boolean(form.lastName.trim()) && Boolean(form.role.trim())
-  }, [form.firstName, form.lastName, form.role])
+    return Boolean(data.firstName.trim()) && Boolean(data.lastName.trim()) && Boolean(data.role.trim())
+  }, [data.firstName, data.lastName, data.role])
 
-  const handleSubmit = () => {
-    if (!isValid) return
-    // TODO: Replace mock persistence with real profile mutation when backend is available.
-    completeStep(form)
-    goNext()
+  const handleInputChange = (field: keyof ProfileStepData) => (
+    event: ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+  ) => {
+    updateData({
+      ...data,
+      [field]: event.target.value,
+    })
+  }
+
+  const handleSubmit = async () => {
+    if (!isValid || isSaving) return
+    await completeStep(data)
   }
 
   return (
@@ -83,7 +57,7 @@ export default function ProfileOnboardingPage() {
       description="Tell us who you are so teammates know who just joined."
       onNext={handleSubmit}
       onBack={previousStep ? goPrevious : undefined}
-      isNextDisabled={!isValid}
+      isNextDisabled={!isValid || isSaving}
     >
       <div className="grid grid-cols-1 gap-6">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -91,8 +65,8 @@ export default function ProfileOnboardingPage() {
             <Label htmlFor="firstName">First name</Label>
             <Input
               id="firstName"
-              value={form.firstName}
-              onChange={(event) => setForm((prev) => ({ ...prev, firstName: event.target.value }))}
+              value={data.firstName}
+              onChange={handleInputChange('firstName')}
               placeholder="Ada"
             />
           </div>
@@ -100,8 +74,8 @@ export default function ProfileOnboardingPage() {
             <Label htmlFor="lastName">Last name</Label>
             <Input
               id="lastName"
-              value={form.lastName}
-              onChange={(event) => setForm((prev) => ({ ...prev, lastName: event.target.value }))}
+              value={data.lastName}
+              onChange={handleInputChange('lastName')}
               placeholder="Lovelace"
             />
           </div>
@@ -111,8 +85,8 @@ export default function ProfileOnboardingPage() {
           <Label htmlFor="role">Primary role</Label>
           <select
             id="role"
-            value={form.role}
-            onChange={(event) => setForm((prev) => ({ ...prev, role: event.target.value }))}
+            value={data.role}
+            onChange={handleInputChange('role')}
             className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
           >
             <option value="" disabled>
@@ -130,8 +104,8 @@ export default function ProfileOnboardingPage() {
           <Label htmlFor="avatarUrl">Avatar URL (optional)</Label>
           <Input
             id="avatarUrl"
-            value={form.avatarUrl ?? ''}
-            onChange={(event) => setForm((prev) => ({ ...prev, avatarUrl: event.target.value }))}
+            value={data.avatarUrl ?? ''}
+            onChange={handleInputChange('avatarUrl')}
             placeholder="https://..."
           />
           <p className="text-xs text-muted-foreground">

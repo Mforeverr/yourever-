@@ -1,6 +1,5 @@
 'use client'
 
-import type { Session } from '@supabase/supabase-js'
 import type { StoredOnboardingStatus } from '@/lib/auth-utils'
 import type { OnboardingSession } from './transform'
 
@@ -42,12 +41,12 @@ const request = async <T>(
 }
 
 export const fetchOrCreateOnboardingSession = async (
-  session: Session | null,
+  accessToken: string | null,
 ): Promise<OnboardingSession | null> => {
-  if (!session) return null
+  if (!accessToken) return null
   const payload = await request<{ session: OnboardingSession | null }>(
     'GET',
-    session.access_token,
+    accessToken,
     undefined,
     '/api/users/me/onboarding-progress',
   )
@@ -55,13 +54,13 @@ export const fetchOrCreateOnboardingSession = async (
 }
 
 export const persistOnboardingStatus = async (
-  session: Session | null,
+  accessToken: string | null,
   status: StoredOnboardingStatus,
 ): Promise<OnboardingSession | null> => {
-  if (!session) return null
+  if (!accessToken) return null
   const payload = await request<{ session: OnboardingSession | null }>(
     'PATCH',
-    session.access_token,
+    accessToken,
     { status },
     '/api/users/me/onboarding-progress',
   )
