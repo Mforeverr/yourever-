@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCurrentUser } from '@/hooks/use-auth'
 import {
@@ -16,7 +16,7 @@ import {
 } from '@/lib/onboarding'
 import type { StoredOnboardingStatus } from '@/lib/auth-utils'
 import { selectStepData, useOnboardingStore } from '@/state/onboarding.store'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { persistOnboardingStatus } from '@/modules/onboarding/session'
 import { toast } from '@/hooks/use-toast'
 
@@ -32,6 +32,8 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     status,
   } = useCurrentUser()
   const router = useRouter()
+  const queryClient = useQueryClient()
+  const [isInvalidatingUser, setIsInvalidatingUser] = useState(false)
   const stepData = useOnboardingStore(selectStepData(stepId))
   const setStepData = useOnboardingStore((state) => state.setStepData)
 
@@ -118,24 +120,35 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     }
   }
 
+  const invalidateUser = async () => {
+    setIsInvalidatingUser(true)
+    try {
+      await queryClient.invalidateQueries({ queryKey: ['user'] })
+    } finally {
+      setIsInvalidatingUser(false)
+    }
+  }
+
   const completeStep = async (payload: StepDataMap[T]) => {
-    if (persistProgress.isPending) return
+    if (persistProgress.isPending || isInvalidatingUser) return
     setStepData(stepId, payload)
     const nextStatus = buildNextStatus(payload)
     try {
       await persistProgress.mutateAsync(nextStatus)
-      goNext()
+      await invalidateUser()
+      await goNext()
     } catch {
       // error handled in mutation onError
     }
   }
 
   const skipStep = async () => {
-    if (persistProgress.isPending) return
+    if (persistProgress.isPending || isInvalidatingUser) return
     const nextStatus = buildSkippedStatus()
     try {
       await persistProgress.mutateAsync(nextStatus)
-      goNext()
+      await invalidateUser()
+      await goNext()
     } catch {
       // error handled in mutation onError
     }
@@ -187,6 +200,6 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     isLastStep,
     onboardingStatus,
     allStepIds,
-    isSaving: persistProgress.isPending,
+    isSaving: persistProgress.isPending || isInvalidatingUser,
   }
 }
