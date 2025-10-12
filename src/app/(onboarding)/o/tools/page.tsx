@@ -1,12 +1,16 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
+import { Controller, useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { OnboardingShell } from '@/components/onboarding/onboarding-shell'
 import { useOnboardingStep } from '@/hooks/use-onboarding-step'
+import { toolsStepSchema } from '@/lib/onboarding-schemas'
+import { deepEqual } from '@/lib/object-utils'
 import {
   Slack,
   Github,
@@ -73,26 +77,61 @@ type IntegrationStatus = 'not-started' | 'in-progress' | 'connected'
 
 export default function ToolsOnboardingPage() {
   const { data, completeStep, updateData, skipStep, previousStep, goPrevious, isSaving } = useOnboardingStep('tools')
+  const form = useForm({
+    resolver: zodResolver(toolsStepSchema),
+    mode: 'onChange',
+    defaultValues: data,
+  })
+  const {
+    control,
+    formState: { isValid },
+  } = form
+  const selectedTools = form.watch('tools') ?? []
+  const customTool = form.watch('customTool') ?? ''
+  const integrations = form.watch('integrations') ?? []
+
+  useEffect(() => {
+    void form.trigger()
+  }, [form])
+
+  useEffect(() => {
+    const subscription = form.watch((values) => {
+      updateData(values as typeof data)
+    })
+    return () => subscription.unsubscribe()
+  }, [form, updateData])
+
+  useEffect(() => {
+    const currentValues = form.getValues()
+    if (deepEqual(currentValues, data)) {
+      return
+    }
+    form.reset(data)
+    void form.trigger()
+  }, [data, form])
 
   const hasSelection = useMemo(
-    () => data.tools.length > 0 || Boolean(data.customTool?.trim()),
-    [data.customTool, data.tools.length],
+    () => selectedTools.length > 0 || Boolean(customTool.trim()),
+    [customTool, selectedTools.length],
   )
 
   const handleToggleTool = (toolId: string) => {
-    const isSelected = data.tools.includes(toolId)
-    const nextTools = isSelected ? data.tools.filter((item) => item !== toolId) : [...data.tools, toolId]
+    const currentTools = form.getValues('tools') ?? []
+    const isSelected = currentTools.includes(toolId)
+    const nextTools = isSelected
+      ? currentTools.filter((item: string) => item !== toolId)
+      : [...currentTools, toolId]
 
-    const existingIntegrations = data.integrations ?? []
-    const integrationExists = existingIntegrations.some((integration) => integration.id === toolId)
+    const currentIntegrations = form.getValues('integrations') ?? []
+    const integrationExists = currentIntegrations.some((integration: { id: string }) => integration.id === toolId)
     const toolDefinition = TOOL_OPTIONS.find((option) => option.id === toolId)
 
     const nextIntegrations = isSelected
-      ? existingIntegrations.filter((integration) => integration.id !== toolId)
+      ? currentIntegrations.filter((integration: { id: string }) => integration.id !== toolId)
       : integrationExists
-      ? existingIntegrations
+      ? currentIntegrations
       : [
-          ...existingIntegrations,
+          ...currentIntegrations,
           {
             id: toolId,
             name: toolDefinition?.name ?? toolId,
@@ -100,32 +139,27 @@ export default function ToolsOnboardingPage() {
           },
         ]
 
-    updateData({
-      ...data,
-      tools: nextTools,
-      integrations: nextIntegrations,
-    })
+    form.setValue('tools', nextTools, { shouldDirty: true, shouldValidate: true })
+    form.setValue('integrations', nextIntegrations, { shouldDirty: true })
   }
 
   const handleIntegrationStatus = (toolId: string, status: IntegrationStatus) => {
-    const integrations = (data.integrations ?? []).map((integration) =>
+    const currentIntegrations = form.getValues('integrations') ?? []
+    const nextIntegrations = currentIntegrations.map((integration: { id: string; status: IntegrationStatus }) =>
       integration.id === toolId ? { ...integration, status } : integration,
     )
-    updateData({
-      ...data,
-      integrations,
-    })
+    form.setValue('integrations', nextIntegrations, { shouldDirty: true })
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = form.handleSubmit(async (values) => {
     if (isSaving) return
     await completeStep({
-      ...data,
-      tools: data.tools,
-      customTool: data.customTool?.trim() ?? '',
-      integrations: data.integrations ?? [],
+      ...values,
+      tools: values.tools,
+      customTool: values.customTool?.trim() ?? '',
+      integrations: values.integrations ?? [],
     })
-  }
+  })
 
   const handleSkip = async () => {
     if (isSaving) return
@@ -141,16 +175,16 @@ export default function ToolsOnboardingPage() {
       onBack={previousStep ? goPrevious : undefined}
       onSkip={handleSkip}
       canSkip
-      isNextDisabled={isSaving}
+      isNextDisabled={!isValid || isSaving}
       isSkipDisabled={isSaving}
       nextLabel={hasSelection ? 'Continue' : 'Skip & continue'}
     >
-      <div className="space-y-6">
+      <form className="space-y-6" onSubmit={(event) => event.preventDefault()}>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {TOOL_OPTIONS.map((tool) => {
             const Icon = tool.icon
-            const checked = data.tools.includes(tool.id)
-            const integration = (data.integrations ?? []).find((entry) => entry.id === tool.id)
+            const checked = selectedTools.includes(tool.id)
+            const integration = integrations.find((entry: { id: string }) => entry.id === tool.id)
             return (
               <Card
                 key={tool.id}
@@ -208,14 +242,15 @@ export default function ToolsOnboardingPage() {
 
         <div className="space-y-3">
           <Label htmlFor="customTool">Is there any other tool we should know about?</Label>
-          <Input
-            id="customTool"
-            value={data.customTool ?? ''}
-            onChange={(event) => updateData({ ...data, customTool: event.target.value })}
-            placeholder="Tool name"
+          <Controller
+            control={control}
+            name="customTool"
+            render={({ field }) => (
+              <Input id="customTool" placeholder="Tool name" {...field} value={field.value ?? ''} />
+            )}
           />
         </div>
-      </div>
+      </form>
     </OnboardingShell>
   )
 }

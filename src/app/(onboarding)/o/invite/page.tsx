@@ -1,6 +1,8 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Controller, useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -9,42 +11,81 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { OnboardingShell } from '@/components/onboarding/onboarding-shell'
 import { useOnboardingStep } from '@/hooks/use-onboarding-step'
 import { cn } from '@/lib/utils'
+import { inviteStepSchema } from '@/lib/onboarding-schemas'
+import { deepEqual } from '@/lib/object-utils'
 
 export default function InviteOnboardingPage() {
   const { data, completeStep, updateData, skipStep, previousStep, goPrevious, isSaving } = useOnboardingStep('invite')
   const [pendingEmail, setPendingEmail] = useState('')
+  const form = useForm({
+    resolver: zodResolver(inviteStepSchema),
+    mode: 'onChange',
+    defaultValues: data,
+  })
+  const {
+    control,
+    formState: { isValid, errors },
+  } = form
 
-  const inviteCount = data.emails.length
+  useEffect(() => {
+    void form.trigger()
+  }, [form])
+
+  useEffect(() => {
+    const subscription = form.watch((values) => {
+      updateData(values as typeof data)
+    })
+    return () => subscription.unsubscribe()
+  }, [form, updateData])
+
+  useEffect(() => {
+    const currentValues = form.getValues()
+    if (deepEqual(currentValues, data)) {
+      return
+    }
+    form.reset(data)
+    void form.trigger()
+  }, [data, form])
+
+  const inviteCount = (form.watch('emails') ?? []).length
 
   const handleAddEmail = () => {
     const value = pendingEmail.trim()
     if (!value) return
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return
-    if (data.emails.includes(value)) return
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+      form.setError('emails', { type: 'manual', message: 'Enter a valid email address' })
+      return
+    }
 
-    updateData({
-      ...data,
-      emails: [...data.emails, value],
-    })
+    const currentEmails = form.getValues('emails') ?? []
+    if (currentEmails.includes(value)) {
+      form.setError('emails', { type: 'manual', message: 'This email is already added' })
+      return
+    }
+
+    const nextEmails = [...currentEmails, value]
+    form.setValue('emails', nextEmails, { shouldDirty: true, shouldValidate: true })
+    form.clearErrors('emails')
     setPendingEmail('')
   }
 
   const handleRemoveEmail = (email: string) => {
-    updateData({
-      ...data,
-      emails: data.emails.filter((entry) => entry !== email),
-      statuses: data.statuses?.filter((status) => status.email !== email) ?? [],
-    })
+    const currentEmails = form.getValues('emails') ?? []
+    const nextEmails = currentEmails.filter((entry: string) => entry !== email)
+    const currentStatuses = form.getValues('statuses') ?? []
+    const nextStatuses = currentStatuses.filter((status: { email: string }) => status.email !== email)
+    form.setValue('emails', nextEmails, { shouldDirty: true, shouldValidate: true })
+    form.setValue('statuses', nextStatuses, { shouldDirty: true })
   }
 
-  const handleContinue = async () => {
+  const handleContinue = form.handleSubmit(async (values) => {
     if (isSaving) return
-    const statuses = data.emails.map((email) => ({ email, status: 'sent' as const }))
+    const statuses = values.emails.map((email) => ({ email, status: 'sent' as const }))
     await completeStep({
-      ...data,
+      ...values,
       statuses,
     })
-  }
+  })
 
   const handleSkip = async () => {
     if (isSaving) return
@@ -52,9 +93,9 @@ export default function InviteOnboardingPage() {
   }
 
   const canContinue = useMemo(() => {
-    const messageLength = (data.message ?? '').trim().length
+    const messageLength = (form.getValues('message') ?? '').trim().length
     return inviteCount > 0 || messageLength === 0
-  }, [inviteCount, data.message])
+  }, [form, inviteCount])
 
   return (
     <OnboardingShell
@@ -65,11 +106,11 @@ export default function InviteOnboardingPage() {
       onBack={previousStep ? goPrevious : undefined}
       onSkip={handleSkip}
       canSkip
-      isNextDisabled={!canContinue || isSaving}
+      isNextDisabled={!canContinue || !isValid || isSaving}
       isSkipDisabled={isSaving}
       nextLabel={inviteCount > 0 ? 'Send invites' : 'Skip & continue'}
     >
-      <div className="space-y-6">
+      <form className="space-y-6" onSubmit={(event) => event.preventDefault()}>
         <div className="space-y-3">
           <Label htmlFor="invite-email">Add teammate emails</Label>
           <div className="flex flex-col gap-3 sm:flex-row">
@@ -84,6 +125,7 @@ export default function InviteOnboardingPage() {
               Add
             </Button>
           </div>
+          {errors.emails && <p className="text-xs text-destructive">{errors.emails.message}</p>}
           <p className="text-xs text-muted-foreground">
             We&apos;ll deliver invites via email. You can resend or manage invites after onboarding.
           </p>
@@ -91,26 +133,32 @@ export default function InviteOnboardingPage() {
 
         <div className="space-y-2">
           <Label>Default role for invitees</Label>
-          <RadioGroup
-            value={data.defaultRole}
-            onValueChange={(value: 'admin' | 'member') => updateData({ ...data, defaultRole: value })}
-            className="flex flex-wrap gap-4"
-          >
-            <label className="flex items-center gap-2 text-sm">
-              <RadioGroupItem value="member" />
-              Member
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <RadioGroupItem value="admin" />
-              Admin
-            </label>
-          </RadioGroup>
+          <Controller
+            control={control}
+            name="defaultRole"
+            render={({ field }) => (
+              <RadioGroup
+                {...field}
+                onValueChange={(value: 'admin' | 'member') => field.onChange(value)}
+                className="flex flex-wrap gap-4"
+              >
+                <label className="flex items-center gap-2 text-sm">
+                  <RadioGroupItem value="member" />
+                  Member
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <RadioGroupItem value="admin" />
+                  Admin
+                </label>
+              </RadioGroup>
+            )}
+          />
           <p className="text-xs text-muted-foreground">You can adjust roles later in workspace settings.</p>
         </div>
 
         {inviteCount > 0 && (
           <div className="flex flex-wrap gap-2">
-            {data.emails.map((email) => (
+            {(form.watch('emails') ?? []).map((email: string) => (
               <Badge key={email} variant="secondary" className="flex items-center gap-2">
                 {email}
                 <button
@@ -128,24 +176,31 @@ export default function InviteOnboardingPage() {
 
         <div className="space-y-2">
           <Label htmlFor="invite-message">Message (optional)</Label>
-          <textarea
-            id="invite-message"
-            value={data.message ?? ''}
-            onChange={(event) => updateData({ ...data, message: event.target.value })}
-            rows={4}
-            className={cn(
-              'w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary',
+          <Controller
+            control={control}
+            name="message"
+            render={({ field }) => (
+              <textarea
+                id="invite-message"
+                {...field}
+                value={field.value ?? ''}
+                rows={4}
+                className={cn(
+                  'w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary',
+                )}
+                placeholder="Let your teammates know why you&apos;re inviting them now."
+              />
             )}
-            placeholder="Let your teammates know why you&apos;re inviting them now."
           />
+          {errors.message && <p className="text-xs text-destructive">{errors.message.message}</p>}
         </div>
 
-        {data.statuses && data.statuses.length > 0 && (
+        {(form.watch('statuses') ?? []).length > 0 && (
           <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
             <p className="text-xs font-medium text-foreground">Recent invitations</p>
             <div className="space-y-1 text-xs text-muted-foreground">
-              {data.statuses.map((status) => (
+              {(form.watch('statuses') ?? []).map((status: { email: string; status: string }) => (
                 <div key={status.email} className="flex items-center justify-between">
                   <span>{status.email}</span>
                   <span className="font-medium text-foreground">{status.status === 'sent' ? 'Sent' : status.status}</span>
@@ -154,7 +209,7 @@ export default function InviteOnboardingPage() {
             </div>
           </div>
         )}
-      </div>
+      </form>
     </OnboardingShell>
   )
 }

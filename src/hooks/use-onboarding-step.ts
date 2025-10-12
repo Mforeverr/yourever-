@@ -93,7 +93,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     setStepData(stepId, payload)
   }
 
-  const buildNextStatus = (payload: StepDataMap[T]) => {
+  const buildNextStatus = (payload: StepDataMap[T], { markCompleted }: { markCompleted?: boolean } = {}) => {
     const base = onboardingStatus ?? defaultOnboardingStatus()
     const completedSteps = Array.from(new Set([...base.completedSteps, stepId]))
     return {
@@ -105,6 +105,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
       completedSteps,
       skippedSteps: base.skippedSteps.filter((id) => id !== stepId),
       lastStep: stepId,
+      completed: markCompleted ? true : base.completed,
     }
   }
 
@@ -132,7 +133,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
   const completeStep = async (payload: StepDataMap[T]) => {
     if (persistProgress.isPending || isInvalidatingUser) return
     setStepData(stepId, payload)
-    const nextStatus = buildNextStatus(payload)
+    const nextStatus = buildNextStatus(payload, { markCompleted: !nextStep })
     try {
       await persistProgress.mutateAsync(nextStatus)
       await invalidateUser()

@@ -1,42 +1,61 @@
 'use client'
 
 import type { StoredOnboardingStatus } from '@/lib/auth-utils'
+import { ApiError, type ApiErrorBody } from '@/lib/api/http'
+import { notifyUnauthorized } from '@/lib/api/unauthorized-handler'
+import { resolveApiUrl } from '@/lib/api/endpoints'
 import type { OnboardingSession } from './transform'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? ''
-
-const resolveEndpoint = (path: string) => {
-  if (!API_BASE_URL) {
-    return path
+const parseErrorBody = async (response: Response): Promise<ApiErrorBody | null> => {
+  try {
+    return (await response.json()) as ApiErrorBody
+  } catch {
+    return null
   }
-  return `${API_BASE_URL.replace(/\/$/, '')}${path}`
 }
 
 const request = async <T>(
-  method: 'GET' | 'PATCH',
+  method: 'GET' | 'PATCH' | 'POST',
   token: string,
-  body?: unknown,
+  body: unknown,
   path: string,
-): Promise<T | null> => {
+): Promise<T> => {
   try {
-    const response = await fetch(resolveEndpoint(path), {
+    const response = await fetch(resolveApiUrl(path), {
       method,
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: body ? JSON.stringify(body) : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
     })
 
     if (!response.ok) {
-      console.error('[onboarding] request failed', response.status, await response.text())
-      return null
+      const errorBody = await parseErrorBody(response)
+      if (response.status === 401) {
+        notifyUnauthorized()
+      }
+      throw new ApiError(
+        errorBody?.detail ?? `Request to ${path} failed with status ${response.status}`,
+        response.status,
+        errorBody ?? undefined,
+      )
+    }
+
+    if (response.status === 204) {
+      return undefined as T
     }
 
     return (await response.json()) as T
   } catch (error) {
-    console.error('[onboarding] network request failed', error)
-    return null
+    if (error instanceof ApiError) {
+      throw error
+    }
+    throw new ApiError(
+      error instanceof Error ? error.message : 'Network request failed',
+      0,
+      { detail: error instanceof Error ? error.message : 'Unknown error' },
+    )
   }
 }
 

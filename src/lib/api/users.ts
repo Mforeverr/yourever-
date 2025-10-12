@@ -1,14 +1,7 @@
 import type { WorkspaceUser } from '@/modules/auth/types'
 import { ApiError, type ApiErrorBody } from '@/lib/api/http'
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? ''
-
-const resolveEndpoint = (path: string) => {
-  if (!API_BASE_URL) {
-    return path
-  }
-  return `${API_BASE_URL.replace(/\/$/, '')}${path}`
-}
+import { notifyUnauthorized } from '@/lib/api/unauthorized-handler'
+import { resolveApiUrl } from '@/lib/api/endpoints'
 
 interface CurrentUserResponse {
   user: WorkspaceUser | null
@@ -27,7 +20,7 @@ export const fetchCurrentUser = async (accessToken: string): Promise<WorkspaceUs
     throw new ApiError('Missing access token', 401)
   }
 
-  const response = await fetch(resolveEndpoint('/api/users/me'), {
+  const response = await fetch(resolveApiUrl('/api/users/me'), {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -37,6 +30,7 @@ export const fetchCurrentUser = async (accessToken: string): Promise<WorkspaceUs
 
   if (response.status === 401) {
     const body = await parseErrorBody(response)
+    notifyUnauthorized()
     throw new ApiError(body?.detail ?? 'Unauthorized', response.status, body)
   }
 
