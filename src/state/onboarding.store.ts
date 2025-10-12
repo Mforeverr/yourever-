@@ -91,6 +91,75 @@ const createDefaults = () => ({
   workspaceHub: { ...defaultWorkspaceHub },
 })
 
+type StepDefaults = ReturnType<typeof createDefaults>
+
+const STEP_IDS = Object.keys(STEP_KEY_MAP) as OnboardingStepId[]
+
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+const cloneWithDefaults = <T extends StepKey>(defaults: StepDefaults[T], candidate: Record<string, unknown>) => {
+  const next: Record<string, unknown> = {}
+
+  Object.entries(defaults).forEach(([field, defaultValue]) => {
+    next[field] = Array.isArray(defaultValue) ? [...defaultValue] : defaultValue
+  })
+
+  Object.entries(candidate).forEach(([field, fieldValue]) => {
+    if (!(field in defaults) || fieldValue === undefined) {
+      return
+    }
+
+    next[field] = Array.isArray(fieldValue) ? [...fieldValue] : fieldValue
+  })
+
+  return next as StepDefaults[T]
+}
+
+const createVersionedDefaults = (): OnboardingStoreState => ({
+  ...createDefaults(),
+  version: CURRENT_ONBOARDING_STATUS_VERSION,
+})
+
+const rebuildFromPersistedState = (persistedState: unknown): OnboardingStoreState => {
+  if (!isRecord(persistedState)) {
+    return createVersionedDefaults()
+  }
+
+  const defaults = createDefaults()
+  const next: Record<StepKey, StepDataMap[OnboardingStepId]> = {
+    profile: { ...defaults.profile },
+    workProfile: { ...defaults.workProfile },
+    tools: { ...defaults.tools },
+    invite: { ...defaults.invite },
+    preferences: { ...defaults.preferences },
+    workspaceHub: { ...defaults.workspaceHub },
+  }
+
+  STEP_IDS.forEach((stepId) => {
+    const key = STEP_KEY_MAP[stepId]
+    const candidate = (persistedState[key] ?? persistedState[stepId]) as Record<string, unknown> | undefined
+
+    if (candidate && isRecord(candidate)) {
+      next[key] = cloneWithDefaults(defaults[key], candidate)
+    }
+  })
+
+  return {
+    ...next,
+    version: CURRENT_ONBOARDING_STATUS_VERSION,
+  }
+}
+
+const sanitizePersistedVersion = (version: unknown): number => {
+  if (typeof version === 'number' && Number.isFinite(version)) {
+    return version
+  }
+
+  return 0
+}
+
 const readStatusStep = <T extends OnboardingStepId>(
   status: StoredOnboardingStatus | null,
   stepId: T,
@@ -149,6 +218,19 @@ export const useOnboardingStore = create<OnboardingStoreState>()(
       name: 'onboarding-store',
       storage: createJSONStorage(() => localStorageService.toStorageAdapter()),
       version: CURRENT_ONBOARDING_STATUS_VERSION,
+      migrate: (persistedState, persistedVersion) => {
+        const version = sanitizePersistedVersion(persistedVersion)
+
+        if (version <= 0 || version > CURRENT_ONBOARDING_STATUS_VERSION) {
+          return createVersionedDefaults()
+        }
+
+        if (!persistedState) {
+          return createVersionedDefaults()
+        }
+
+        return rebuildFromPersistedState(persistedState)
+      },
     },
   ),
 )
