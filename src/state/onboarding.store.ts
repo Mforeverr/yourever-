@@ -14,6 +14,7 @@ import type {
   WorkspaceHubStepData,
 } from '@/lib/onboarding'
 import type { StoredOnboardingStatus } from '@/lib/auth-utils'
+import { CURRENT_ONBOARDING_STATUS_VERSION } from '@/lib/onboarding-version'
 
 type StepKey = 'profile' | 'workProfile' | 'tools' | 'invite' | 'preferences' | 'workspaceHub'
 
@@ -104,7 +105,7 @@ export const useOnboardingStore = create<OnboardingStoreState>()(
   persist(
     (set, get) => ({
       ...createDefaults(),
-      version: 1,
+      version: CURRENT_ONBOARDING_STATUS_VERSION,
       setStepData: (stepId, data) => {
         const key = STEP_KEY_MAP[stepId]
         set({ [key]: data } as Partial<OnboardingStoreState>)
@@ -133,19 +134,21 @@ export const useOnboardingStore = create<OnboardingStoreState>()(
           return {
             ...state,
             ...next,
+            version: CURRENT_ONBOARDING_STATUS_VERSION,
           }
         })
       },
       reset: () => {
         set({
           ...createDefaults(),
+          version: CURRENT_ONBOARDING_STATUS_VERSION,
         })
       },
     }),
     {
       name: 'onboarding-store',
       storage: createJSONStorage(() => localStorageService.toStorageAdapter()),
-      version: 1,
+      version: CURRENT_ONBOARDING_STATUS_VERSION,
     },
   ),
 )

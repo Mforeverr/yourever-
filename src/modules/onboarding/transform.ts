@@ -1,5 +1,9 @@
 import type { StoredOnboardingStatus } from '@/lib/auth-utils'
-import { defaultOnboardingStatus, type OnboardingStepId } from '@/lib/onboarding'
+import {
+  defaultOnboardingStatus,
+  type OnboardingStepId,
+} from '@/lib/onboarding'
+import { coerceOnboardingStatusVersion } from '@/lib/onboarding-version'
 
 export interface OnboardingSessionRow {
   id: string
@@ -26,9 +30,11 @@ const parseStatus = (raw: Record<string, unknown> | null | undefined): StoredOnb
   if (!raw) return fallback
   const status = raw.status as Partial<StoredOnboardingStatus> | undefined
   if (!status) return fallback
+  const version = coerceOnboardingStatusVersion(status.version)
   return {
     ...fallback,
     ...status,
+    version,
     completedSteps: status.completedSteps ?? fallback.completedSteps,
     skippedSteps: status.skippedSteps ?? fallback.skippedSteps,
     data: status.data ?? fallback.data,

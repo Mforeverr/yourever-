@@ -15,6 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...dependencies import CurrentPrincipal
+from .constants import coerce_onboarding_status_version
 from .schemas import OnboardingSession, StoredOnboardingStatus, WorkspaceDivision, WorkspaceOrganization, WorkspaceUser
 
 
@@ -385,4 +386,5 @@ class UserRepository:
             normalized["skippedSteps"] = normalized.pop("skipped_steps")
         if "last_step" in normalized and "lastStep" not in normalized:
             normalized["lastStep"] = normalized.pop("last_step")
+        normalized["version"] = coerce_onboarding_status_version(normalized.get("version"))
         return normalized

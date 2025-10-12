@@ -14,6 +14,7 @@ import {
   type StepDataMap,
   defaultOnboardingStatus,
 } from '@/lib/onboarding'
+import { CURRENT_ONBOARDING_STATUS_VERSION } from '@/lib/onboarding-version'
 import type { StoredOnboardingStatus } from '@/lib/auth-utils'
 import { selectStepData, useOnboardingStore } from '@/state/onboarding.store'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -98,6 +99,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     const completedSteps = Array.from(new Set([...base.completedSteps, stepId]))
     return {
       ...base,
+      version: CURRENT_ONBOARDING_STATUS_VERSION,
       data: {
         ...base.data,
         [stepId]: payload,
@@ -115,6 +117,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     const skippedSteps = Array.from(new Set([...base.skippedSteps, stepId]))
     return {
       ...base,
+      version: CURRENT_ONBOARDING_STATUS_VERSION,
       completedSteps,
       skippedSteps,
       lastStep: stepId,

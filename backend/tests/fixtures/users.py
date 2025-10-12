@@ -5,6 +5,7 @@ Test fixtures for user-related tests.
 import factory
 from factory.alchemy import SqlAlchemyModelFactory
 
+from app.modules.users.constants import CURRENT_ONBOARDING_STATUS_VERSION
 from app.modules.users.schemas import (
     StoredOnboardingStatus,
     WorkspaceDivision,
@@ -69,6 +70,7 @@ class StoredOnboardingStatusFactory(factory.Factory):
     class Meta:
         model = StoredOnboardingStatus
 
+    version = CURRENT_ONBOARDING_STATUS_VERSION
     completedSteps = factory.List([lambda: factory.Faker("word") for _ in range(3)])
     skippedSteps = factory.List([lambda: factory.Faker("word") for _ in range(1)])
     lastStep = factory.Faker("word")

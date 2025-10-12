@@ -6,6 +6,10 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.users.constants import (
+    CURRENT_ONBOARDING_STATUS_VERSION,
+    LEGACY_ONBOARDING_STATUS_VERSION,
+)
 from app.modules.users.repository import UserRepository
 from app.modules.users.schemas import (
     StoredOnboardingStatus,
@@ -105,6 +109,7 @@ class TestUserRepository:
         assert result.completedAt is None
         assert result.status is not None
         assert isinstance(result.status, StoredOnboardingStatus)
+        assert result.status.version == CURRENT_ONBOARDING_STATUS_VERSION
 
     async def test_get_or_create_onboarding_session_existing(self, test_db_session: AsyncSession):
         """Test getting an existing onboarding session."""
@@ -146,6 +151,7 @@ class TestUserRepository:
         assert updated_session.currentStep == "preferences"
         assert updated_session.status.completedSteps == ["profile", "work-profile"]
         assert updated_session.status.lastStep == "preferences"
+        assert updated_session.status.version == CURRENT_ONBOARDING_STATUS_VERSION
 
     def test_normalize_status_payload(self):
         """Test status payload normalization."""
@@ -166,6 +172,7 @@ class TestUserRepository:
         assert normalized["completedSteps"] == ["profile"]
         assert normalized["skippedSteps"] == []
         assert normalized["lastStep"] == "work-profile"
+        assert normalized["version"] == LEGACY_ONBOARDING_STATUS_VERSION
 
     def test_merge_divisions(self):
         """Test merging division lists."""

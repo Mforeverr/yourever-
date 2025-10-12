@@ -12,11 +12,16 @@ import {
   getFirstIncompleteStep,
   ONBOARDING_STEPS,
   type OnboardingStepId,
+  isLegacyOnboardingStatus,
 } from '@/lib/onboarding'
+import {
+  CURRENT_ONBOARDING_STATUS_VERSION,
+  coerceOnboardingStatusVersion,
+} from '@/lib/onboarding-version'
 import { createSupabaseAuthGateway, type SupabaseAuthGateway } from '@/modules/auth/supabase-gateway'
 import { clearAuthTokenResolver, setAuthTokenResolver } from '@/lib/api/client'
 import type { WorkspaceUser } from '@/modules/auth/types'
-import { fetchOrCreateOnboardingSession } from '@/modules/onboarding/session'
+import { fetchOrCreateOnboardingSession, persistOnboardingStatus } from '@/modules/onboarding/session'
 import { useOnboardingStore } from '@/state/onboarding.store'
 import { ApiError } from '@/lib/api/http'
 import {
@@ -24,6 +29,7 @@ import {
   useCurrentUserQuery,
 } from '@/hooks/api/use-current-user-query'
 import { clearUnauthorizedHandler, setUnauthorizedHandler } from '@/lib/api/unauthorized-handler'
+import { toast } from '@/hooks/use-toast'
 
 interface AuthContextValue {
   user: WorkspaceUser | null
@@ -58,6 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isMountedRef = React.useRef(true)
   const supabaseGatewayRef = React.useRef<SupabaseAuthGateway | null>(null)
   const onboardingStatusRef = React.useRef<StoredOnboardingStatus | null>(null)
+  const legacyResetVersionRef = React.useRef<number | null>(null)
   const isDevMode = process.env.NODE_ENV === 'development'
   const queryClient = useQueryClient()
   const router = useRouter()
@@ -88,30 +95,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (userId: string, mode: AuthStrategy, session: Session | null) => {
       userIdRef.current = userId
 
-      if (mode === 'supabase') {
-        if (!session) {
-          const fallback = defaultOnboardingStatus()
-          setOnboardingStatus(fallback)
-          onboardingStatusRef.current = fallback
-          authStorage.setOnboardingStatus(userId, fallback)
-          useOnboardingStore.getState().hydrateFromStatus(fallback)
-          return
-        }
-
-        const onboardingSession = await fetchOrCreateOnboardingSession(session.access_token)
-        const status = onboardingSession?.status ?? defaultOnboardingStatus()
+      const applyStatus = (status: StoredOnboardingStatus) => {
         setOnboardingStatus(status)
         onboardingStatusRef.current = status
         authStorage.setOnboardingStatus(userId, status)
         useOnboardingStore.getState().hydrateFromStatus(status)
+      }
+
+      const resetForNewVersion = async (previousVersion?: number): Promise<StoredOnboardingStatus> => {
+        const resetStatus = defaultOnboardingStatus()
+        useOnboardingStore.getState().reset()
+        if (legacyResetVersionRef.current !== previousVersion) {
+          toast({
+            title: 'Onboarding refreshed',
+            description: 'We updated the onboarding flow with new questions. Please review your details and continue.',
+          })
+          legacyResetVersionRef.current = previousVersion ?? null
+        }
+
+        if (mode === 'supabase' && session?.access_token) {
+          try {
+            await persistOnboardingStatus(session.access_token, resetStatus)
+          } catch (error) {
+            console.error('[auth] failed to persist onboarding reset', error)
+          }
+        }
+
+        return resetStatus
+      }
+
+      if (mode === 'supabase') {
+        if (!session) {
+          const fallback = defaultOnboardingStatus()
+          applyStatus(fallback)
+          return
+        }
+
+        const onboardingSession = await fetchOrCreateOnboardingSession(session.access_token)
+        const sessionStatus = onboardingSession?.status ?? defaultOnboardingStatus()
+        const nextStatus = isLegacyOnboardingStatus(sessionStatus)
+          ? await resetForNewVersion(coerceOnboardingStatusVersion(sessionStatus.version))
+          : sessionStatus
+        applyStatus(nextStatus)
         return
       }
 
       const storedStatus = authStorage.getOnboardingStatus(userId)
-      const status = storedStatus ?? defaultOnboardingStatus()
-      setOnboardingStatus(status)
-      onboardingStatusRef.current = status
-      useOnboardingStore.getState().hydrateFromStatus(status)
+      const nextStatus = isLegacyOnboardingStatus(storedStatus)
+        ? await resetForNewVersion(coerceOnboardingStatusVersion(storedStatus?.version))
+        : storedStatus
+      applyStatus(nextStatus ?? defaultOnboardingStatus())
     },
     [],
   )
@@ -128,6 +161,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     useOnboardingStore.getState().reset()
     queryClient.removeQueries({ queryKey: CURRENT_USER_QUERY_KEY })
     setMockLoading(false)
+    legacyResetVersionRef.current = null
   }, [queryClient])
 
   const applyUser = useCallback(
@@ -337,12 +371,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setOnboardingStatus((prev) => {
         const base = prev ?? defaultOnboardingStatus()
         const next = updater(base)
-        onboardingStatusRef.current = next
+        const normalized = {
+          ...next,
+          version: CURRENT_ONBOARDING_STATUS_VERSION,
+        }
+        onboardingStatusRef.current = normalized
         const userId = userIdRef.current
         if (userId) {
-          authStorage.setOnboardingStatus(userId, next)
+          authStorage.setOnboardingStatus(userId, normalized)
         }
-        return next
+        return normalized
       })
     },
     [],
@@ -356,6 +394,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       )
       return {
         ...current,
+        version: CURRENT_ONBOARDING_STATUS_VERSION,
         completed: true,
         completedSteps: allStepIds,
         skippedSteps: filteredSkipped,
