@@ -57,22 +57,22 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
-        <AuthProvider>
-          <CommandPaletteProvider>
-            <ThemeProvider
-              attribute="class"
-              defaultTheme="dark"
-              enableSystem={false}
-              disableTransitionOnChange
-            >
-              <QueryProvider>
+        <QueryProvider>
+          <AuthProvider>
+            <CommandPaletteProvider>
+              <ThemeProvider
+                attribute="class"
+                defaultTheme="dark"
+                enableSystem={false}
+                disableTransitionOnChange
+              >
                 <OnboardingWatcher />
                 {children}
-              </QueryProvider>
-            </ThemeProvider>
-            <Toaster />
-          </CommandPaletteProvider>
-        </AuthProvider>
+              </ThemeProvider>
+              <Toaster />
+            </CommandPaletteProvider>
+          </AuthProvider>
+        </QueryProvider>
       </body>
     </html>
   );

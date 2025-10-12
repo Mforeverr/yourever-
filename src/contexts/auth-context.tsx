@@ -2,16 +2,21 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import type { Session } from '@supabase/supabase-js'
+import { useQueryClient } from '@tanstack/react-query'
 import { getDevUser, mockUsers } from '@/lib/mock-users'
 import { authStorage, type StoredOnboardingStatus } from '@/lib/auth-utils'
-import { localStorageService, sessionStorageService } from "@/lib/storage"
+import { localStorageService, sessionStorageService } from '@/lib/storage'
 import { defaultOnboardingStatus, ONBOARDING_STEPS, type OnboardingStepId } from '@/lib/onboarding'
 import { createSupabaseAuthGateway, type SupabaseAuthGateway } from '@/modules/auth/supabase-gateway'
 import { clearAuthTokenResolver, setAuthTokenResolver } from '@/lib/api/client'
 import type { WorkspaceUser } from '@/modules/auth/types'
-import { loadWorkspaceUser } from '@/modules/auth/user-loader'
 import { fetchOrCreateOnboardingSession } from '@/modules/onboarding/session'
 import { useOnboardingStore } from '@/state/onboarding.store'
+import { ApiError } from '@/lib/api/http'
+import {
+  CURRENT_USER_QUERY_KEY,
+  useCurrentUserQuery,
+} from '@/hooks/api/use-current-user-query'
 
 interface AuthContextValue {
   user: WorkspaceUser | null
@@ -24,6 +29,9 @@ interface AuthContextValue {
   onboardingStatus: StoredOnboardingStatus | null
   updateOnboardingStatus: (updater: (current: StoredOnboardingStatus) => StoredOnboardingStatus) => void
   markOnboardingComplete: () => void
+  userStatus: ReturnType<typeof useCurrentUserQuery>['status']
+  userError: ReturnType<typeof useCurrentUserQuery>['error']
+  refetchUser: () => Promise<void>
 }
 
 export type AuthStrategy = 'mock' | 'supabase'
@@ -32,14 +40,40 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<WorkspaceUser | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
   const [strategy, setStrategy] = useState<AuthStrategy>('mock')
   const [onboardingStatus, setOnboardingStatus] = useState<StoredOnboardingStatus | null>(null)
+  const [mockLoading, setMockLoading] = useState(true)
+  const [isCheckingSession, setIsCheckingSession] = useState(false)
+  const [shouldFetchUser, setShouldFetchUser] = useState(false)
   const userIdRef = React.useRef<string | null>(null)
   const strategyRef = React.useRef<AuthStrategy>('mock')
   const supabaseSessionRef = React.useRef<Session | null>(null)
-  const isDevMode = process.env.NODE_ENV === 'development'
+  const isMountedRef = React.useRef(true)
   const supabaseGatewayRef = React.useRef<SupabaseAuthGateway | null>(null)
+  const isDevMode = process.env.NODE_ENV === 'development'
+  const queryClient = useQueryClient()
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
+
+  const {
+    data: fetchedUser,
+    status: userStatus,
+    error: userError,
+    isFetching,
+    refetchUser,
+  } = useCurrentUserQuery({
+    enabled: strategy === 'supabase' && shouldFetchUser,
+    retry: (failureCount, error) => {
+      if (error instanceof ApiError && error.status === 401) {
+        return false
+      }
+      return failureCount < 1
+    },
+  })
 
   const loadOnboardingStatus = useCallback(
     async (userId: string, mode: AuthStrategy, session: Session | null) => {
@@ -67,19 +101,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setOnboardingStatus(status)
       useOnboardingStore.getState().hydrateFromStatus(status)
     },
-    []
+    [],
   )
 
   const clearUserState = useCallback(() => {
     setUser(null)
     setOnboardingStatus(null)
     authStorage.clearAll()
-    localStorageService.clearByPrefix("yourever-")
-    sessionStorageService.clearByPrefix("yourever-")
+    localStorageService.clearByPrefix('yourever-')
+    sessionStorageService.clearByPrefix('yourever-')
     userIdRef.current = null
     supabaseSessionRef.current = null
     useOnboardingStore.getState().reset()
-  }, [])
+    queryClient.removeQueries({ queryKey: CURRENT_USER_QUERY_KEY })
+    setMockLoading(false)
+  }, [queryClient])
 
   const applyUser = useCallback(
     (candidate: WorkspaceUser | null) => {
@@ -97,36 +133,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       void loadOnboardingStatus(candidate.id, strategyRef.current, supabaseSessionRef.current)
+
+      if (strategyRef.current === 'mock') {
+        setMockLoading(false)
+      }
     },
-    [clearUserState, loadOnboardingStatus]
+    [clearUserState, loadOnboardingStatus],
   )
 
   const handleSupabaseSession = useCallback(
     async (session: Session | null) => {
+      if (!isMountedRef.current) return
+
+      setIsCheckingSession(true)
       supabaseSessionRef.current = session
 
       if (!session?.user?.id) {
+        setShouldFetchUser(false)
         clearUserState()
-        setIsLoading(false)
+        if (isMountedRef.current) {
+          setIsCheckingSession(false)
+        }
         return
       }
 
-      setIsLoading(true)
+      setShouldFetchUser(true)
+
       try {
-        const workspaceUser = await loadWorkspaceUser(session)
-        if (workspaceUser) {
-          applyUser(workspaceUser)
-        } else {
-          clearUserState()
-        }
-      } catch (error) {
-        console.error('[auth] failed to process Supabase session', error)
-        clearUserState()
+        await refetchUser()
       } finally {
-        setIsLoading(false)
+        if (isMountedRef.current) {
+          setIsCheckingSession(false)
+        }
       }
     },
-    [applyUser, clearUserState]
+    [clearUserState, refetchUser],
   )
 
   useEffect(() => {
@@ -140,6 +181,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (supabaseGateway) {
         setStrategy('supabase')
         strategyRef.current = 'supabase'
+
         try {
           const session = await supabaseGateway.getSession()
           if (isMounted) {
@@ -147,8 +189,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         } catch (error) {
           console.error('[auth] failed to initialize Supabase session', error)
-          if (isMounted) {
-            setIsLoading(false)
+          if (isMountedRef.current) {
+            setIsCheckingSession(false)
           }
         }
 
@@ -165,7 +207,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (isDevMode) {
         const devUser = getDevUser()
         applyUser(devUser)
-        setIsLoading(false)
         return
       }
 
@@ -173,9 +214,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (storedUserId) {
         const storedUser = mockUsers.find((candidate) => candidate.id === storedUserId) ?? null
         applyUser(storedUser ?? null)
+      } else {
+        setMockLoading(false)
       }
-
-      setIsLoading(false)
     }
 
     void initAuth()
@@ -187,16 +228,65 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [applyUser, handleSupabaseSession, isDevMode])
 
-  const performLogin = useCallback(async (email: string) => {
-    const foundUser = mockUsers.find((candidate) => candidate.email.toLowerCase() === email.toLowerCase())
-
-    if (foundUser) {
-      applyUser(foundUser)
-      return true
+  useEffect(() => {
+    if (strategy === 'supabase') {
+      setAuthTokenResolver(async () => {
+        const supabaseGateway = supabaseGatewayRef.current
+        if (!supabaseGateway) return null
+        return supabaseGateway.getAccessToken()
+      })
+      return () => {
+        clearAuthTokenResolver()
+      }
     }
 
-    return false
-  }, [applyUser])
+    clearAuthTokenResolver()
+    return () => {}
+  }, [strategy])
+
+  useEffect(() => {
+    if (strategy !== 'supabase') return
+    if (userStatus !== 'success') return
+
+    if (fetchedUser) {
+      applyUser(fetchedUser)
+      return
+    }
+
+    setShouldFetchUser(false)
+    clearUserState()
+  }, [applyUser, clearUserState, fetchedUser, strategy, userStatus])
+
+  useEffect(() => {
+    if (strategy !== 'supabase') return
+    if (!userError) return
+
+    if (userError instanceof ApiError && userError.status === 401) {
+      setShouldFetchUser(false)
+      clearUserState()
+      const gateway = supabaseGatewayRef.current
+      if (gateway) {
+        void gateway.signOut()
+      }
+      return
+    }
+
+    console.error('[auth] failed to load current user', userError)
+  }, [clearUserState, strategy, userError])
+
+  const performLogin = useCallback(
+    async (email: string) => {
+      const foundUser = mockUsers.find((candidate) => candidate.email.toLowerCase() === email.toLowerCase())
+
+      if (foundUser) {
+        applyUser(foundUser)
+        return true
+      }
+
+      return false
+    },
+    [applyUser],
+  )
 
   const supabaseLogin = useCallback(
     async (email: string, password: string) => {
@@ -211,7 +301,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await handleSupabaseSession(session)
       return true
     },
-    [handleSupabaseSession, performLogin]
+    [handleSupabaseSession, performLogin],
   )
 
   const logout = useCallback(() => {
@@ -219,6 +309,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (supabaseGateway) {
       void supabaseGateway.signOut()
     }
+    setShouldFetchUser(false)
     clearUserState()
   }, [clearUserState])
 
@@ -227,21 +318,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!supabaseGateway) return null
     return supabaseGateway.getAccessToken()
   }, [])
-
-  useEffect(() => {
-    if (strategy === 'supabase') {
-      setAuthTokenResolver(async () => {
-        const supabaseGateway = supabaseGatewayRef.current
-        if (!supabaseGateway) return null
-        return supabaseGateway.getAccessToken()
-      })
-      return () => {
-        clearAuthTokenResolver()
-      }
-    } else {
-      clearAuthTokenResolver()
-    }
-  }, [strategy])
 
   const updateOnboardingStatus = useCallback(
     (updater: (current: StoredOnboardingStatus) => StoredOnboardingStatus) => {
@@ -255,25 +331,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return next
       })
     },
-    []
+    [],
   )
 
   const markOnboardingComplete = useCallback(() => {
     updateOnboardingStatus((current) => {
       const allStepIds = ONBOARDING_STEPS.map((step) => step.id) as OnboardingStepId[]
       const filteredSkipped = current.skippedSteps.filter((id) =>
-        allStepIds.includes(id as OnboardingStepId)
+        allStepIds.includes(id as OnboardingStepId),
       )
       return {
         ...current,
         completed: true,
         completedSteps: allStepIds,
         skippedSteps: filteredSkipped,
-        lastStep: allStepIds[allStepIds.length - 1]
+        lastStep: allStepIds[allStepIds.length - 1],
       }
     })
   }, [updateOnboardingStatus])
 
+  const isSupabaseLoading =
+    strategy === 'supabase' && (isCheckingSession || (shouldFetchUser && (userStatus === 'pending' || isFetching)))
+  const isLoading = strategy === 'supabase' ? isSupabaseLoading : mockLoading
 
   return (
     <AuthContext.Provider
@@ -292,7 +371,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         getAccessToken,
         onboardingStatus,
         updateOnboardingStatus,
-        markOnboardingComplete
+        markOnboardingComplete,
+        userStatus,
+        userError,
+        refetchUser,
       }}
     >
       {children}
