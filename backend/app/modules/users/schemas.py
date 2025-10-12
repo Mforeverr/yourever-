@@ -8,6 +8,8 @@ Pydantic schemas for user profile and onboarding endpoints.
 
 from typing import List, Optional
 
+from uuid import uuid4
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from ...core.config import Settings
@@ -56,6 +58,10 @@ class UserProfileResponse(BaseModel):
     user: WorkspaceUser
 
 
+def new_onboarding_revision() -> str:
+    return uuid4().hex
+
+
 class StoredOnboardingStatus(BaseModel):
     version: int = Field(default=CURRENT_ONBOARDING_STATUS_VERSION)
     completed: bool = False
@@ -63,6 +69,7 @@ class StoredOnboardingStatus(BaseModel):
     skippedSteps: List[str] = Field(default_factory=list)
     data: dict = Field(default_factory=dict)
     lastStep: Optional[str] = None
+    revision: Optional[str] = None
 
 
 class OnboardingSession(BaseModel):

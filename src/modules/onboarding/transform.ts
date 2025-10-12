@@ -40,6 +40,7 @@ const parseStatus = (raw: Record<string, unknown> | null | undefined): StoredOnb
     data: status.data ?? fallback.data,
     completed: status.completed ?? fallback.completed,
     lastStep: status.lastStep ?? fallback.lastStep,
+    revision: typeof status.revision === 'string' ? status.revision : fallback.revision,
   }
 }
 

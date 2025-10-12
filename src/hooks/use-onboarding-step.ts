@@ -19,7 +19,11 @@ import type { StoredOnboardingStatus } from '@/lib/auth-utils'
 import { readOnboardingSnapshot, selectStepData, useOnboardingStore } from '@/state/onboarding.store'
 import { useOnboardingValidationStore } from '@/state/onboarding-validation.store'
 import { useQueryClient } from '@tanstack/react-query'
-import { persistOnboardingStatus, submitOnboardingCompletion } from '@/modules/onboarding/session'
+import {
+  fetchOrCreateOnboardingSession,
+  persistOnboardingStatus,
+  submitOnboardingCompletion,
+} from '@/modules/onboarding/session'
 import type { OnboardingValidationSummary } from '@/modules/onboarding/session'
 import { toast } from '@/hooks/use-toast'
 import { useResilientMutation } from '@/lib/react-query/resilient-mutation'
@@ -193,10 +197,10 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
         throw new Error('Authentication expired. Please sign in again.')
       }
       const response = await persistOnboardingStatus(token, status)
-      if (!response) {
+      if (!response?.status) {
         throw new Error('Failed to sync onboarding progress.')
       }
-      return status
+      return response.status
     },
     onMutate: (variables) => {
       persistAttemptRef.current = {
@@ -238,6 +242,9 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
         errorMessage: error instanceof Error ? error.message : undefined,
         errorStatus: error instanceof ApiError ? error.status : null,
       })
+      if (error instanceof ApiError && error.status === 409) {
+        void resyncFromServer()
+      }
     },
     messages: {
       pending: () => ({
@@ -253,18 +260,34 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
         description: 'All onboarding updates are now saved.',
       }),
       error: (error) => ({
-        title: 'Progress not saved',
+        title: error instanceof ApiError && error.status === 409 ? 'Refreshing your answers' : 'Progress not saved',
         description:
-          error instanceof Error
-            ? `${error.message} We kept your latest answers locally.`
-            : 'Unable to save onboarding progress. We kept your latest answers locally.',
-        variant: 'destructive',
+          error instanceof ApiError && error.status === 409
+            ? 'Another device updated this onboarding session. We pulled the latest answers so you can continue safely.'
+            : error instanceof Error
+              ? `${error.message} We kept your latest answers locally.`
+              : 'Unable to save onboarding progress. We kept your latest answers locally.',
+        variant: error instanceof ApiError && error.status === 409 ? 'default' : 'destructive',
       }),
     },
     maxRetryAttempts: 3,
     baseRetryDelayMs: 1_500,
     maxRetryDelayMs: 10_000,
   })
+
+  const resyncFromServer = useCallback(async () => {
+    const token = await getAccessToken()
+    if (!token) return
+    try {
+      const session = await fetchOrCreateOnboardingSession(token)
+      if (session?.status) {
+        updateOnboardingStatus(() => session.status)
+        useOnboardingStore.getState().hydrateFromStatus(session.status)
+      }
+    } catch (error) {
+      console.error('[onboarding] failed to refresh session after conflict', error)
+    }
+  }, [getAccessToken, updateOnboardingStatus])
 
   const updateData = (payload: StepDataMap[T]) => {
     setStepData(stepId, payload)
@@ -314,7 +337,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     setStepData(stepId, payload)
     const nextStatus = buildNextStatus(payload, { markCompleted: !nextStep })
     try {
-      await persistProgress.mutateAsync({
+      const syncedStatus = await persistProgress.mutateAsync({
         status: nextStatus,
         originStepId: stepId,
         intent: 'complete-step',
@@ -328,7 +351,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
           }
           const answers = readOnboardingSnapshot()
           const response = await submitOnboardingCompletion(token, {
-            status: nextStatus,
+            status: syncedStatus,
             answers,
           })
           if (dispatchValidationSummary(response?.validation)) {
@@ -340,6 +363,15 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
           clearValidationIssues()
           markOnboardingComplete()
         } catch (error) {
+          if (error instanceof ApiError && error.status === 409) {
+            toast({
+              title: 'Progress updated elsewhere',
+              description: 'We refreshed your onboarding session. Please review your latest answers before finishing.',
+              variant: 'destructive',
+            })
+            void resyncFromServer()
+            return
+          }
           if (error instanceof ApiError && dispatchValidationSummary(error.body?.validation)) {
             return
           }

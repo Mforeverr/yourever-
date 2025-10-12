@@ -11,8 +11,13 @@ from typing import Any, Dict, Optional
 
 from ...dependencies import CurrentPrincipal
 from .repository import UserRepository
-from .schemas import OnboardingSession, StoredOnboardingStatus, WorkspaceUser
-from ..onboarding.errors import OnboardingValidationError
+from .schemas import (
+    OnboardingSession,
+    StoredOnboardingStatus,
+    WorkspaceUser,
+    new_onboarding_revision,
+)
+from ..onboarding.errors import OnboardingRevisionConflict, OnboardingValidationError
 from ..onboarding.schemas import OnboardingCompletionResponse
 from ..onboarding.validation import evaluate_completion_validation
 
@@ -60,14 +65,40 @@ class UserService:
         )
         return session
 
+    @staticmethod
+    def _ensure_revision_is_current(
+        persisted: StoredOnboardingStatus, submitted: StoredOnboardingStatus
+    ) -> None:
+        persisted_revision = (persisted.revision or "").strip() or None
+        submitted_revision = (submitted.revision or "").strip() or None
+
+        if persisted_revision and not submitted_revision:
+            raise OnboardingRevisionConflict(persisted_revision, submitted_revision)
+
+        if (
+            persisted_revision
+            and submitted_revision
+            and persisted_revision != submitted_revision
+        ):
+            raise OnboardingRevisionConflict(persisted_revision, submitted_revision)
+
+    @staticmethod
+    def _with_next_revision(status: StoredOnboardingStatus) -> StoredOnboardingStatus:
+        return status.model_copy(update={"revision": new_onboarding_revision()})
+
     async def update_onboarding_progress(
         self,
         principal: CurrentPrincipal,
         status: StoredOnboardingStatus,
     ) -> OnboardingSession:
         await self._ensure_user(principal)
-        submitted_metrics = {f"submitted_{key}": value for key, value in _status_metrics(status).items()}
-        session = await self._repository.update_onboarding_status(principal.id, status)
+        current_session = await self._repository.get_or_create_onboarding_session(principal.id)
+        self._ensure_revision_is_current(current_session.status, status)
+        next_status = self._with_next_revision(status)
+        submitted_metrics = {
+            f"submitted_{key}": value for key, value in _status_metrics(status).items()
+        }
+        session = await self._repository.update_onboarding_status(principal.id, next_status)
         persisted_metrics = {f"persisted_{key}": value for key, value in _status_metrics(session.status).items()}
         logger.info(
             "onboarding.progress_saved",
@@ -95,7 +126,10 @@ class UserService:
         if validation.hasBlockingIssue:
             raise OnboardingValidationError(validation)
 
-        session = await self._repository.complete_onboarding(principal.id, status, answers)
+        current_session = await self._repository.get_or_create_onboarding_session(principal.id)
+        self._ensure_revision_is_current(current_session.status, status)
+        next_status = self._with_next_revision(status)
+        session = await self._repository.complete_onboarding(principal.id, next_status, answers)
         submitted_metrics = {f"submitted_{key}": value for key, value in _status_metrics(status).items()}
         persisted_metrics = {f"persisted_{key}": value for key, value in _status_metrics(session.status).items()}
         logger.info(

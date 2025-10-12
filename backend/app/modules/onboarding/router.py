@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from ...dependencies import CurrentPrincipal, require_current_principal
 from ..users.di import get_user_service
 from ..users.service import UserService
-from .errors import OnboardingValidationError
+from .errors import OnboardingRevisionConflict, OnboardingValidationError
 from .schemas import OnboardingCompletionPayload, OnboardingCompletionResponse
 
 router = APIRouter(prefix="/api/onboarding", tags=["onboarding"])
@@ -26,6 +26,14 @@ async def submit_onboarding_completion(
             content={
                 "detail": error.detail,
                 "validation": error.validation.model_dump(),
+            },
+        )
+    except OnboardingRevisionConflict as error:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "detail": error.detail,
+                "conflict": error.context,
             },
         )
 

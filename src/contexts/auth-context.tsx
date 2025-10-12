@@ -130,8 +130,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         })
       }
 
-      const resetForNewVersion = async (previousVersion?: number): Promise<StoredOnboardingStatus> => {
-        const resetStatus = defaultOnboardingStatus()
+      const resetForNewVersion = async (
+        baseline?: StoredOnboardingStatus | null,
+        previousVersion?: number,
+      ): Promise<StoredOnboardingStatus> => {
+        const resetStatus: StoredOnboardingStatus = {
+          ...defaultOnboardingStatus(),
+          revision: baseline?.revision ?? null,
+        }
         useOnboardingStore.getState().reset()
         if (legacyResetVersionRef.current !== previousVersion) {
           toast({
@@ -183,7 +189,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const sessionStatus = onboardingSession?.status ?? defaultOnboardingStatus()
         const requiresReset = isLegacyOnboardingStatus(sessionStatus)
         const nextStatus = requiresReset
-          ? await resetForNewVersion(coerceOnboardingStatusVersion(sessionStatus.version))
+          ? await resetForNewVersion(sessionStatus, coerceOnboardingStatusVersion(sessionStatus.version))
           : sessionStatus
         applyStatus(nextStatus)
         emitResume(nextStatus, onboardingSession ? 'remote-session' : 'remote-default', {
@@ -197,7 +203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const storedStatus = authStorage.getOnboardingStatus(userId)
       const requiresReset = isLegacyOnboardingStatus(storedStatus)
       const nextStatus = requiresReset
-        ? await resetForNewVersion(coerceOnboardingStatusVersion(storedStatus?.version))
+        ? await resetForNewVersion(storedStatus, coerceOnboardingStatusVersion(storedStatus?.version))
         : storedStatus
       const finalStatus = nextStatus ?? defaultOnboardingStatus()
       applyStatus(finalStatus)
