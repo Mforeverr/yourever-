@@ -1,7 +1,7 @@
 import * as React from "react"
 import { Button } from "./button"
-import { Badge } from "./badge"
 import { cn } from "@/lib/utils"
+import type { LucideIcon } from "lucide-react"
 import {
   Bold,
   Italic,
@@ -23,7 +23,25 @@ import {
   Edit3
 } from "lucide-react"
 
-interface RichTextEditorProps extends React.HTMLAttributes<HTMLDivElement> {
+type ToolbarAction =
+  | 'bold'
+  | 'italic'
+  | 'underline'
+  | 'strikethrough'
+  | 'align-left'
+  | 'align-center'
+  | 'align-right'
+  | 'list'
+  | 'list-ordered'
+  | 'quote'
+  | 'code'
+  | 'link'
+  | 'image'
+  | 'table'
+  | 'undo'
+  | 'redo'
+
+interface RichTextEditorProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onChange'> {
   value: string
   onChange: (value: string) => void
   placeholder?: string
@@ -31,7 +49,7 @@ interface RichTextEditorProps extends React.HTMLAttributes<HTMLDivElement> {
   showToolbar?: boolean
   showPreview?: boolean
   maxLength?: number
-  toolbar?: string[]
+  toolbar?: ToolbarAction[]
 }
 
 function RichTextEditor({
@@ -43,11 +61,22 @@ function RichTextEditor({
   showPreview = false,
   maxLength,
   toolbar = [
-    'bold', 'italic', 'underline', 'strikethrough',
-    'align-left', 'align-center', 'align-right',
-    'list', 'list-ordered', 'quote', 'code',
-    'link', 'image', 'table',
-    'undo', 'redo'
+    'bold',
+    'italic',
+    'underline',
+    'strikethrough',
+    'align-left',
+    'align-center',
+    'align-right',
+    'list',
+    'list-ordered',
+    'quote',
+    'code',
+    'link',
+    'image',
+    'table',
+    'undo',
+    'redo'
   ],
   className,
   ...props
@@ -57,28 +86,9 @@ function RichTextEditor({
   const [history, setHistory] = React.useState<string[]>([value])
   const [historyIndex, setHistoryIndex] = React.useState(0)
 
-  const toolbarButtons = {
-    'bold': { icon: Bold, action: () => execCommand('bold') },
-    'italic': { icon: Italic, action: () => execCommand('italic') },
-    'underline': { icon: Underline, action: () => execCommand('underline') },
-    'strikethrough': { icon: Strikethrough, action: () => execCommand('strikethrough') },
-    'align-left': { icon: AlignLeft, action: () => execCommand('justifyLeft') },
-    'align-center': { icon: AlignCenter, action: () => execCommand('justifyCenter') },
-    'align-right': { icon: AlignRight, action: () => execCommand('justifyRight') },
-    'list': { icon: List, action: () => execCommand('insertUnorderedList') },
-    'list-ordered': { icon: ListOrdered, action: () => execCommand('insertOrderedList') },
-    'quote': { icon: Quote, action: () => execCommand('formatBlock', 'blockquote') },
-    'code': { icon: Code, action: () => execCommand('formatBlock', 'pre') },
-    'link': { icon: Link, action: () => insertLink() },
-    'image': { icon: Image, action: () => insertImage() },
-    'table': { icon: Table, action: () => insertTable() },
-    'undo': { icon: Undo, action: () => undo() },
-    'redo': { icon: Redo, action: () => redo() }
-  }
-
   const execCommand = (command: string, value?: string) => {
     if (!editable) return
-    
+
     document.execCommand(command, false, value)
     const content = editorRef.current?.innerHTML || ''
     updateContent(content)
@@ -104,26 +114,36 @@ function RichTextEditor({
 
   const insertTable = () => {
     if (!editable) return
-    
+
     const rows = prompt('Number of rows:', '3')
     const cols = prompt('Number of columns:', '3')
-    
+
     if (rows && cols) {
-      const table = `<table border="1"><tbody>${Array(parseInt(rows)).fill('').map(() => 
-        `<tr>${Array(parseInt(cols)).fill('').map(() => '<td>&nbsp;</td>').join('')}</tr>`
-      ).join('')}</tbody></table>`
+      const rowCount = Number.parseInt(rows, 10)
+      const colCount = Number.parseInt(cols, 10)
+
+      if (Number.isNaN(rowCount) || Number.isNaN(colCount)) return
+
+      const table = `<table border="1"><tbody>${Array.from({ length: rowCount })
+        .map(
+          () => `<tr>${Array.from({ length: colCount })
+            .map(() => '<td>&nbsp;</td>')
+            .join('')}</tr>`
+        )
+        .join('')}</tbody></table>`
       execCommand('insertHTML', table)
     }
   }
 
   const updateContent = (content: string) => {
     onChange(content)
-    
-    // Update history
-    const newHistory = history.slice(0, historyIndex + 1)
-    newHistory.push(content)
-    setHistory(newHistory)
-    setHistoryIndex(newHistory.length - 1)
+
+    setHistory((prevHistory) => {
+      const truncated = prevHistory.slice(0, historyIndex + 1)
+      const updated = [...truncated, content]
+      setHistoryIndex(updated.length - 1)
+      return updated
+    })
   }
 
   const undo = () => {
@@ -161,6 +181,25 @@ function RichTextEditor({
     document.execCommand('insertText', false, text)
   }
 
+  const toolbarButtons: Record<ToolbarAction, { icon: LucideIcon; action: () => void }> = {
+    'bold': { icon: Bold, action: () => execCommand('bold') },
+    'italic': { icon: Italic, action: () => execCommand('italic') },
+    'underline': { icon: Underline, action: () => execCommand('underline') },
+    'strikethrough': { icon: Strikethrough, action: () => execCommand('strikethrough') },
+    'align-left': { icon: AlignLeft, action: () => execCommand('justifyLeft') },
+    'align-center': { icon: AlignCenter, action: () => execCommand('justifyCenter') },
+    'align-right': { icon: AlignRight, action: () => execCommand('justifyRight') },
+    'list': { icon: List, action: () => execCommand('insertUnorderedList') },
+    'list-ordered': { icon: ListOrdered, action: () => execCommand('insertOrderedList') },
+    'quote': { icon: Quote, action: () => execCommand('formatBlock', 'blockquote') },
+    'code': { icon: Code, action: () => execCommand('formatBlock', 'pre') },
+    'link': { icon: Link, action: insertLink },
+    'image': { icon: Image, action: insertImage },
+    'table': { icon: Table, action: insertTable },
+    'undo': { icon: Undo, action: undo },
+    'redo': { icon: Redo, action: redo }
+  }
+
   const renderPreview = () => {
     return (
       <div 
@@ -190,7 +229,7 @@ function RichTextEditor({
         <div className="border-b border-border bg-surface-elevated p-2">
           <div className="flex items-center gap-1 flex-wrap">
             {toolbar.map((tool) => {
-              const button = toolbarButtons[tool as keyof typeof toolbarButtons]
+              const button = toolbarButtons[tool]
               if (!button) return null
               
               const Icon = button.icon

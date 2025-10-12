@@ -5,17 +5,10 @@ import { X, Plus, Split } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-
-interface Tab {
-  id: string
-  title: string
-  type: 'task' | 'project' | 'doc' | 'channel' | 'calendar' | 'timeline'
-  isDirty?: boolean
-  isActive?: boolean
-}
+import type { UITab } from "@/state/ui.store"
 
 interface TabsBarProps {
-  tabs: Tab[]
+  tabs: UITab[]
   activeTabId?: string
   onTabChange?: (tabId: string) => void
   onTabClose?: (tabId: string) => void
@@ -34,7 +27,7 @@ function TabsBar({
   className 
 }: TabsBarProps) {
   
-  const getTabIcon = (type: Tab['type']) => {
+  const getTabIcon = (type: UITab['type']) => {
     switch (type) {
       case 'task': return '📋'
       case 'project': return '📁'
@@ -68,6 +61,9 @@ function TabsBar({
             {tab.isDirty && (
               <div className="size-2 rounded-full bg-brand"></div>
             )}
+            {tab.isSplit && (
+              <div className="size-2 rounded-sm bg-primary"></div>
+            )}
             
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <Tooltip>
@@ -81,11 +77,11 @@ function TabsBar({
                       onSplitView?.(tab.id)
                     }}
                   >
-                    <Split className="size-3" />
+                    <Split className={cn("size-3 transition-colors", tab.isSplit ? "text-primary" : undefined)} />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Split View</p>
+                  <p>{tab.isSplit ? "Exit Split View" : "Split View"}</p>
                 </TooltipContent>
               </Tooltip>
               

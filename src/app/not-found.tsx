@@ -73,17 +73,17 @@ export default function NotFound() {
                     You might be looking for:
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <Link href="/dashboard" className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors">
-                      → Dashboard
+                    <Link href="/select-org" className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors">
+                      → Scoped Dashboard
                     </Link>
-                    <Link href="/workspace" className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors">
-                      → Workspace
+                    <Link href="/select-org" className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors">
+                      → Pick Workspace Scope
                     </Link>
-                    <Link href="/calendar" className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors">
-                      → Calendar
+                    <Link href="/select-org" className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors">
+                      → Team Calendar
                     </Link>
-                    <Link href="/people" className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors">
-                      → People
+                    <Link href="/select-org" className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors">
+                      → People Directory
                     </Link>
                   </div>
                 </div>

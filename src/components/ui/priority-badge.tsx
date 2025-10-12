@@ -24,9 +24,12 @@ export interface PriorityBadgeProps
     VariantProps<typeof priorityBadgeVariants> {}
 
 function PriorityBadge({ className, priority, ...props }: PriorityBadgeProps) {
+  const currentPriority = priority ?? "medium"
+  const label = `${currentPriority.charAt(0).toUpperCase()}${currentPriority.slice(1)}`
+
   return (
-    <div className={cn(priorityBadgeVariants({ priority }), className)} {...props}>
-      {priority?.charAt(0).toUpperCase() + priority?.slice(1)}
+    <div className={cn(priorityBadgeVariants({ priority: currentPriority }), className)} {...props}>
+      {label}
     </div>
   )
 }

@@ -121,10 +121,10 @@ const mockMessages: Message[] = [
 ];
 
 const mockChannels: Channel[] = [
-  { id: "1", name: "general", type: "channel", description: "General team discussions", members: 12 },
-  { id: "2", name: "development", type: "channel", description: "Development talk", members: 8 },
-  { id: "3", name: "design", type: "channel", description: "Design discussions", members: 5, isPrivate: true },
-  { id: "4", name: "random", type: "channel", description: "Random conversations", members: 12, isMuted: true }
+  { id: "general", name: "general", type: "channel", description: "General team discussions", members: 12 },
+  { id: "development", name: "development", type: "channel", description: "Development talk", members: 8 },
+  { id: "design-crits", name: "design-crits", type: "channel", description: "Design discussions", members: 5, isPrivate: true },
+  { id: "random", name: "random", type: "channel", description: "Random conversations", members: 12, isMuted: true }
 ];
 
 export function ChatInterface() {
@@ -137,8 +137,12 @@ export function ChatInterface() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const channelId = pathname.startsWith('/c/') ? pathname.split('/')[2] : null;
-  const dmUserId = pathname.startsWith('/dm/') ? pathname.split('/')[2] : null;
+  const pathSegments = pathname.split('/').filter(Boolean);
+  const channelSegmentIndex = pathSegments.findIndex((segment) => segment === 'c');
+  const dmSegmentIndex = pathSegments.findIndex((segment) => segment === 'dm');
+
+  const channelId = channelSegmentIndex !== -1 ? pathSegments[channelSegmentIndex + 1] ?? null : null;
+  const dmUserId = dmSegmentIndex !== -1 ? pathSegments[dmSegmentIndex + 1] ?? null : null;
   
   const currentChannel = mockChannels.find(c => c.id === channelId);
   const isDM = !!dmUserId;

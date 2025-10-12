@@ -4,7 +4,6 @@ import * as React from "react"
 import { SegmentedControl } from "@/components/ui/segmented-control"
 import { KpiCard } from "@/components/ui/kpi-card"
 import { PresenceAvatarGroup } from "@/components/ui/presence-avatar-group"
-import { CommandPalette } from "@/components/ui/command-palette"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -14,8 +13,10 @@ import {
   Plus,
   TrendingUp,
   AlertTriangle,
-  CheckCircle
+  CheckCircle,
+  Search as SearchIcon
 } from "lucide-react"
+import { useCommandPalette } from "@/components/global/command-palette"
 
 // Mock data
 const mockTasks = [
@@ -66,7 +67,7 @@ const mockUsers = [
 
 export default function DemoPage() {
   const [activeView, setActiveView] = React.useState('dashboard')
-  const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false)
+  const { openPalette } = useCommandPalette()
 
   const renderContent = () => {
     switch (activeView) {
@@ -333,7 +334,7 @@ export default function DemoPage() {
     <>
       <div className="h-full flex flex-col">
         {/* View Selector */}
-        <div className="p-4 border-b border-border">
+        <div className="p-4 border-b border-border flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <SegmentedControl
             options={[
               { value: 'dashboard', label: 'Dashboard', icon: <BarChart3 className="size-4" /> },
@@ -345,6 +346,15 @@ export default function DemoPage() {
             value={activeView}
             onValueChange={setActiveView}
           />
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="sm:w-auto"
+            onClick={openPalette}
+          >
+            <SearchIcon className="mr-2 h-4 w-4" />
+            Command Palette
+          </Button>
         </div>
 
         {/* Content */}
@@ -353,10 +363,6 @@ export default function DemoPage() {
         </div>
       </div>
       
-      <CommandPalette 
-        open={commandPaletteOpen} 
-        onOpenChange={setCommandPaletteOpen} 
-      />
     </>
   )
 }

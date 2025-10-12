@@ -27,6 +27,7 @@ interface ScopeSwitcherProps {
   currentOrgId?: string
   currentDivisionId?: string
   onScopeChange?: (orgId: string, divisionId: string) => void
+  onDivisionChange?: (divisionId: string) => void
   className?: string
 }
 
@@ -35,6 +36,7 @@ function ScopeSwitcher({
   currentOrgId,
   currentDivisionId,
   onScopeChange,
+  onDivisionChange,
   className 
 }: ScopeSwitcherProps) {
   const [isOpen, setIsOpen] = React.useState(false)
@@ -86,6 +88,9 @@ function ScopeSwitcher({
                         currentOrgId === org.id && currentDivisionId === division.id && "bg-accent"
                       )}
                       onClick={() => {
+                        if (currentOrgId === org.id) {
+                          onDivisionChange?.(division.id)
+                        }
                         onScopeChange?.(org.id, division.id)
                         setIsOpen(false)
                       }}

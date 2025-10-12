@@ -1,58 +1,18 @@
 'use client'
 
-import * as React from 'react'
 import { useExplorer } from '@/contexts/explorer-context'
-import { mockExplorerData } from '@/lib/explorer-data'
+import { useScope } from '@/contexts/scope-context'
+import { useMockExplorerStore, selectExplorerCountsForScope } from '@/lib/mock-explorer'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Folder, File, FolderKanban, CheckSquare, FileText, Users } from 'lucide-react'
 
 export function ExplorerStatusBar() {
   const { selectedItem, searchTerm, filterType } = useExplorer()
-
-  const getItemCount = () => {
-    // Count items from the mock data
-    let total = 0
-    let folders = 0
-    let projects = 0
-    let tasks = 0
-    let documents = 0
-
-    const countItems = (items: any[]) => {
-      for (const item of items) {
-        total++
-        switch (item.type) {
-          case 'folder':
-            folders++
-            break
-          case 'project':
-            projects++
-            break
-          case 'task':
-            tasks++
-            break
-          case 'document':
-            documents++
-            break
-        }
-        if (item.children) {
-          countItems(item.children)
-        }
-      }
-    }
-
-    countItems(mockExplorerData)
-    
-    return {
-      total,
-      folders,
-      projects,
-      tasks,
-      documents
-    }
-  }
-
-  const counts = getItemCount()
+  const { currentOrgId, currentDivisionId } = useScope()
+  const counts = useMockExplorerStore((state) =>
+    selectExplorerCountsForScope(state, currentOrgId, currentDivisionId)
+  )
 
   return (
     <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-muted/30">

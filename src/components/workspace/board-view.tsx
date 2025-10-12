@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 import { DndContext, DragEndEvent, DragOverEvent, DragStartEvent, 
   closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
@@ -15,6 +16,8 @@ import { WhyNoteEditor } from "@/components/ui/why-note-editor"
 import { AssigneeSelector, type User } from "@/components/ui/assignee-selector"
 import { DatePicker } from "@/components/ui/date-picker"
 import { cn } from "@/lib/utils"
+import { isFeatureEnabled } from "@/lib/feature-flags"
+import { useScope } from "@/contexts/scope-context"
 import { 
   Plus,
   MoreHorizontal,
@@ -31,6 +34,7 @@ import {
 
 interface Task {
   id: string
+  projectId?: string
   title: string
   description?: string
   status: 'todo' | 'in-progress' | 'review' | 'done'
@@ -64,6 +68,7 @@ const mockUsers: User[] = [
 const initialTasks: Task[] = [
   {
     id: "1",
+    projectId: "website-revamp",
     title: "Setup authentication system",
     description: "Implement OAuth2 with Google and GitHub providers",
     status: "in-progress",
@@ -79,6 +84,7 @@ const initialTasks: Task[] = [
   },
   {
     id: "2", 
+    projectId: "platform-infra",
     title: "Design new landing page",
     description: "Create mockups and prototypes for the marketing landing page",
     status: "todo",
@@ -93,6 +99,7 @@ const initialTasks: Task[] = [
   },
   {
     id: "3",
+    projectId: "website-revamp",
     title: "Fix navigation bug on mobile",
     description: "Menu doesn't close properly on iOS devices",
     status: "review",
@@ -108,6 +115,7 @@ const initialTasks: Task[] = [
   },
   {
     id: "4",
+    projectId: "platform-infra",
     title: "Database optimization",
     description: "Improve query performance for user dashboard",
     status: "done",
@@ -120,10 +128,11 @@ const initialTasks: Task[] = [
   }
 ]
 
-function TaskCard({ task, onEdit, onDelete }: { 
+function TaskCard({ task, onEdit, onDelete, onViewProject }: { 
   task: Task
   onEdit: (task: Task) => void
-  onDelete: (taskId: string) => void 
+  onDelete: (taskId: string) => void
+  onViewProject?: (task: Task) => void
 }) {
   const [isEditing, setIsEditing] = React.useState(false)
   const [editTitle, setEditTitle] = React.useState(task.title)
@@ -171,6 +180,16 @@ function TaskCard({ task, onEdit, onDelete }: {
             )}
           </div>
           <div className="flex items-center gap-1">
+            {onViewProject && task.projectId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={() => onViewProject(task)}
+              >
+                View project
+              </Button>
+            )}
             <Button variant="ghost" size="icon" className="h-6 w-6">
               <MoreHorizontal className="h-3 w-3" />
             </Button>
@@ -262,10 +281,11 @@ function TaskCard({ task, onEdit, onDelete }: {
   )
 }
 
-function Column({ column, onTaskEdit, onTaskDelete }: {
+function Column({ column, onTaskEdit, onTaskDelete, onTaskViewProject }: {
   column: Column
   onTaskEdit: (task: Task) => void
   onTaskDelete: (taskId: string) => void
+  onTaskViewProject?: (task: Task) => void
 }) {
   const [isAddingTask, setIsAddingTask] = React.useState(false)
   const [newTaskTitle, setNewTaskTitle] = React.useState("")
@@ -348,6 +368,7 @@ function Column({ column, onTaskEdit, onTaskDelete }: {
                   task={task}
                   onEdit={onTaskEdit}
                   onDelete={onTaskDelete}
+                  onViewProject={onTaskViewProject}
                 />
               ))}
             </SortableContext>
@@ -359,6 +380,16 @@ function Column({ column, onTaskEdit, onTaskDelete }: {
 }
 
 export function BoardView() {
+  const router = useRouter()
+  const { currentOrgId, currentDivisionId } = useScope()
+  const canOpenProject = isFeatureEnabled("projects.detail", process.env.NODE_ENV !== "production")
+  const workspaceBasePath = React.useMemo(() => {
+    if (!currentOrgId || !currentDivisionId) {
+      return null
+    }
+    return `/${currentOrgId}/${currentDivisionId}`
+  }, [currentDivisionId, currentOrgId])
+
   const [tasks, setTasks] = React.useState<Task[]>(initialTasks)
   const [columns, setColumns] = React.useState<Column[]>([
     {
@@ -397,6 +428,16 @@ export function BoardView() {
         distance: 8,
       },
     })
+  )
+
+  const onTaskViewProject = React.useCallback(
+    (task: Task) => {
+      if (!task.projectId || !workspaceBasePath || !canOpenProject) {
+        return
+      }
+      router.push(`${workspaceBasePath}/projects/${task.projectId}`)
+    },
+    [canOpenProject, router, workspaceBasePath]
   )
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -491,6 +532,7 @@ export function BoardView() {
               column={column}
               onTaskEdit={handleTaskEdit}
               onTaskDelete={handleTaskDelete}
+              onTaskViewProject={onTaskViewProject}
             />
           ))}
         </div>

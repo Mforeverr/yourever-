@@ -37,11 +37,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { AssigneeSelector } from "@/components/ui/assignee-selector"
 import { 
   Calendar as CalendarIcon, 
-  Users, 
-  User, 
   LayoutGrid, 
   List,
   Plus,
@@ -55,9 +52,7 @@ const projectSchema = z.object({
   description: z.string().optional(),
   lead: z.string().min(1, "Project lead is required"),
   members: z.array(z.string()).min(1, "At least one member is required"),
-  defaultView: z.enum(["board", "list"], {
-    required_error: "Please select a default view",
-  }),
+  defaultView: z.enum(["board", "list"]),
   startDate: z.date().optional(),
   endDate: z.date().optional(),
 }).refine((data) => {

@@ -10,8 +10,9 @@ import {
   X
 } from "lucide-react"
 import { format } from "date-fns"
+import type { DateRange } from "react-day-picker"
 
-interface DatePickerProps extends React.HTMLAttributes<HTMLDivElement> {
+interface DatePickerProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onChange'> {
   value?: Date | null
   onChange?: (date: Date | null) => void
   placeholder?: string
@@ -29,7 +30,7 @@ function DatePicker({
   placeholder = "Select date...",
   disabled = false,
   showTime = false,
-  format = "PPP",
+  format: displayFormat = "PPP",
   minDate,
   maxDate,
   clearable = true,
@@ -60,23 +61,23 @@ function DatePicker({
     if (showTime) {
       return format(date, "PPP p")
     }
-    return format(date, format)
+    return format(date, displayFormat)
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          className={cn(
-            "w-full justify-start text-left font-normal h-10",
-            "hover:bg-accent/50",
-            !selectedDate && "text-muted-foreground",
-            disabled && "opacity-50 cursor-not-allowed",
-            className
-          )}
-          disabled={disabled}
-        >
+    <div className={cn("inline-block w-full", className)} {...props}>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            className={cn(
+              "w-full justify-start text-left font-normal h-10",
+              "hover:bg-accent/50",
+              !selectedDate && "text-muted-foreground",
+              disabled && "opacity-50 cursor-not-allowed"
+            )}
+            disabled={disabled}
+          >
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <CalendarIcon className="h-4 w-4 shrink-0" />
             {selectedDate ? (
@@ -100,9 +101,9 @@ function DatePicker({
             </Button>
           )}
         </Button>
-      </PopoverTrigger>
-      
-      <PopoverContent className="w-auto p-0" align="start">
+        </PopoverTrigger>
+        
+        <PopoverContent className="w-auto p-0" align="start">
         <Calendar
           mode="single"
           selected={selectedDate || undefined}
@@ -135,14 +136,15 @@ function DatePicker({
             </div>
           </div>
         )}
-      </PopoverContent>
-    </Popover>
+        </PopoverContent>
+      </Popover>
+    </div>
   )
 }
 
-interface DateRangePickerProps extends React.HTMLAttributes<HTMLDivElement> {
-  value?: { from?: Date; to?: Date } | null
-  onChange?: (range: { from?: Date; to?: Date } | null) => void
+interface DateRangePickerProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onChange'> {
+  value?: DateRange | null
+  onChange?: (range: DateRange | null) => void
   placeholder?: string
   disabled?: boolean
   format?: string
@@ -156,7 +158,7 @@ function DateRangePicker({
   onChange,
   placeholder = "Select date range...",
   disabled = false,
-  format = "PPP",
+  format: rangeFormat = "PPP",
   minDate,
   maxDate,
   clearable = true,
@@ -164,13 +166,13 @@ function DateRangePicker({
   ...props
 }: DateRangePickerProps) {
   const [open, setOpen] = React.useState(false)
-  const [selectedRange, setSelectedRange] = React.useState<{ from?: Date; to?: Date } | null>(value || null)
+  const [selectedRange, setSelectedRange] = React.useState<DateRange | null>(value || null)
 
   React.useEffect(() => {
     setSelectedRange(value || null)
   }, [value])
 
-  const handleRangeSelect = (range: { from?: Date; to?: Date } | undefined) => {
+  const handleRangeSelect = (range: DateRange | undefined) => {
     if (range) {
       setSelectedRange(range)
       onChange?.(range)
@@ -185,26 +187,26 @@ function DateRangePicker({
     onChange?.(null)
   }
 
-  const formatRange = (range: { from?: Date; to?: Date }) => {
+  const formatRange = (range: DateRange) => {
     if (!range.from) return ""
-    if (!range.to) return format(range.from, format)
-    return `${format(range.from, format)} - ${format(range.to, format)}`
+    if (!range.to) return format(range.from, rangeFormat)
+    return `${format(range.from, rangeFormat)} - ${format(range.to, rangeFormat)}`
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          className={cn(
-            "w-full justify-start text-left font-normal h-10",
-            "hover:bg-accent/50",
-            !selectedRange?.from && "text-muted-foreground",
-            disabled && "opacity-50 cursor-not-allowed",
-            className
-          )}
-          disabled={disabled}
-        >
+    <div className={cn("inline-block w-full", className)} {...props}>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            className={cn(
+              "w-full justify-start text-left font-normal h-10",
+              "hover:bg-accent/50",
+              !selectedRange?.from && "text-muted-foreground",
+              disabled && "opacity-50 cursor-not-allowed"
+            )}
+            disabled={disabled}
+          >
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <CalendarIcon className="h-4 w-4 shrink-0" />
             {selectedRange?.from ? (
@@ -228,9 +230,9 @@ function DateRangePicker({
             </Button>
           )}
         </Button>
-      </PopoverTrigger>
-      
-      <PopoverContent className="w-auto p-0" align="start">
+        </PopoverTrigger>
+        
+        <PopoverContent className="w-auto p-0" align="start">
         <Calendar
           mode="range"
           selected={selectedRange || undefined}
@@ -244,8 +246,9 @@ function DateRangePicker({
             return false
           }}
         />
-      </PopoverContent>
-    </Popover>
+        </PopoverContent>
+      </Popover>
+    </div>
   )
 }
 

@@ -114,11 +114,7 @@ export function ContentPanel({ selectedItem }: ContentPanelProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <PresenceAvatarGroup 
-              users={getUsersByIds(metadata.assigneeIds || [])} 
-              size="md"
-              max={8}
-            />
+            <PresenceAvatarGroup users={getUsersByIds(metadata.assigneeIds || [])} max={8} />
           </CardContent>
         </Card>
 

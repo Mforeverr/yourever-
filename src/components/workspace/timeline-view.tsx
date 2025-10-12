@@ -3,7 +3,6 @@
 import * as React from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { PriorityBadge } from "@/components/ui/priority-badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -23,7 +22,7 @@ import {
 interface TimelineTask {
   id: string
   title: string
-  status: 'todo' | 'in-progress' | 'review' | 'done'
+  status: 'todo' | 'in-progress' | 'review' | 'completed'
   priority: 'low' | 'medium' | 'high' | 'urgent'
   assignee?: {
     name: string
@@ -80,7 +79,7 @@ const mockTasks: TimelineTask[] = [
   {
     id: "4",
     title: "Database optimization",
-    status: "done",
+    status: "completed",
     priority: "low",
     assignee: { name: "Alex Chen", avatar: "/avatars/alex.jpg" },
     startDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5),
@@ -158,7 +157,7 @@ function TimelineBar({ task, onResize, onMove }: {
       className={cn(
         "absolute h-8 rounded-md border cursor-move transition-all hover:shadow-md",
         isDragging && "shadow-lg z-50",
-        task.status === 'done' && "opacity-75"
+        task.status === 'completed' && "opacity-75"
       )}
       style={{
         ...position,
@@ -268,7 +267,7 @@ function TimelineLane({ lane }: { lane: TimelineLane }) {
 
 function TimelineHeader() {
   const today = new Date()
-  const dates = []
+  const dates: Date[] = []
   
   // Generate 14 days (7 days before to 7 days after today)
   for (let i = -7; i <= 7; i++) {

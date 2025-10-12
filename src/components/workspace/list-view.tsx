@@ -1,8 +1,9 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 import { DataTable, type DataTableColumn, type DataTableAction } from "@/components/ui/data-table"
-import { StatusBadge } from "@/components/ui/status-badge"
+import { StatusBadge, type StatusBadgeProps } from "@/components/ui/status-badge"
 import { PriorityBadge } from "@/components/ui/priority-badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -25,11 +26,14 @@ import {
   ArrowDown,
   Plus
 } from "lucide-react"
+import { useScope } from "@/contexts/scope-context"
+import { isFeatureEnabled } from "@/lib/feature-flags"
 
 interface Task {
   id: string
   title: string
   description?: string
+  projectId?: string
   status: 'todo' | 'in-progress' | 'review' | 'done'
   priority: 'low' | 'medium' | 'high' | 'urgent'
   assignee?: {
@@ -50,6 +54,7 @@ interface Task {
 const mockTasks: Task[] = [
   {
     id: "1",
+    projectId: "website-revamp",
     title: "Setup authentication system",
     description: "Implement OAuth2 with Google and GitHub providers for secure user authentication",
     status: "in-progress",
@@ -66,6 +71,7 @@ const mockTasks: Task[] = [
   },
   {
     id: "2", 
+    projectId: "platform-infra",
     title: "Design new landing page",
     description: "Create modern, responsive mockups and prototypes for the marketing landing page",
     status: "todo",
@@ -82,6 +88,7 @@ const mockTasks: Task[] = [
   },
   {
     id: "3",
+    projectId: "website-revamp",
     title: "Fix navigation bug on mobile",
     description: "Menu doesn't close properly on iOS devices when tapping outside",
     status: "review",
@@ -98,6 +105,7 @@ const mockTasks: Task[] = [
   },
   {
     id: "4",
+    projectId: "platform-infra",
     title: "Database optimization",
     description: "Improve query performance for user dashboard by adding proper indexes",
     status: "done",
@@ -111,6 +119,7 @@ const mockTasks: Task[] = [
   },
   {
     id: "5",
+    projectId: "website-revamp",
     title: "Implement real-time notifications",
     description: "Add WebSocket support for real-time notifications and updates",
     status: "in-progress",
@@ -127,7 +136,24 @@ const mockTasks: Task[] = [
   }
 ]
 
+const statusVariantMap: Record<Task['status'], StatusBadgeProps['status']> = {
+  'todo': 'untouched',
+  'in-progress': 'in-progress',
+  'review': 'in-progress',
+  'done': 'completed'
+}
+
 export function ListView() {
+  const router = useRouter()
+  const { currentOrgId, currentDivisionId } = useScope()
+  const canOpenProject = isFeatureEnabled("projects.detail", process.env.NODE_ENV !== "production")
+  const workspaceBasePath = React.useMemo(() => {
+    if (!currentOrgId || !currentDivisionId) {
+      return null
+    }
+    return `/${currentOrgId}/${currentDivisionId}`
+  }, [currentDivisionId, currentOrgId])
+
   const [tasks, setTasks] = React.useState<Task[]>(mockTasks)
   const [filteredTasks, setFilteredTasks] = React.useState<Task[]>(mockTasks)
   const [selectedTasks, setSelectedTasks] = React.useState<Task[]>([])
@@ -185,7 +211,10 @@ export function ListView() {
   }
 
   const handleView = (task: Task) => {
-    console.log("View task:", task.id)
+    if (!task.projectId || !workspaceBasePath || !canOpenProject) {
+      return
+    }
+    router.push(`${workspaceBasePath}/projects/${task.projectId}`)
   }
 
   const handleEdit = (task: Task) => {
@@ -227,6 +256,16 @@ export function ListView() {
               )}
             </div>
           )}
+          {canOpenProject && row.projectId && workspaceBasePath && (
+            <Button
+              variant="link"
+              size="sm"
+              className="px-0 text-xs"
+              onClick={() => handleView(row)}
+            >
+              View project
+            </Button>
+          )}
         </div>
       ),
       width: "300px"
@@ -235,14 +274,17 @@ export function ListView() {
       key: "status",
       title: "Status",
       sortable: true,
-      render: (value) => <StatusBadge status={value as string} />,
+      render: (value) => {
+        const variant = statusVariantMap[value as Task['status']] ?? 'untouched'
+        return <StatusBadge status={variant} />
+      },
       width: "120px"
     },
     {
       key: "priority",
       title: "Priority",
       sortable: true,
-      render: (value) => <PriorityBadge priority={value as string} />,
+      render: (value) => <PriorityBadge priority={value as Task['priority']} />, 
       width: "120px"
     },
     {

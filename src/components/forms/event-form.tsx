@@ -54,15 +54,11 @@ import { format, addMinutes } from "date-fns"
 // Form validation schema
 const eventSchema = z.object({
   title: z.string().min(1, "Event title is required"),
-  date: z.date({
-    required_error: "Event date is required",
-  }),
+  date: z.date(),
   startTime: z.string().min(1, "Start time is required"),
   endTime: z.string().min(1, "End time is required"),
   attendees: z.array(z.string()).min(1, "At least one attendee is required"),
-  locationType: z.enum(["physical", "virtual", "hybrid"], {
-    required_error: "Please select location type",
-  }),
+  locationType: z.enum(["physical", "virtual", "hybrid"]),
   location: z.string().optional(),
   meetingLink: z.string().url("Please enter a valid URL").optional().or(z.literal("")),
   description: z.string().optional(),
@@ -134,7 +130,7 @@ const reminderOptions = [
   { value: "1440", label: "1 day before" },
 ]
 
-const timeSlots = []
+const timeSlots: string[] = []
 for (let hour = 0; hour < 24; hour++) {
   for (let minute = 0; minute < 60; minute += 15) {
     const time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`

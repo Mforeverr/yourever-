@@ -3,6 +3,10 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from "@/components/theme-provider";
+import { OnboardingWatcher } from "@/components/onboarding/onboarding-watcher";
+import { AuthProvider } from "@/contexts/auth-context";
+import { CommandPaletteProvider } from "@/components/global/command-palette";
+import { QueryProvider } from "@/components/providers/query-client";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -19,7 +23,9 @@ export const metadata: Metadata = {
   description: "The all-in-one workspace for teams to work, chat, and plan together. Scoped by Organization and Division.",
   keywords: ["Yourever", "workspace", "collaboration", "project management", "team chat", "planning"],
   authors: [{ name: "Yourever Team" }],
-  favicon: "/favicon.ico",
+  icons: {
+    icon: "/favicon.ico",
+  },
   openGraph: {
     title: "Yourever - Work, chat, plan—one place",
     description: "The all-in-one workspace for teams to work, chat, and plan together.",
@@ -51,15 +57,22 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="dark"
-          enableSystem={false}
-          disableTransitionOnChange
-        >
-          {children}
-        </ThemeProvider>
-        <Toaster />
+        <AuthProvider>
+          <CommandPaletteProvider>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="dark"
+              enableSystem={false}
+              disableTransitionOnChange
+            >
+              <QueryProvider>
+                <OnboardingWatcher />
+                {children}
+              </QueryProvider>
+            </ThemeProvider>
+            <Toaster />
+          </CommandPaletteProvider>
+        </AuthProvider>
       </body>
     </html>
   );

@@ -1,18 +1,10 @@
 import * as React from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table"
 import { Button } from "./button"
-import { Badge } from "./badge"
 import { Checkbox } from "./checkbox"
-import { 
-  ChevronDown, 
-  ChevronUp, 
-  MoreHorizontal,
-  ArrowUpDown,
-  Eye,
-  Edit,
-  Trash
-} from "lucide-react"
+import { ArrowUpDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+import type { CheckedState } from "@radix-ui/react-checkbox"
 
 interface DataTableColumn<T> {
   key: keyof T
@@ -38,6 +30,7 @@ interface DataTableProps<T> {
   onSort?: (column: keyof T, direction: 'asc' | 'desc') => void
   emptyMessage?: string
   className?: string
+  getRowId?: (row: T, index: number) => string | number
 }
 
 function DataTable<T extends Record<string, any>>({
@@ -48,15 +41,27 @@ function DataTable<T extends Record<string, any>>({
   onSelectionChange,
   onSort,
   emptyMessage = "No data available",
-  className
+  className,
+  getRowId
 }: DataTableProps<T>) {
   const [selectedRows, setSelectedRows] = React.useState<Set<string | number>>(new Set())
   const [sortColumn, setSortColumn] = React.useState<keyof T | null>(null)
   const [sortDirection, setSortDirection] = React.useState<'asc' | 'desc'>('asc')
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      const allIds = data.map(row => row.id || row.key)
+  const resolveRowId = React.useCallback(
+    (row: T, index: number) => {
+      if (getRowId) return getRowId(row, index)
+
+      const candidate = (row as { id?: string | number; key?: string | number }).id ??
+        (row as { id?: string | number; key?: string | number }).key
+      return candidate ?? index
+    },
+    [getRowId]
+  )
+
+  const handleSelectAll = (checked: CheckedState) => {
+    if (checked === true) {
+      const allIds = data.map((row, index) => resolveRowId(row, index))
       setSelectedRows(new Set(allIds))
       onSelectionChange?.(data)
     } else {
@@ -65,18 +70,19 @@ function DataTable<T extends Record<string, any>>({
     }
   }
 
-  const handleSelectRow = (id: string | number, checked: boolean, row: T) => {
+  const handleSelectRow = (id: string | number, checked: CheckedState, row: T) => {
     const newSelected = new Set(selectedRows)
-    if (checked) {
+    if (checked === true) {
       newSelected.add(id)
     } else {
       newSelected.delete(id)
     }
     setSelectedRows(newSelected)
-    
-    const selectedData = data.filter(row => 
-      newSelected.has(row.id || row.key)
-    )
+
+    const selectedData = data.filter((candidate, index) => {
+      const candidateId = resolveRowId(candidate, index)
+      return newSelected.has(candidateId)
+    })
     onSelectionChange?.(selectedData)
   }
 
@@ -100,10 +106,7 @@ function DataTable<T extends Record<string, any>>({
             {selectable && (
               <TableHead className="w-12">
                 <Checkbox
-                  checked={isAllSelected}
-                  ref={(el) => {
-                    if (el) el.indeterminate = isIndeterminate
-                  }}
+                  checked={isIndeterminate ? 'indeterminate' : isAllSelected}
                   onCheckedChange={handleSelectAll}
                   aria-label="Select all"
                 />
@@ -144,20 +147,20 @@ function DataTable<T extends Record<string, any>>({
               </TableCell>
             </TableRow>
           ) : (
-            data.map((row) => {
-              const rowId = row.id || row.key
+            data.map((row, index) => {
+              const rowId = resolveRowId(row, index)
               const isSelected = selectedRows.has(rowId)
               
               return (
                 <TableRow 
                   key={rowId}
-                  className={isSelected && "bg-accent/50"}
+                  className={cn(isSelected && "bg-accent/50")}
                 >
                   {selectable && (
                     <TableCell>
                       <Checkbox
                         checked={isSelected}
-                        onCheckedChange={(checked) => handleSelectRow(rowId, checked as boolean, row)}
+                        onCheckedChange={(checked) => handleSelectRow(rowId, checked, row)}
                         aria-label="Select row"
                       />
                     </TableCell>

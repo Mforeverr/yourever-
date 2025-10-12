@@ -92,7 +92,7 @@ function CalendarGrid({
   })
 
   const renderCalendarDays = () => {
-    const days = []
+    const days: React.ReactNode[] = []
     const today = new Date()
     
     // Add empty cells for days before month starts

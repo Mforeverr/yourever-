@@ -30,10 +30,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { RichTextEditor } from "@/components/ui/rich-text-editor"
-import { AssigneeSelector } from "@/components/ui/assignee-selector"
 import { 
   Calendar as CalendarIcon, 
-  Flag, 
   CheckCircle, 
   AlertCircle, 
   HelpCircle,
@@ -81,6 +79,13 @@ const commonTags = [
   "frontend", "testing", "deployment", "research", "design", "review"
 ]
 
+const mockAssignees = [
+  { id: "sarah", name: "Sarah Chen" },
+  { id: "mike", name: "Mike Johnson" },
+  { id: "emily", name: "Emily Davis" },
+  { id: "tom", name: "Tom Wilson" }
+]
+
 export function TaskPropertiesGrid({ 
   initialData,
   onSave,
@@ -104,8 +109,6 @@ export function TaskPropertiesGrid({
     },
   })
 
-  const watchedValues = form.watch()
-
   const onSubmit = (data: TaskPropertiesValues) => {
     const finalData = { ...data, tags }
     console.log("Task properties:", finalData)
@@ -127,7 +130,7 @@ export function TaskPropertiesGrid({
     form.setValue("tags", newTags)
   }
 
-  const handleTagKeyPress = (e: React.KeyboardEvent) => {
+  const handleTagKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault()
       addTag(newTag)
@@ -174,7 +177,8 @@ export function TaskPropertiesGrid({
                     value={field.value || ""}
                     onChange={field.onChange}
                     placeholder="Add a more detailed description..."
-                    readOnly={readOnly}
+                    editable={!readOnly}
+                    showToolbar={!readOnly}
                   />
                 </FormControl>
                 <FormMessage />
@@ -193,14 +197,24 @@ export function TaskPropertiesGrid({
                   <FormLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Assignee
                   </FormLabel>
-                  <FormControl>
-                    <AssigneeSelector
-                      value={field.value}
-                      onChange={field.onChange}
-                      placeholder="Assign to..."
-                      disabled={readOnly}
-                    />
-                  </FormControl>
+                  <Select
+                    value={field.value ?? undefined}
+                    onValueChange={(value) => field.onChange(value)}
+                    disabled={readOnly}
+                  >
+                    <FormControl>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Assign to..." />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {mockAssignees.map((assignee) => (
+                        <SelectItem key={assignee.id} value={assignee.id}>
+                          {assignee.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
@@ -400,8 +414,9 @@ export function TaskPropertiesGrid({
                     value={field.value || ""}
                     onChange={field.onChange}
                     placeholder="Why is this task important? What's the context?"
-                    readOnly={readOnly}
-                    minimal={true}
+                    editable={!readOnly}
+                    showToolbar={!readOnly}
+                    toolbar={['bold', 'italic', 'list', 'code', 'link']}
                   />
                 </FormControl>
                 <FormMessage />

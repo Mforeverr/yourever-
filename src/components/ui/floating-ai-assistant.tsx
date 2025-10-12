@@ -14,9 +14,9 @@ import {
   Maximize2,
   Bot,
   User,
-  Sparkles,
   MessageCircle
 } from "lucide-react"
+import { useUIStore } from "@/state/ui.store"
 
 interface Message {
   id: string
@@ -30,8 +30,11 @@ interface FloatingAIAssistantProps {
 }
 
 export function FloatingAIAssistant({ className }: FloatingAIAssistantProps) {
-  const [isOpen, setIsOpen] = useState(false)
-  const [isMinimized, setIsMinimized] = useState(false)
+  const isOpen = useUIStore((state) => state.floatingAssistantOpen)
+  const isMinimized = useUIStore((state) => state.floatingAssistantMinimized)
+  const openAssistant = useUIStore((state) => state.openFloatingAssistant)
+  const closeAssistant = useUIStore((state) => state.closeFloatingAssistant)
+  const toggleMinimized = useUIStore((state) => state.toggleFloatingAssistantMinimized)
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -91,7 +94,7 @@ export function FloatingAIAssistant({ className }: FloatingAIAssistantProps) {
     return (
       <div className={`fixed bottom-6 right-6 z-50 ${className}`}>
         <Button
-          onClick={() => setIsOpen(true)}
+          onClick={openAssistant}
           size="lg"
           className="h-14 w-14 rounded-full shadow-lg bg-primary hover:bg-primary/90 transition-all hover:scale-105"
         >
@@ -122,7 +125,7 @@ export function FloatingAIAssistant({ className }: FloatingAIAssistantProps) {
               variant="ghost"
               size="sm"
               className="h-8 w-8 p-0"
-              onClick={() => setIsMinimized(!isMinimized)}
+              onClick={toggleMinimized}
             >
               {isMinimized ? <Maximize2 className="size-4" /> : <Minimize2 className="size-4" />}
             </Button>
@@ -130,7 +133,7 @@ export function FloatingAIAssistant({ className }: FloatingAIAssistantProps) {
               variant="ghost"
               size="sm"
               className="h-8 w-8 p-0"
-              onClick={() => setIsOpen(false)}
+              onClick={closeAssistant}
             >
               <X className="size-4" />
             </Button>

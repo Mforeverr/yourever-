@@ -10,7 +10,11 @@ import { ExplorerToolbar } from '@/components/explorer/explorer-toolbar'
 import { ExplorerStatusBar } from '@/components/explorer/explorer-status-bar'
 import { ExplorerProvider, useExplorer } from '@/contexts/explorer-context'
 import { useExplorerRightPanel } from '@/hooks/use-explorer-right-panel'
-import { mockExplorerData } from '@/lib/explorer-data'
+import { useScope } from '@/contexts/scope-context'
+import {
+  useMockExplorerStore,
+  selectExplorerTreeForScope
+} from '@/lib/mock-explorer'
 
 function ExplorerViewContent() {
   const {
@@ -25,6 +29,14 @@ function ExplorerViewContent() {
     setSearchTerm,
     setFilterType
   } = useExplorer()
+  const { currentOrgId, currentDivisionId } = useScope()
+
+  const explorerTree = useMockExplorerStore(
+    React.useCallback(
+      (state) => selectExplorerTreeForScope(state, currentOrgId, currentDivisionId),
+      [currentOrgId, currentDivisionId]
+    )
+  )
 
   // Connect Explorer to RightPanel
   useExplorerRightPanel()
@@ -61,10 +73,12 @@ function ExplorerViewContent() {
 
   // Get filtered data for current view
   const getFilteredData = () => {
+    const treeData = explorerTree
+
     if (viewMode === 'tree') {
-      return mockExplorerData
+      return treeData
     } else {
-      const flattened = flattenItems(mockExplorerData, filterType)
+      const flattened = flattenItems(treeData, filterType)
       return filterItems(flattened, searchTerm)
     }
   }

@@ -34,7 +34,8 @@ interface SearchFilter {
   removable?: boolean
 }
 
-interface SearchBarProps extends React.HTMLAttributes<HTMLDivElement> {
+interface SearchBarProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onChange' | 'onSubmit'> {
   value?: string
   onChange?: (value: string) => void
   onSubmit?: (value: string) => void

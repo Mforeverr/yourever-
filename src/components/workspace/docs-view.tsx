@@ -53,7 +53,7 @@ interface SlashCommand {
   description: string
   icon: React.ReactNode
   keywords: string[]
-  action: (editor: any) => void
+  action: () => void
 }
 
 const mockDocuments: Document[] = [
@@ -117,7 +117,7 @@ const slashCommands: SlashCommand[] = [
     description: "Large heading",
     icon: <Heading1 className="h-4 w-4" />,
     keywords: ["h1", "heading", "title"],
-    action: (editor) => {
+    action: () => {
       // Insert H1 heading
       console.log("Insert H1")
     }
@@ -128,7 +128,7 @@ const slashCommands: SlashCommand[] = [
     description: "Medium heading",
     icon: <Heading2 className="h-4 w-4" />,
     keywords: ["h2", "heading", "subtitle"],
-    action: (editor) => {
+    action: () => {
       console.log("Insert H2")
     }
   },
@@ -138,7 +138,7 @@ const slashCommands: SlashCommand[] = [
     description: "Small heading",
     icon: <Heading3 className="h-4 w-4" />,
     keywords: ["h3", "heading"],
-    action: (editor) => {
+    action: () => {
       console.log("Insert H3")
     }
   },
@@ -148,7 +148,7 @@ const slashCommands: SlashCommand[] = [
     description: "Create a bullet list",
     icon: <List className="h-4 w-4" />,
     keywords: ["list", "bullets", "ul"],
-    action: (editor) => {
+    action: () => {
       console.log("Insert bullet list")
     }
   },
@@ -158,7 +158,7 @@ const slashCommands: SlashCommand[] = [
     description: "Create a numbered list",
     icon: <ListOrdered className="h-4 w-4" />,
     keywords: ["list", "numbers", "ol"],
-    action: (editor) => {
+    action: () => {
       console.log("Insert numbered list")
     }
   },
@@ -168,7 +168,7 @@ const slashCommands: SlashCommand[] = [
     description: "Add a quote",
     icon: <Quote className="h-4 w-4" />,
     keywords: ["quote", "blockquote"],
-    action: (editor) => {
+    action: () => {
       console.log("Insert quote")
     }
   },
@@ -178,7 +178,7 @@ const slashCommands: SlashCommand[] = [
     description: "Add a code block",
     icon: <Code className="h-4 w-4" />,
     keywords: ["code", "pre", "snippet"],
-    action: (editor) => {
+    action: () => {
       console.log("Insert code block")
     }
   },
@@ -188,7 +188,7 @@ const slashCommands: SlashCommand[] = [
     description: "Add a horizontal divider",
     icon: <div className="w-4 h-0.5 bg-border" />,
     keywords: ["divider", "hr", "separator"],
-    action: (editor) => {
+    action: () => {
       console.log("Insert divider")
     }
   },
@@ -198,7 +198,7 @@ const slashCommands: SlashCommand[] = [
     description: "Add a table",
     icon: <Table className="h-4 w-4" />,
     keywords: ["table", "grid"],
-    action: (editor) => {
+    action: () => {
       console.log("Insert table")
     }
   },
@@ -208,7 +208,7 @@ const slashCommands: SlashCommand[] = [
     description: "Create a todo list",
     icon: <CheckSquare className="h-4 w-4" />,
     keywords: ["todo", "checkbox", "task"],
-    action: (editor) => {
+    action: () => {
       console.log("Insert checkbox list")
     }
   }
@@ -415,7 +415,6 @@ export function DocsView() {
   const [showSlashMenu, setShowSlashMenu] = React.useState(false)
   const [slashQuery, setSlashQuery] = React.useState("")
   const [editorContent, setEditorContent] = React.useState("")
-  const editorRef = React.useRef<any>(null)
 
   const folders = React.useMemo(() => {
     const folderSet = new Set(documents.map(doc => doc.folder).filter(Boolean))
@@ -500,7 +499,7 @@ export function DocsView() {
   }
 
   const handleSlashCommand = (command: SlashCommand) => {
-    command.action(editorRef.current)
+    command.action()
     setShowSlashMenu(false)
     setSlashQuery("")
   }
@@ -630,7 +629,6 @@ export function DocsView() {
               
               <CardContent className="relative">
                 <RichTextEditor
-                  ref={editorRef}
                   value={editorContent}
                   onChange={handleEditorChange}
                   placeholder="Start typing... (Type '/' for commands)"

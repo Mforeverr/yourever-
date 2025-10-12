@@ -7,7 +7,7 @@ import {
   Send,
   Smile,
   Paperclip,
-  Image,
+  Image as ImageIcon,
   Mic,
   MicOff,
   Bold,
@@ -279,7 +279,7 @@ export default function MessageInput({
               input.click()
             }}
           >
-            <Image className="h-4 w-4" alt="Upload image" />
+            <ImageIcon className="h-4 w-4" />
           </Button>
 
           {/* Voice Recording */}

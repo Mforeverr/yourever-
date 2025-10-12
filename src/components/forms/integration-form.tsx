@@ -43,7 +43,6 @@ import {
   Globe,
   Github,
   Slack,
-  Google,
   Mail,
   Calendar,
   Database,
@@ -54,17 +53,15 @@ import {
 // Form validation schema
 const integrationSchema = z.object({
   name: z.string().min(1, "Integration name is required"),
-  type: z.enum(["webhook", "oauth", "api_key", "database"], {
-    required_error: "Please select integration type",
-  }),
+  type: z.enum(["webhook", "oauth", "api_key", "database"]),
   baseUrl: z.string().url("Please enter a valid URL").optional().or(z.literal("")),
   apiKey: z.string().optional(),
   clientId: z.string().optional(),
   clientSecret: z.string().optional(),
   webhookUrl: z.string().url("Please enter a valid webhook URL").optional().or(z.literal("")),
   events: z.array(z.string()).optional(),
-  headers: z.record(z.string()).optional(),
-  enabled: z.boolean().default(true),
+  headers: z.record(z.string(), z.string()).optional(),
+  enabled: z.boolean(),
   description: z.string().optional(),
 })
 

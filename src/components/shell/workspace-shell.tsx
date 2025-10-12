@@ -10,56 +10,106 @@ import { TabsBar } from "./tabs-bar"
 import { StatusBar } from "./status-bar"
 import { ScopeSwitcher } from "./scope-switcher"
 import { RightPanel } from "@/components/explorer/right-panel"
-import { RightPanelProvider, useRightPanel } from "@/contexts/right-panel-context"
+import { RightPanelProvider } from "@/contexts/right-panel-context"
 import { FloatingAIAssistant } from "@/components/ui/floating-ai-assistant"
+import BottomPanel from "@/components/chat/bottom-panel"
+import { ScopeProvider, useScope } from "@/contexts/scope-context"
+import { useProtectedRoute } from "@/hooks/use-protected-route"
+import { useUIStore } from "@/state/ui.store"
+import type { UITab } from "@/state/ui.store"
 
 interface WorkspaceShellProps {
   children: React.ReactNode
   className?: string
 }
 
-interface Tab {
-  id: string
-  title: string
-  type: 'task' | 'project' | 'doc' | 'channel' | 'calendar' | 'timeline'
-  isDirty?: boolean
-  isActive?: boolean
-}
-
-interface Organization {
-  id: string
-  name: string
-  divisions: Array<{
-    id: string
-    name: string
-  }>
-}
-
 function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const [activeActivity, setActiveActivity] = React.useState('home')
-  const [activeTabId, setActiveTabId] = React.useState('dashboard')
-  const [leftSidebarCollapsed, setLeftSidebarCollapsed] = React.useState(false)
-  const { isCollapsed: rightPanelCollapsed, setIsCollapsed: setRightPanelCollapsed } = useRightPanel()
+  const { isLoading: authLoading } = useProtectedRoute()
+  const {
+    organizations,
+    currentOrgId,
+    currentDivisionId,
+    currentOrganization,
+    currentDivision,
+    setScope,
+    setDivision,
+    isReady
+  } = useScope()
+  const activeActivity = useUIStore((state) => state.activeActivity)
+  const setActiveActivity = useUIStore((state) => state.setActiveActivity)
+  const leftSidebarCollapsed = useUIStore((state) => state.leftSidebarCollapsed)
+  const toggleLeftSidebar = useUIStore((state) => state.toggleLeftSidebar)
+  const rightPanelCollapsed = useUIStore((state) => state.rightPanelCollapsed)
+  const setRightPanelCollapsed = useUIStore((state) => state.setRightPanelCollapsed)
+  const toggleRightPanel = useUIStore((state) => state.toggleRightPanel)
+  const tabs = useUIStore((state) => state.tabs)
+  const activeTabId = useUIStore((state) => state.activeTabId ?? undefined)
+  const setActiveTabId = useUIStore((state) => state.setActiveTabId)
+  const closeTab = useUIStore((state) => state.closeTab)
+  const openTab = useUIStore((state) => state.openTab)
+  const toggleSplitView = useUIStore((state) => state.toggleSplitView)
+  const rightPanelSize = useUIStore((state) => state.rightPanelSize)
+  const setRightPanelSize = useUIStore((state) => state.setRightPanelSize)
+
+  const scopedBasePath = React.useMemo(() => {
+    if (!currentOrgId || !currentDivisionId) return null
+    return `/${currentOrgId}/${currentDivisionId}`
+  }, [currentDivisionId, currentOrgId])
+
+  const buildScopedPath = React.useCallback(
+    (target: string) => {
+      if (!scopedBasePath) {
+        return '/select-org'
+      }
+
+      const normalizedTarget = target.startsWith('/') ? target : `/${target}`
+      return `${scopedBasePath}${normalizedTarget}`.replace(/\/+$/, '')
+    },
+    [scopedBasePath]
+  )
+
+  const pushScopedPath = React.useCallback(
+    (target: string) => {
+      const destination = buildScopedPath(target)
+      router.push(destination)
+    },
+    [buildScopedPath, router]
+  )
+
+  const applyScopeToCurrentPath = React.useCallback(
+    (orgId: string, divisionId: string) => {
+      const segments = pathname.split('/').filter(Boolean)
+      const restSegments = segments.length >= 3 ? segments.slice(2) : ['dashboard']
+      const trailingPath = restSegments.join('/')
+      const destination = `/${orgId}/${divisionId}/${trailingPath}`.replace(/\/+$/, '')
+      router.push(destination)
+    },
+    [pathname, router]
+  )
 
   // Set active activity based on current path
   React.useEffect(() => {
-    if (pathname.startsWith('/dashboard')) {
+    const segments = pathname.split('/').filter(Boolean)
+    const scopedSegment =
+      segments.length >= 3 ? segments[2] : segments.length >= 1 ? segments[0] : ''
+
+    if (scopedSegment === 'dashboard' || scopedSegment === '') {
       setActiveActivity('home')
-    } else if (pathname.startsWith('/workspace')) {
+    } else if (scopedSegment === 'workspace') {
       setActiveActivity('workspace')
-    } else if (pathname.startsWith('/calendar')) {
+    } else if (scopedSegment === 'calendar') {
       setActiveActivity('calendar')
-    } else if (pathname.startsWith('/people')) {
+    } else if (scopedSegment === 'people') {
       setActiveActivity('people')
-    } else if (pathname.startsWith('/admin')) {
+    } else if (scopedSegment === 'admin') {
       setActiveActivity('admin')
-    } else if (pathname.startsWith('/c/') || pathname.startsWith('/dm/')) {
+    } else if (scopedSegment.startsWith('c') || scopedSegment.startsWith('dm')) {
       setActiveActivity('channels')
-    } else if (pathname.startsWith('/explorer')) {
+    } else if (scopedSegment === 'explorer') {
       setActiveActivity('explorer')
-    } else if (pathname.startsWith('/ai')) {
+    } else if (scopedSegment === 'ai') {
       setActiveActivity('ai')
     } else {
       setActiveActivity('home')
@@ -72,204 +122,193 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
 
     switch (activity) {
       case 'home':
-        router.push('/dashboard')
+        pushScopedPath('/dashboard')
         break
       case 'workspace':
-        router.push('/workspace')
+        pushScopedPath('/workspace')
         break
       case 'calendar':
-        router.push('/calendar')
+        pushScopedPath('/calendar')
         break
       case 'people':
-        router.push('/people')
+        pushScopedPath('/people')
         break
       case 'admin':
-        router.push('/admin')
+        pushScopedPath('/admin')
         break
       case 'channels':
-        router.push('/c/general')
+        pushScopedPath('/channels')
         break
       case 'explorer':
-        router.push('/explorer')
+        pushScopedPath('/explorer')
         break
       case 'ai':
-        router.push('/ai')
+        pushScopedPath('/ai')
         break
       default:
-        router.push('/dashboard')
+        pushScopedPath('/dashboard')
         break
     }
   }
   
-  const [tabs, setTabs] = React.useState<Tab[]>([
-    { id: 'dashboard', title: 'Dashboard', type: 'project', isActive: true },
-    { id: 'website-revamp', title: 'Website Revamp', type: 'project', isActive: false },
-    { id: 'general-channel', title: '#general', type: 'channel', isActive: false, isDirty: true },
-  ])
-
-  const mockOrganizations: Organization[] = [
-    {
-      id: 'acme',
-      name: 'Acme',
-      divisions: [
-        { id: 'marketing', name: 'Marketing' },
-        { id: 'product', name: 'Product' },
-        { id: 'engineering', name: 'Engineering' },
-      ]
-    },
-    {
-      id: 'yourever',
-      name: 'Yourever Labs',
-      divisions: [
-        { id: 'design', name: 'Design' },
-        { id: 'development', name: 'Development' },
-      ]
-    }
-  ]
-
   const handleTabChange = (tabId: string) => {
     setActiveTabId(tabId)
-    setTabs(prev => prev.map(tab => ({
-      ...tab,
-      isActive: tab.id === tabId
-    })))
   }
 
   const handleTabClose = (tabId: string) => {
-    setTabs(prev => {
-      const newTabs = prev.filter(tab => tab.id !== tabId)
-      if (tabId === activeTabId && newTabs.length > 0) {
-        const newActiveTab = newTabs[0]
-        setActiveTabId(newActiveTab.id)
-        return newTabs.map(tab => ({
-          ...tab,
-          isActive: tab.id === newActiveTab.id
-        }))
-      }
-      return newTabs.map(tab => ({ ...tab, isActive: tab.id === activeTabId }))
-    })
+    closeTab(tabId)
   }
 
   const handleNewTab = () => {
-    const newTab: Tab = {
+    const newTab: UITab = {
       id: `tab-${Date.now()}`,
       title: 'New Tab',
       type: 'task',
-      isActive: true
+      isActive: true,
+      isSplit: false,
     }
-    setTabs(prev => [
-      ...prev.map(tab => ({ ...tab, isActive: false })),
-      newTab
-    ])
-    setActiveTabId(newTab.id)
+    openTab(newTab)
   }
 
   // Keyboard shortcut to toggle right panel (Ctrl/Cmd + B)
   React.useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
-        e.preventDefault()
-        setRightPanelCollapsed(prev => !prev)
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'b' && !event.shiftKey) {
+        event.preventDefault()
+        toggleRightPanel()
       }
-      // Toggle left sidebar with Ctrl/Cmd + Shift + B
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'B') {
-        e.preventDefault()
-        setLeftSidebarCollapsed(prev => !prev)
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'b') {
+        event.preventDefault()
+        toggleLeftSidebar()
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'j') {
+        event.preventDefault()
+        useUIStore.getState().toggleBottomPanel()
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [toggleLeftSidebar, toggleRightPanel])
+
+  if (authLoading || !isReady) {
+    return (
+      <div className={cn("h-screen flex flex-col bg-background", className)}>
+        <div className="flex-1 flex items-center justify-center text-muted-foreground">
+          Loading workspace&hellip;
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <RightPanelProvider>
-      <div className={cn("h-screen flex flex-col bg-background", className)}>
-        {/* Header with Scope Switcher */}
-        <div className="flex items-center justify-between px-4 py-2 bg-surface-panel border-b border-border">
-          <ScopeSwitcher
-            organizations={mockOrganizations}
-            currentOrgId="acme"
-            currentDivisionId="marketing"
-          />
-          <div className="flex items-center gap-2">
-            {/* Add header actions here */}
-          </div>
+    <div className={cn("h-screen flex flex-col bg-background", className)}>
+      {/* Header with Scope Switcher */}
+      <div className="flex items-center justify-between px-4 py-2 bg-surface-panel border-b border-border">
+        <ScopeSwitcher
+          organizations={organizations}
+          currentOrgId={currentOrgId ?? undefined}
+          currentDivisionId={currentDivisionId ?? undefined}
+          onScopeChange={(orgId, divisionId) => {
+            setScope(orgId, divisionId)
+            applyScopeToCurrentPath(orgId, divisionId)
+          }}
+          onDivisionChange={(divisionId) => {
+            setDivision(divisionId)
+            if (currentOrgId) {
+              applyScopeToCurrentPath(currentOrgId, divisionId)
+            }
+          }}
+        />
+        <div className="flex items-center gap-2">
+          {/* Add header actions here */}
         </div>
-
-        {/* Main Content Area */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* Activity Bar */}
-          <ActivityBar
-            activeItem={activeActivity}
-            onItemChange={handleActivityChange}
-            isCollapsed={leftSidebarCollapsed}
-            onToggleCollapse={() => setLeftSidebarCollapsed(!leftSidebarCollapsed)}
-          />
-
-          {/* Resizable Panels */}
-          <ResizablePanelGroup direction="horizontal" className="flex-1">
-            {/* Side Bar */}
-            <ResizablePanel 
-              defaultSize={leftSidebarCollapsed ? 0 : 20} 
-              minSize={leftSidebarCollapsed ? 0 : 15} 
-              maxSize={leftSidebarCollapsed ? 0 : 30}
-            >
-              {!leftSidebarCollapsed && (
-                <SideBar activePanel={activeActivity} />
-              )}
-            </ResizablePanel>
-            
-            <ResizableHandle withHandle className="w-px bg-border" />
-            
-            {/* Main Editor Area */}
-            <ResizablePanel defaultSize={leftSidebarCollapsed ? 80 : 60}>
-              <div className="h-full flex flex-col">
-                {/* Tabs Bar */}
-                <TabsBar
-                  tabs={tabs}
-                  activeTabId={activeTabId}
-                  onTabChange={handleTabChange}
-                  onTabClose={handleTabClose}
-                  onNewTab={handleNewTab}
-                />
-                
-                {/* Editor Content */}
-                <div className="flex-1 overflow-auto">
-                  {children}
-                </div>
-              </div>
-            </ResizablePanel>
-            
-            <ResizableHandle withHandle className="w-px bg-border" />
-            
-            {/* Right Panel */}
-            <ResizablePanel
-              defaultSize={rightPanelCollapsed ? 2 : 25}
-              minSize={rightPanelCollapsed ? 2 : 20}
-              maxSize={rightPanelCollapsed ? 2 : 40}
-            >
-              <RightPanel onCollapsedChange={setRightPanelCollapsed} />
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        </div>
-
-        {/* Status Bar */}
-        <StatusBar />
       </div>
 
-      {/* Floating AI Assistant */}
-      <FloatingAIAssistant />
-    </RightPanelProvider>
+      {/* Main Content Area */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Activity Bar */}
+        <ActivityBar
+          activeItem={activeActivity}
+          onItemChange={handleActivityChange}
+          isCollapsed={leftSidebarCollapsed}
+          onToggleCollapse={toggleLeftSidebar}
+        />
+
+        {/* Resizable Panels */}
+        <ResizablePanelGroup direction="horizontal" className="flex-1">
+          {/* Side Bar */}
+          <ResizablePanel 
+            defaultSize={leftSidebarCollapsed ? 0 : 20} 
+            minSize={leftSidebarCollapsed ? 0 : 15} 
+            maxSize={leftSidebarCollapsed ? 0 : 30}
+          >
+            {!leftSidebarCollapsed && (
+              <SideBar activePanel={activeActivity} />
+            )}
+          </ResizablePanel>
+          
+          <ResizableHandle withHandle className="w-px bg-border" />
+          
+          {/* Main Editor Area */}
+          <ResizablePanel defaultSize={leftSidebarCollapsed ? 80 : 60}>
+            <div className="h-full flex flex-col">
+              {/* Tabs Bar */}
+              <TabsBar
+                tabs={tabs}
+                activeTabId={activeTabId}
+                onTabChange={handleTabChange}
+                onTabClose={handleTabClose}
+                onNewTab={handleNewTab}
+                onSplitView={toggleSplitView}
+              />
+              
+              {/* Editor Content */}
+              <div className="flex-1 overflow-auto">
+                {children}
+              </div>
+            </div>
+          </ResizablePanel>
+          
+          <ResizableHandle withHandle className="w-px bg-border" />
+          
+          {/* Right Panel */}
+          <ResizablePanel
+            defaultSize={rightPanelCollapsed ? 2 : rightPanelSize}
+            minSize={rightPanelCollapsed ? 2 : 20}
+            maxSize={rightPanelCollapsed ? 2 : 40}
+            onResize={(size) => {
+              if (!rightPanelCollapsed) {
+                setRightPanelSize(size)
+              }
+            }}
+          >
+            <RightPanel onCollapsedChange={setRightPanelCollapsed} />
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      </div>
+
+      {/* Status Bar */}
+      <div className="relative">
+        <StatusBar
+          orgName={currentOrganization?.name ?? 'Select organization'}
+          divisionName={currentDivision?.name ?? 'Select division'}
+        />
+        <FloatingAIAssistant />
+      </div>
+      <BottomPanel />
+    </div>
   )
 }
 
 function WorkspaceShell({ children, className }: WorkspaceShellProps) {
   return (
     <RightPanelProvider>
-      <WorkspaceShellContent className={className}>
-        {children}
-      </WorkspaceShellContent>
+      <ScopeProvider>
+        <WorkspaceShellContent className={className}>
+          {children}
+        </WorkspaceShellContent>
+      </ScopeProvider>
     </RightPanelProvider>
   )
 }

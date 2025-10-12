@@ -6,6 +6,14 @@
       "headers": {
         "CONTEXT7_API_KEY": "ctx7sk-8dec81bb-fe41-4d36-a3db-6de72af458d8"
       }
+    },
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=eweaektalqrsrdokljvl&features=docs%2Caccount%2Cdatabase%2Cdebugging%2Cdevelopment%2Cfunctions%2Cbranching%2Cstorage"
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"]
     }
   }
 }

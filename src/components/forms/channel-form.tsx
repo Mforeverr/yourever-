@@ -47,9 +47,7 @@ const channelSchema = z.object({
     .min(1, "Channel name is required")
     .regex(/^[a-z0-9-_]+$/, "Channel name can only contain lowercase letters, numbers, hyphens, and underscores")
     .max(21, "Channel name must be 21 characters or less"),
-  visibility: z.enum(["public", "private"], {
-    required_error: "Please select visibility",
-  }),
+  visibility: z.enum(["public", "private"]),
   defaultMembers: z.array(z.string()).optional(),
   description: z.string().max(250, "Description must be 250 characters or less").optional(),
 })

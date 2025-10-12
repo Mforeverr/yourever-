@@ -127,7 +127,7 @@ function MonthView({ currentDate, events, onEventClick, onDateClick }: {
   const startDate = new Date(firstDay)
   startDate.setDate(startDate.getDate() - firstDay.getDay())
   
-  const days = []
+  const days: Date[] = []
   const current = new Date(startDate)
   
   while (current <= lastDay || current.getDay() !== 0) {
@@ -239,7 +239,7 @@ function WeekView({ currentDate, events, onEventClick, onDateClick }: {
   endOfWeek.setDate(startOfWeek.getDate() + 6)
   endOfWeek.setHours(23, 59, 59, 999)
 
-  const weekDays = []
+  const weekDays: Date[] = []
   for (let i = 0; i < 7; i++) {
     const day = new Date(startOfWeek)
     day.setDate(startOfWeek.getDate() + i)

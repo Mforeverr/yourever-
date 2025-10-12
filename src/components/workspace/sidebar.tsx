@@ -3,6 +3,7 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { isFeatureEnabled } from "@/lib/feature-flags"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -12,6 +13,19 @@ import { PeopleSidebar } from "@/components/people/people-sidebar"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { ProjectForm } from "@/components/forms/project-form"
 import { ChannelForm } from "@/components/forms/channel-form"
+import { useScope } from "@/contexts/scope-context"
+import {
+  useMockConversationStore,
+  selectChannelsForScope,
+  selectDirectMessageUsersForScope
+} from "@/lib/mock-conversations"
+import {
+  useMockWorkspaceStore,
+  filterProjectsByScope,
+  filterTasksByScope,
+  filterDocsByScope,
+  countProjectsForDivision
+} from "@/lib/mock-workspace"
 
 interface SideBarProps {
   activePanel: string
@@ -45,13 +59,45 @@ interface WorkspaceContentProps {
 
 function ExplorerContent({ className }: ExplorerContentProps) {
   const [expandedSections, setExpandedSections] = React.useState<string[]>(['divisions', 'projects'])
-  
+  const router = useRouter()
+  const { currentOrganization, currentOrgId, currentDivision, currentDivisionId, setScope, setDivision } = useScope()
+
+  const projects = useMockWorkspaceStore((state) => state.projects)
+  const docs = useMockWorkspaceStore((state) => state.docs)
+
+  const scopedProjects = React.useMemo(
+    () => filterProjectsByScope(projects, currentOrgId, currentDivisionId),
+    [projects, currentOrgId, currentDivisionId]
+  )
+
+  const scopedDocs = React.useMemo(
+    () => filterDocsByScope(docs, currentOrgId, currentDivisionId),
+    [docs, currentOrgId, currentDivisionId]
+  )
+
+  const canOpenProjects = isFeatureEnabled("projects.detail", process.env.NODE_ENV !== "production")
+  const workspaceBasePath =
+    currentOrgId && currentDivisionId ? `/${currentOrgId}/${currentDivisionId}` : null
+
+  const handleProjectOpen = (projectId: string) => {
+    if (!workspaceBasePath || !canOpenProjects) {
+      return
+    }
+    router.push(`${workspaceBasePath}/projects/${projectId}`)
+  }
+
   const toggleSection = (section: string) => {
-    setExpandedSections(prev => 
-      prev.includes(section) 
-        ? prev.filter(s => s !== section)
-        : [...prev, section]
+    setExpandedSections((prev) =>
+      prev.includes(section) ? prev.filter((s) => s !== section) : [...prev, section]
     )
+  }
+
+  const handleDivisionSelect = (orgId: string, divisionId: string) => {
+    if (currentOrganization?.id === orgId) {
+      setDivision(divisionId)
+    } else {
+      setScope(orgId, divisionId)
+    }
   }
 
   return (
@@ -59,13 +105,13 @@ function ExplorerContent({ className }: ExplorerContentProps) {
       <div className="p-3 border-b border-border">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input 
-            placeholder="Search workspace..." 
+          <Input
+            placeholder="Search workspace..."
             className="pl-9 h-8 bg-surface-elevated border-border"
           />
         </div>
       </div>
-      
+
       <ScrollArea className="flex-1 p-2">
         <div className="space-y-2">
           {/* Divisions */}
@@ -85,18 +131,31 @@ function ExplorerContent({ className }: ExplorerContentProps) {
             </Button>
             {expandedSections.includes('divisions') && (
               <div className="ml-4 space-y-1">
-                <div className="flex items-center justify-between p-2 rounded-lg hover:bg-accent/50 cursor-pointer">
-                  <span className="text-sm">Marketing</span>
-                  <Badge variant="secondary" className="text-xs">3</Badge>
-                </div>
-                <div className="flex items-center justify-between p-2 rounded-lg hover:bg-accent/50 cursor-pointer">
-                  <span className="text-sm">Product</span>
-                  <Badge variant="secondary" className="text-xs">2</Badge>
-                </div>
-                <div className="flex items-center justify-between p-2 rounded-lg hover:bg-accent/50 cursor-pointer">
-                  <span className="text-sm">Engineering</span>
-                  <Badge variant="secondary" className="text-xs">5</Badge>
-                </div>
+                {currentOrganization ? (
+                  currentOrganization.divisions.map((division) => {
+                    const projectCount = countProjectsForDivision(projects, currentOrgId, division.id)
+                    return (
+                      <button
+                        key={division.id}
+                        type="button"
+                        className={cn(
+                          "flex w-full items-center justify-between rounded-lg p-2 transition-colors hover:bg-accent/50",
+                          currentDivision?.id === division.id && "bg-accent"
+                        )}
+                        onClick={() => handleDivisionSelect(currentOrganization.id, division.id)}
+                      >
+                        <span className="text-sm">{division.name}</span>
+                        <Badge variant="secondary" className="text-xs">
+                          {projectCount}
+                        </Badge>
+                      </button>
+                    )
+                  })
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Select an organization to see its divisions.
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -118,18 +177,29 @@ function ExplorerContent({ className }: ExplorerContentProps) {
             </Button>
             {expandedSections.includes('projects') && (
               <div className="ml-4 space-y-1">
-                <div className="flex items-center justify-between p-2 rounded-lg hover:bg-accent/50 cursor-pointer">
-                  <span className="text-sm">Website Revamp</span>
-                  <Badge variant="outline" className="text-xs">12</Badge>
-                </div>
-                <div className="flex items-center justify-between p-2 rounded-lg hover:bg-accent/50 cursor-pointer">
-                  <span className="text-sm">Pricing Experiments</span>
-                  <Badge variant="outline" className="text-xs">8</Badge>
-                </div>
-                <div className="flex items-center justify-between p-2 rounded-lg hover:bg-accent/50 cursor-pointer">
-                  <span className="text-sm">Mobile App</span>
-                  <Badge variant="outline" className="text-xs">15</Badge>
-                </div>
+                {scopedProjects.length > 0 ? (
+                  scopedProjects.map((project) => (
+                    <button
+                      key={project.id}
+                      type="button"
+                      onClick={() => handleProjectOpen(project.id)}
+                      className={cn(
+                        "flex w-full items-center justify-between rounded-lg p-2 transition-colors",
+                        canOpenProjects ? "hover:bg-accent/50" : "cursor-not-allowed opacity-60"
+                      )}
+                      disabled={!canOpenProjects || !workspaceBasePath}
+                    >
+                      <span className="text-sm text-left">{project.name}</span>
+                      <Badge variant="outline" className="text-xs">
+                        {project.badgeCount}
+                      </Badge>
+                    </button>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Select a division to see scoped projects.
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -151,21 +221,26 @@ function ExplorerContent({ className }: ExplorerContentProps) {
             </Button>
             {expandedSections.includes('docs') && (
               <div className="ml-4 space-y-1">
-                <div className="p-2 rounded-lg hover:bg-accent/50 cursor-pointer">
-                  <span className="text-sm">Getting Started</span>
-                </div>
-                <div className="p-2 rounded-lg hover:bg-accent/50 cursor-pointer">
-                  <span className="text-sm">API Reference</span>
-                </div>
-                <div className="p-2 rounded-lg hover:bg-accent/50 cursor-pointer">
-                  <span className="text-sm">Design System</span>
-                </div>
+                {scopedDocs.length > 0 ? (
+                  scopedDocs.map((doc) => (
+                    <div
+                      key={doc.id}
+                      className="p-2 rounded-lg hover:bg-accent/50 cursor-pointer"
+                    >
+                      <span className="text-sm">{doc.name}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Switch to a division to load its documentation.
+                  </p>
+                )}
               </div>
             )}
           </div>
         </div>
       </ScrollArea>
-      
+
       <div className="p-2 border-t border-border">
         <Button variant="outline" size="sm" className="w-full">
           <Plus className="size-4 mr-2" />
@@ -176,44 +251,41 @@ function ExplorerContent({ className }: ExplorerContentProps) {
   )
 }
 
-interface Channel {
-  id: string
-  name: string
-  type: 'public' | 'private'
-  isMuted: boolean
-  isFavorite: boolean
-  unreadCount: number
-  memberCount?: number
-}
-
-interface User {
-  id: string
-  name: string
-  status: 'online' | 'away' | 'offline'
-  unreadCount?: number
-}
-
 function ChannelsContent({ className }: ChannelsContentProps) {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = React.useState('')
   const [showFavoritesOnly, setShowFavoritesOnly] = React.useState(false)
   const [expandedSections, setExpandedSections] = React.useState<string[]>(['channels', 'dms'])
+  const { currentOrgId, currentDivisionId } = useScope()
 
-  // Mock data
-  const channels: Channel[] = [
-    { id: '1', name: 'general', type: 'public', isMuted: false, isFavorite: true, unreadCount: 5, memberCount: 24 },
-    { id: '2', name: 'development', type: 'public', isMuted: false, isFavorite: true, unreadCount: 12, memberCount: 18 },
-    { id: '3', name: 'design', type: 'public', isMuted: true, isFavorite: false, unreadCount: 0, memberCount: 8 },
-    { id: '4', name: 'marketing', type: 'private', isMuted: false, isFavorite: false, unreadCount: 3, memberCount: 6 },
-    { id: '5', name: 'random', type: 'public', isMuted: false, isFavorite: false, unreadCount: 28, memberCount: 32 },
-  ]
+  const channels = useMockConversationStore(
+    React.useCallback(
+      (state) => selectChannelsForScope(state, currentOrgId, currentDivisionId),
+      [currentDivisionId, currentOrgId]
+    )
+  )
 
-  const users: User[] = [
-    { id: '1', name: 'Sarah Chen', status: 'online', unreadCount: 2 },
-    { id: '2', name: 'Mike Johnson', status: 'online', unreadCount: 0 },
-    { id: '3', name: 'Emily Davis', status: 'away', unreadCount: 0 },
-    { id: '4', name: 'Tom Wilson', status: 'offline', unreadCount: 1 },
-  ]
+  const dmUsers = useMockConversationStore(
+    React.useCallback(
+      (state) => selectDirectMessageUsersForScope(state, currentOrgId, currentDivisionId),
+      [currentDivisionId, currentOrgId]
+    )
+  )
+
+  const toggleChannelFavorite = useMockConversationStore((state) => state.toggleChannelFavorite)
+  const toggleChannelMute = useMockConversationStore((state) => state.toggleChannelMute)
+  const markChannelRead = useMockConversationStore((state) => state.markChannelRead)
+  const markDirectMessageRead = useMockConversationStore((state) => state.markDirectMessageRead)
+
+  const buildScopedPath = React.useCallback(
+    (suffix: string) => {
+      if (!currentOrgId || !currentDivisionId) {
+        return '/select-org'
+      }
+      return `/${currentOrgId}/${currentDivisionId}${suffix}`
+    },
+    [currentDivisionId, currentOrgId]
+  )
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => 
@@ -223,19 +295,9 @@ function ChannelsContent({ className }: ChannelsContentProps) {
     )
   }
 
-  const toggleFavorite = (channelId: string) => {
-    // This would update the channel in state
-    console.log('Toggle favorite:', channelId)
-  }
-
-  const toggleMute = (channelId: string) => {
-    // This would update the channel in state
-    console.log('Toggle mute:', channelId)
-  }
-
   const filteredChannels = channels.filter(channel => {
     const matchesSearch = channel.name.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesFavorites = !showFavoritesOnly || channel.isFavorite
+    const matchesFavorites = !showFavoritesOnly || !!channel.isFavorite
     return matchesSearch && matchesFavorites
   })
 
@@ -292,22 +354,25 @@ function ChannelsContent({ className }: ChannelsContentProps) {
             </Button>
             {expandedSections.includes('channels') && (
               <div className="space-y-1">
-                {filteredChannels.map(channel => {
+                {filteredChannels.length > 0 ? filteredChannels.map(channel => {
                   const Icon = channel.type === 'private' ? Lock : Hash
                   return (
                     <div
                       key={channel.id}
                       className="flex items-center justify-between p-2 rounded-lg hover:bg-accent/50 cursor-pointer group"
-                      onClick={() => router.push(`/c/${channel.id}`)}
+                      onClick={() => {
+                        markChannelRead(channel.id)
+                        router.push(buildScopedPath(`/c/${channel.id}`))
+                      }}
                     >
                       <div className="flex items-center gap-2">
                         <Icon className="size-4 text-muted-foreground" />
-                        <span className="text-sm">{channel.name}</span>
+                        <span className="text-sm">#{channel.name}</span>
                         {channel.isFavorite && <Star className="size-3 fill-current text-yellow-500" />}
                         {channel.isMuted && <BellOff className="size-3 text-muted-foreground" />}
                       </div>
                       <div className="flex items-center gap-1">
-                        {channel.unreadCount > 0 && (
+                        {(channel.unreadCount ?? 0) > 0 && (
                           <Badge variant="destructive" className="text-xs">
                             {channel.unreadCount}
                           </Badge>
@@ -319,7 +384,7 @@ function ChannelsContent({ className }: ChannelsContentProps) {
                             className="h-4 w-4"
                             onClick={(e) => {
                               e.stopPropagation()
-                              toggleFavorite(channel.id)
+                              toggleChannelFavorite(channel.id)
                             }}
                           >
                             <Star className={cn("size-3", channel.isFavorite && "fill-current")} />
@@ -330,7 +395,7 @@ function ChannelsContent({ className }: ChannelsContentProps) {
                             className="h-4 w-4"
                             onClick={(e) => {
                               e.stopPropagation()
-                              toggleMute(channel.id)
+                              toggleChannelMute(channel.id)
                             }}
                           >
                             {channel.isMuted ? <BellOff className="size-3" /> : <Bell className="size-3" />}
@@ -339,7 +404,11 @@ function ChannelsContent({ className }: ChannelsContentProps) {
                       </div>
                     </div>
                   )
-                })}
+                }) : (
+                  <div className="px-2 py-3 text-sm text-muted-foreground">
+                    No channels match this scope yet.
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -361,23 +430,30 @@ function ChannelsContent({ className }: ChannelsContentProps) {
             </Button>
             {expandedSections.includes('dms') && (
               <div className="space-y-1">
-                {users.map(user => (
+                {dmUsers.length > 0 ? dmUsers.map(user => (
                   <div
                     key={user.id}
                     className="flex items-center justify-between p-2 rounded-lg hover:bg-accent/50 cursor-pointer"
-                    onClick={() => router.push(`/dm/${user.id}`)}
+                    onClick={() => {
+                      markDirectMessageRead(user.id)
+                      router.push(buildScopedPath(`/dm/${user.id}`))
+                    }}
                   >
                     <div className="flex items-center gap-2">
                       <div className={cn("size-2 rounded-full", getStatusColor(user.status))} />
                       <span className="text-sm">{user.name}</span>
                     </div>
-                    {user.unreadCount && user.unreadCount > 0 && (
+                    {(user.unreadCount ?? 0) > 0 && (
                       <Badge variant="secondary" className="text-xs">
                         {user.unreadCount}
                       </Badge>
                     )}
                   </div>
-                ))}
+                )) : (
+                  <div className="px-2 py-3 text-sm text-muted-foreground">
+                    No teammates linked to this division yet.
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -457,18 +533,52 @@ function CalendarContent({ className }: CalendarContentProps) {
 
 function WorkspaceContent({ className }: WorkspaceContentProps) {
   const [expandedSections, setExpandedSections] = React.useState<string[]>(['projects', 'tasks'])
-  const [selectedItem, setSelectedItem] = React.useState<string | null>('website-revamp')
-  
+  const [selectedItem, setSelectedItem] = React.useState<string | null>(null)
+  const router = useRouter()
+  const { currentOrgId, currentDivision, currentDivisionId } = useScope()
+
+  const projects = useMockWorkspaceStore((state) => state.projects)
+  const tasks = useMockWorkspaceStore((state) => state.tasks)
+
+  const scopedProjects = React.useMemo(
+    () => filterProjectsByScope(projects, currentOrgId, currentDivisionId),
+    [projects, currentOrgId, currentDivisionId]
+  )
+
+  const scopedTasks = React.useMemo(
+    () => filterTasksByScope(tasks, currentOrgId, currentDivisionId),
+    [tasks, currentOrgId, currentDivisionId]
+  )
+
+  React.useEffect(() => {
+    if (scopedProjects.length === 0) {
+      setSelectedItem(null)
+      return
+    }
+
+    setSelectedItem((previous) =>
+      previous && scopedProjects.some((project) => project.id === previous)
+        ? previous
+        : scopedProjects[0].id
+    )
+  }, [scopedProjects])
+
+  const canOpenProjects = isFeatureEnabled("projects.detail", process.env.NODE_ENV !== "production")
+  const workspaceBasePath =
+    currentOrgId && currentDivisionId ? `/${currentOrgId}/${currentDivisionId}` : null
+
   const toggleSection = (section: string) => {
-    setExpandedSections(prev => 
-      prev.includes(section) 
-        ? prev.filter(s => s !== section)
-        : [...prev, section]
+    setExpandedSections((prev) =>
+      prev.includes(section) ? prev.filter((s) => s !== section) : [...prev, section]
     )
   }
 
-  const handleSelect = (itemId: string) => {
-    setSelectedItem(itemId)
+  const handleProjectSelect = (projectId: string) => {
+    setSelectedItem(projectId)
+    if (!workspaceBasePath || !canOpenProjects) {
+      return
+    }
+    router.push(`${workspaceBasePath}/projects/${projectId}`)
   }
 
   return (
@@ -476,13 +586,17 @@ function WorkspaceContent({ className }: WorkspaceContentProps) {
       <div className="p-3 border-b border-border">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input 
-            placeholder="Search projects and tasks..." 
+          <Input
+            placeholder={
+              currentDivision
+                ? `Search ${currentDivision.name.toLowerCase()} work...`
+                : 'Search projects and tasks...'
+            }
             className="pl-9 h-8 bg-surface-elevated border-border"
           />
         </div>
       </div>
-      
+
       <ScrollArea className="flex-1 p-2">
         <div className="space-y-2">
           {/* Projects */}
@@ -502,45 +616,32 @@ function WorkspaceContent({ className }: WorkspaceContentProps) {
             </Button>
             {expandedSections.includes('projects') && (
               <div className="ml-4 space-y-1">
-                <div 
-                  className={cn(
-                    "flex items-center justify-between p-2 rounded-lg cursor-pointer",
-                    selectedItem === 'website-revamp' ? "bg-accent" : "hover:bg-accent/50"
-                  )}
-                  onClick={() => handleSelect('website-revamp')}
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-blue-500" />
-                    <span className="text-sm">Website Revamp</span>
-                  </div>
-                  <Badge variant="outline" className="text-xs">12</Badge>
-                </div>
-                <div 
-                  className={cn(
-                    "flex items-center justify-between p-2 rounded-lg cursor-pointer",
-                    selectedItem === 'pricing-experiments' ? "bg-accent" : "hover:bg-accent/50"
-                  )}
-                  onClick={() => handleSelect('pricing-experiments')}
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-green-500" />
-                    <span className="text-sm">Pricing Experiments</span>
-                  </div>
-                  <Badge variant="outline" className="text-xs">8</Badge>
-                </div>
-                <div 
-                  className={cn(
-                    "flex items-center justify-between p-2 rounded-lg cursor-pointer",
-                    selectedItem === 'mobile-app' ? "bg-accent" : "hover:bg-accent/50"
-                  )}
-                  onClick={() => handleSelect('mobile-app')}
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-orange-500" />
-                    <span className="text-sm">Mobile App</span>
-                  </div>
-                  <Badge variant="outline" className="text-xs">15</Badge>
-                </div>
+                {scopedProjects.length > 0 ? (
+                  scopedProjects.map((project) => (
+                    <button
+                      key={project.id}
+                      type="button"
+                      className={cn(
+                        "flex w-full items-center justify-between rounded-lg p-2 transition-colors",
+                        selectedItem === project.id ? "bg-accent" : canOpenProjects ? "hover:bg-accent/50" : "cursor-not-allowed opacity-60"
+                      )}
+                      onClick={() => handleProjectSelect(project.id)}
+                      disabled={!canOpenProjects || !workspaceBasePath}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className={cn("w-2 h-2 rounded-full", project.dotColor)} />
+                        <span className="text-sm">{project.name}</span>
+                      </div>
+                      <Badge variant="outline" className="text-xs">
+                        {project.badgeCount}
+                      </Badge>
+                    </button>
+                  ))
+                ) : (
+                  <p className="px-2 py-3 text-sm text-muted-foreground">
+                    Projects scoped to this division will appear here.
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -562,45 +663,30 @@ function WorkspaceContent({ className }: WorkspaceContentProps) {
             </Button>
             {expandedSections.includes('tasks') && (
               <div className="ml-4 space-y-1">
-                <div 
-                  className={cn(
-                    "flex items-center justify-between p-2 rounded-lg cursor-pointer",
-                    selectedItem === 'task-auth' ? "bg-accent" : "hover:bg-accent/50"
-                  )}
-                  onClick={() => handleSelect('task-auth')}
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-red-500" />
-                    <span className="text-sm">Setup authentication</span>
-                  </div>
-                  <Badge variant="secondary" className="text-xs">High</Badge>
-                </div>
-                <div 
-                  className={cn(
-                    "flex items-center justify-between p-2 rounded-lg cursor-pointer",
-                    selectedItem === 'task-landing' ? "bg-accent" : "hover:bg-accent/50"
-                  )}
-                  onClick={() => handleSelect('task-landing')}
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-yellow-500" />
-                    <span className="text-sm">Design landing page</span>
-                  </div>
-                  <Badge variant="secondary" className="text-xs">Medium</Badge>
-                </div>
-                <div 
-                  className={cn(
-                    "flex items-center justify-between p-2 rounded-lg cursor-pointer",
-                    selectedItem === 'task-bug' ? "bg-accent" : "hover:bg-accent/50"
-                  )}
-                  onClick={() => handleSelect('task-bug')}
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-purple-500" />
-                    <span className="text-sm">Fix navigation bug</span>
-                  </div>
-                  <Badge variant="secondary" className="text-xs">Urgent</Badge>
-                </div>
+                {scopedTasks.length > 0 ? (
+                  scopedTasks.map((task) => (
+                    <div
+                      key={task.id}
+                      className={cn(
+                        "flex items-center justify-between p-2 rounded-lg cursor-pointer",
+                        selectedItem === task.id ? "bg-accent" : "hover:bg-accent/50"
+                      )}
+                      onClick={() => handleSelect(task.id)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className={cn("w-2 h-2 rounded-full", task.dotColor)} />
+                        <span className="text-sm">{task.name}</span>
+                      </div>
+                      <Badge variant={task.badgeVariant} className="text-xs">
+                        {task.priority}
+                      </Badge>
+                    </div>
+                  ))
+                ) : (
+                  <p className="px-2 py-3 text-sm text-muted-foreground">
+                    Tasks align to the currently active division.
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -639,7 +725,7 @@ function WorkspaceContent({ className }: WorkspaceContentProps) {
           </div>
         </div>
       </ScrollArea>
-      
+
       <div className="p-2 border-t border-border space-y-2">
         <ProjectForm>
           <Button variant="outline" size="sm" className="w-full">

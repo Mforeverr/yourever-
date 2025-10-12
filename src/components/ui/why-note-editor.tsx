@@ -16,7 +16,8 @@ import {
   X
 } from "lucide-react"
 
-interface WhyNoteEditorProps extends React.HTMLAttributes<HTMLDivElement> {
+interface WhyNoteEditorProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onChange' | 'onSubmit'> {
   value?: string
   onChange?: (value: string) => void
   placeholder?: string

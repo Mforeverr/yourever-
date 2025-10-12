@@ -1,0 +1,73 @@
+export const PROJECT_I18N_KEYS = {
+  page: {
+    title: "projects.page.title",
+    subtitle: "projects.page.subtitle",
+    breadcrumbRoot: "projects.page.breadcrumb.root",
+    breadcrumbProject: "projects.page.breadcrumb.project",
+  },
+  tabs: {
+    overview: "projects.tabs.overview",
+    tasks: "projects.tabs.tasks",
+    timeline: "projects.tabs.timeline",
+    docs: "projects.tabs.docs",
+    settings: "projects.tabs.settings",
+  },
+  header: {
+    editNameTooltip: "projects.header.edit_name_tooltip",
+    statusLabel: "projects.header.status_label",
+    priorityLabel: "projects.header.priority_label",
+    progressLabel: "projects.header.progress_label",
+    ownerLabel: "projects.header.owner_label",
+    defaultViewLabel: "projects.header.default_view_label",
+  },
+  overview: {
+    goalsTitle: "projects.overview.goals_title",
+    outcomesTitle: "projects.overview.outcomes_title",
+    metricsTitle: "projects.overview.metrics_title",
+    healthLabel: "projects.overview.health_label",
+    riskNotesLabel: "projects.overview.risk_notes_label",
+    emptyState: "projects.overview.empty_state",
+    budgetUsedLabel: "projects.overview.budget_used_label",
+  },
+  members: {
+    title: "projects.members.title",
+    addButton: "projects.members.add_button",
+    emptyState: "projects.members.empty_state",
+    roleOwner: "projects.members.role.owner",
+    roleEditor: "projects.members.role.editor",
+    roleViewer: "projects.members.role.viewer",
+    addDialogTitle: "projects.members.add_dialog.title",
+    addDialogDescription: "projects.members.add_dialog.description",
+    selectPlaceholder: "projects.members.add_dialog.select_placeholder",
+    roleLabel: "projects.members.add_dialog.role_label",
+    allAdded: "projects.members.add_dialog.all_added",
+    memberLabel: "projects.members.add_dialog.member_label",
+  },
+  settings: {
+    title: "projects.settings.title",
+    description: "projects.settings.description",
+    notificationsToggle: "projects.settings.notifications_toggle",
+    notificationsHint: "projects.settings.notifications_hint",
+    guestAccessToggle: "projects.settings.guest_access_toggle",
+    guestAccessHint: "projects.settings.guest_access_hint",
+    autoArchiveToggle: "projects.settings.auto_archive_toggle",
+    autoArchiveHint: "projects.settings.auto_archive_hint",
+    featureFlagsTitle: "projects.settings.feature_flags_title",
+    saveButton: "projects.settings.save_button",
+  },
+  errors: {
+    generic: "projects.errors.generic",
+    notFound: "projects.errors.not_found",
+    unauthorized: "projects.errors.unauthorized",
+    validationFailed: "projects.errors.validation_failed",
+  },
+  feedback: {
+    updateSuccess: "projects.feedback.update_success",
+    memberAdded: "projects.feedback.member_added",
+    memberRemoved: "projects.feedback.member_removed",
+    settingsSaved: "projects.feedback.settings_saved",
+  },
+} as const
+
+export type ProjectI18nSection = typeof PROJECT_I18N_KEYS
+export type ProjectI18nKey = ProjectI18nSection[keyof ProjectI18nSection][keyof ProjectI18nSection[keyof ProjectI18nSection]]

@@ -20,7 +20,7 @@ interface Option {
   group?: string
 }
 
-interface MultiSelectProps extends React.HTMLAttributes<HTMLDivElement> {
+interface MultiSelectProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onChange'> {
   options: Option[]
   value: string[]
   onChange: (value: string[]) => void

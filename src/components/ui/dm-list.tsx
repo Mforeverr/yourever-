@@ -2,7 +2,6 @@ import * as React from "react"
 import { Button } from "./button"
 import { Badge } from "./badge"
 import { Avatar, AvatarFallback, AvatarImage } from "./avatar"
-import { PresenceAvatarGroup } from "./presence-avatar-group"
 import { cn } from "@/lib/utils"
 import { 
   Search,
@@ -10,9 +9,7 @@ import {
   MoreHorizontal,
   Pin,
   Archive,
-  Mute,
-  Video,
-  Phone
+  BellOff
 } from "lucide-react"
 
 interface DMUser {
@@ -101,6 +98,7 @@ function DMList({
 
   const formatLastMessageTime = (date: Date | string) => {
     const d = typeof date === 'string' ? new Date(date) : date
+    if (Number.isNaN(d.getTime())) return ''
     const now = new Date()
     const diffMs = now.getTime() - d.getTime()
     const diffMins = Math.floor(diffMs / 60000)
@@ -121,7 +119,7 @@ function DMList({
 
   const renderConversation = (conv: DMItem) => {
     const isSelected = selectedConversation === conv.id
-    const hasUnread = showUnreadCount && conv.unreadCount && conv.unreadCount > 0
+    const hasUnread = showUnreadCount && (conv.unreadCount ?? 0) > 0
     const isTyping = showTypingIndicator && 'isTyping' in conv && conv.isTyping
 
     return (
@@ -189,7 +187,7 @@ function DMList({
               )}
               
               {conv.isMuted && (
-                <Mute className="h-3 w-3 text-muted-foreground" />
+                <BellOff className="h-3 w-3 text-muted-foreground" />
               )}
               
               {hasUnread && (
@@ -248,6 +246,7 @@ function DMList({
               e.stopPropagation()
               onConversationPin?.(conv.id, !conv.isPinned)
             }}
+            aria-label={conv.isPinned ? 'Unpin conversation' : 'Pin conversation'}
           >
             <Pin 
               className={cn(
@@ -256,7 +255,35 @@ function DMList({
               )}
             />
           </Button>
-          
+
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={(e) => {
+              e.stopPropagation()
+              onConversationMute?.(conv.id, !conv.isMuted)
+            }}
+            aria-label={conv.isMuted ? 'Unmute conversation' : 'Mute conversation'}
+          >
+            <BellOff className="h-3 w-3" />
+          </Button>
+
+          {onConversationArchive && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={(e) => {
+                e.stopPropagation()
+                onConversationArchive(conv.id)
+              }}
+              aria-label="Archive conversation"
+            >
+              <Archive className="h-3 w-3" />
+            </Button>
+          )}
+
           <Button
             variant="ghost"
             size="icon"
@@ -264,6 +291,7 @@ function DMList({
             onClick={(e) => {
               e.stopPropagation()
             }}
+            aria-label="Conversation actions"
           >
             <MoreHorizontal className="h-3 w-3" />
           </Button>

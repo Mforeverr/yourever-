@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { ExplorerItem } from '@/lib/explorer-data'
+import { useUIStore } from "@/state/ui.store"
 
 interface RightPanelContextType {
   selectedItems: ExplorerItem[]
@@ -33,8 +34,12 @@ export function RightPanelProvider({ children }: { children: React.ReactNode }) 
     statuses: [],
     types: [],
   })
-  const [isCollapsed, setIsCollapsed] = React.useState(false)
+  const isCollapsed = useUIStore((state) => state.rightPanelCollapsed)
+  const setRightPanelCollapsed = useUIStore((state) => state.setRightPanelCollapsed)
   const [activeTab, setActiveTab] = React.useState<'filters' | 'views' | 'metadata'>('filters')
+  const handleSetCollapsed = React.useCallback((collapsed: boolean) => {
+    setRightPanelCollapsed(collapsed)
+  }, [setRightPanelCollapsed])
 
   return (
     <RightPanelContext.Provider value={{
@@ -43,7 +48,7 @@ export function RightPanelProvider({ children }: { children: React.ReactNode }) 
       filters,
       setFilters,
       isCollapsed,
-      setIsCollapsed,
+      setIsCollapsed: handleSetCollapsed,
       activeTab,
       setActiveTab
     }}>

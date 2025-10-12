@@ -8,6 +8,10 @@ export interface ExplorerItem {
   children?: ExplorerItem[]
   createdAt: Date
   updatedAt: Date
+  scope?: {
+    orgIds: Array<string> | 'all'
+    divisions: Array<string> | 'all'
+  }
 }
 
 export interface User {
@@ -491,6 +495,8 @@ export const mockExplorerData: ExplorerItem[] = [
     ]
   }
 ]
+
+export const seedExplorerData: ExplorerItem[] = mockExplorerData
 
 export const viewModes: ExplorerViewMode[] = [
   { id: 'tree', name: 'Tree View', icon: 'TreePine', description: 'Hierarchical tree structure' },

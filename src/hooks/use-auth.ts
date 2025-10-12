@@ -1,0 +1,28 @@
+'use client'
+
+import { useAuth } from '@/contexts/auth-context'
+
+export const useCurrentUser = () => {
+  const {
+    user,
+    onboardingStatus,
+    updateOnboardingStatus,
+    markOnboardingComplete,
+    ...auth
+  } = useAuth()
+
+  return {
+    user,
+    isAuthenticated: !!user,
+    isDevUser: user?.email === 'dev@yourever.com',
+    canAccessOrg: (orgId: string) => user?.organizations.some((org) => org.id === orgId) ?? false,
+    canAccessDivision: (orgId: string, divisionId: string) => {
+      const org = user?.organizations.find((candidate) => candidate.id === orgId)
+      return org?.divisions.some((division) => division.id === divisionId) ?? false
+    },
+    onboardingStatus,
+    updateOnboardingStatus,
+    markOnboardingComplete,
+    ...auth
+  }
+}
