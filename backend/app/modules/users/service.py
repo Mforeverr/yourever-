@@ -11,6 +11,9 @@ from typing import Any, Dict, Optional
 from ...dependencies import CurrentPrincipal
 from .repository import UserRepository
 from .schemas import OnboardingSession, StoredOnboardingStatus, WorkspaceUser
+from ..onboarding.errors import OnboardingValidationError
+from ..onboarding.schemas import OnboardingCompletionResponse
+from ..onboarding.validation import evaluate_completion_validation
 
 
 class UserService:
@@ -43,6 +46,11 @@ class UserService:
         principal: CurrentPrincipal,
         status: StoredOnboardingStatus,
         answers: Optional[Dict[str, Any]] = None,
-    ) -> OnboardingSession:
+    ) -> OnboardingCompletionResponse:
         await self._ensure_user(principal)
-        return await self._repository.complete_onboarding(principal.id, status, answers)
+        validation = evaluate_completion_validation(status, answers)
+        if validation.hasBlockingIssue:
+            raise OnboardingValidationError(validation)
+
+        session = await self._repository.complete_onboarding(principal.id, status, answers)
+        return OnboardingCompletionResponse(session=session, validation=validation)

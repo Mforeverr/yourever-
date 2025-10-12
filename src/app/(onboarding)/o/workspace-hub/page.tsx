@@ -3,6 +3,7 @@
 import { useEffect, useMemo } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,6 +11,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { OnboardingShell } from '@/components/onboarding/onboarding-shell'
 import { useOnboardingStep } from '@/hooks/use-onboarding-step'
 import { useCurrentUser } from '@/hooks/use-auth'
+import { useOnboardingValidationFeedback } from '@/hooks/use-onboarding-validation'
 import { authStorage } from '@/lib/auth-utils'
 import { workspaceHubStepSchema } from '@/lib/onboarding-schemas'
 import { deepEqual } from '@/lib/object-utils'
@@ -51,6 +53,7 @@ export default function WorkspaceHubOnboardingPage() {
     mode: 'onChange',
     defaultValues: data,
   })
+  const { generalError } = useOnboardingValidationFeedback('workspace-hub', form)
   const {
     control,
     formState: { isValid, errors },
@@ -116,6 +119,12 @@ export default function WorkspaceHubOnboardingPage() {
       canNavigateToStep={canNavigateToStep}
       nextLabel={watchChoice === 'create-new' ? 'Create workspace' : 'Continue'}
     >
+      {generalError && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertTitle>We need a quick update</AlertTitle>
+          <AlertDescription>{generalError}</AlertDescription>
+        </Alert>
+      )}
       <form className="space-y-6" onSubmit={(event) => event.preventDefault()}>
         <div className="space-y-3">
           <Label className="text-sm font-medium text-foreground">How do you want to get started?</Label>

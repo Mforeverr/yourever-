@@ -3,12 +3,14 @@
 import { useEffect, useMemo } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { OnboardingShell } from '@/components/onboarding/onboarding-shell'
 import { useOnboardingStep } from '@/hooks/use-onboarding-step'
+import { useOnboardingValidationFeedback } from '@/hooks/use-onboarding-validation'
 import { toolsStepSchema } from '@/lib/onboarding-schemas'
 import { deepEqual } from '@/lib/object-utils'
 import {
@@ -95,6 +97,7 @@ export default function ToolsOnboardingPage() {
     mode: 'onChange',
     defaultValues: data,
   })
+  const { generalError } = useOnboardingValidationFeedback('tools', form)
   const {
     control,
     formState: { isValid },
@@ -199,6 +202,12 @@ export default function ToolsOnboardingPage() {
       onStepSelect={goToStepId}
       canNavigateToStep={canNavigateToStep}
     >
+      {generalError && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertTitle>We need a quick update</AlertTitle>
+          <AlertDescription>{generalError}</AlertDescription>
+        </Alert>
+      )}
       <form className="space-y-6" onSubmit={(event) => event.preventDefault()}>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {TOOL_OPTIONS.map((tool) => {

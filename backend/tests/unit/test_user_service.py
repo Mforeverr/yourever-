@@ -5,6 +5,8 @@ Unit tests for UserService.
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+from app.modules.onboarding.errors import OnboardingValidationError
+from app.modules.onboarding.schemas import OnboardingCompletionResponse
 from app.modules.users.repository import UserRepository
 from app.modules.users.service import UserService
 from app.modules.users.schemas import (
@@ -144,5 +146,26 @@ class TestUserService:
 
         result = await service.complete_onboarding(mock_principal, status, answers)
 
-        assert result == expected_session
+        assert isinstance(result, OnboardingCompletionResponse)
+        assert result.session == expected_session
+        assert result.validation.hasBlockingIssue is False
         mock_repository.complete_onboarding.assert_called_once_with(mock_principal.id, status, answers)
+
+    async def test_complete_onboarding_validation_error(self, mock_principal):
+        """Validation issues should raise an OnboardingValidationError without persisting."""
+
+        mock_repository = AsyncMock(spec=UserRepository)
+        service = UserService(repository=mock_repository)
+
+        status = StoredOnboardingStatus(
+            completedSteps=["profile", "work-profile"],
+            lastStep="workspace-hub",
+        )
+        answers = {"workspaceHub": {"choice": "create-new", "organizationName": ""}}
+
+        with pytest.raises(OnboardingValidationError) as exc:
+            await service.complete_onboarding(mock_principal, status, answers)
+
+        mock_repository.complete_onboarding.assert_not_called()
+        assert exc.value.validation.hasBlockingIssue is True
+        assert exc.value.validation.blockingStepId == "workspace-hub"

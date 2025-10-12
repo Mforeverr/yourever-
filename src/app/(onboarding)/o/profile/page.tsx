@@ -3,10 +3,12 @@
 import { useEffect, useRef } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { OnboardingShell } from '@/components/onboarding/onboarding-shell'
 import { useOnboardingStep } from '@/hooks/use-onboarding-step'
+import { useOnboardingValidationFeedback } from '@/hooks/use-onboarding-validation'
 import type { ProfileStepData } from '@/lib/onboarding'
 import { useCurrentUser } from '@/hooks/use-auth'
 import { profileStepSchema } from '@/lib/onboarding-schemas'
@@ -34,6 +36,7 @@ export default function ProfileOnboardingPage() {
     mode: 'onChange',
     defaultValues: data,
   })
+  const { generalError } = useOnboardingValidationFeedback('profile', form)
   const {
     control,
     formState: { isValid, errors },
@@ -95,6 +98,12 @@ export default function ProfileOnboardingPage() {
       onStepSelect={goToStepId}
       canNavigateToStep={canNavigateToStep}
     >
+      {generalError && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertTitle>We need a quick update</AlertTitle>
+          <AlertDescription>{generalError}</AlertDescription>
+        </Alert>
+      )}
       <form className="grid grid-cols-1 gap-6" onSubmit={(event) => event.preventDefault()}>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-2">

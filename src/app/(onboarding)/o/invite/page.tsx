@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -10,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { OnboardingShell } from '@/components/onboarding/onboarding-shell'
 import { useOnboardingStep } from '@/hooks/use-onboarding-step'
+import { useOnboardingValidationFeedback } from '@/hooks/use-onboarding-validation'
 import { cn } from '@/lib/utils'
 import { inviteStepSchema } from '@/lib/onboarding-schemas'
 import { deepEqual } from '@/lib/object-utils'
@@ -35,6 +37,7 @@ export default function InviteOnboardingPage() {
     mode: 'onChange',
     defaultValues: data,
   })
+  const { generalError } = useOnboardingValidationFeedback('invite', form)
   const {
     control,
     formState: { isValid, errors },
@@ -130,6 +133,12 @@ export default function InviteOnboardingPage() {
       onStepSelect={goToStepId}
       canNavigateToStep={canNavigateToStep}
     >
+      {generalError && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertTitle>We need a quick update</AlertTitle>
+          <AlertDescription>{generalError}</AlertDescription>
+        </Alert>
+      )}
       <form className="space-y-6" onSubmit={(event) => event.preventDefault()}>
         <div className="space-y-3">
           <Label htmlFor="invite-email">Add teammate emails</Label>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCurrentUser } from '@/hooks/use-auth'
 import {
@@ -17,11 +17,62 @@ import {
 import { CURRENT_ONBOARDING_STATUS_VERSION } from '@/lib/onboarding-version'
 import type { StoredOnboardingStatus } from '@/lib/auth-utils'
 import { readOnboardingSnapshot, selectStepData, useOnboardingStore } from '@/state/onboarding.store'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useOnboardingValidationStore } from '@/state/onboarding-validation.store'
+import { useQueryClient } from '@tanstack/react-query'
 import { persistOnboardingStatus, submitOnboardingCompletion } from '@/modules/onboarding/session'
+import type { OnboardingValidationSummary } from '@/modules/onboarding/session'
 import { toast } from '@/hooks/use-toast'
+import { useResilientMutation } from '@/lib/react-query/resilient-mutation'
+import { ApiError } from '@/lib/api/http'
 
 const allStepIds = ONBOARDING_STEPS.map((step) => step.id)
+
+const isOnboardingStepId = (value: unknown): value is OnboardingStepId =>
+  typeof value === 'string' && allStepIds.includes(value as OnboardingStepId)
+
+type ValidationDispatchPayload = {
+  blockingStepId: OnboardingStepId
+  issuesByStep: Record<OnboardingStepId, Array<{ field: string | null; message: string; code?: string | null }>>
+}
+
+const buildValidationDispatchPayload = (
+  input: OnboardingValidationSummary | null | undefined | unknown,
+): ValidationDispatchPayload | null => {
+  if (!input || typeof input !== 'object') {
+    return null
+  }
+
+  const candidate = input as Partial<OnboardingValidationSummary> & { issues?: unknown }
+  const issuesSource = Array.isArray(candidate.issues) ? candidate.issues : []
+  const issuesByStep: ValidationDispatchPayload['issuesByStep'] = {}
+
+  for (const rawIssue of issuesSource) {
+    if (!rawIssue || typeof rawIssue !== 'object') continue
+    const issueLike = rawIssue as { stepId?: unknown; message?: unknown; field?: unknown; code?: unknown }
+    if (!isOnboardingStepId(issueLike.stepId)) continue
+
+    const message = typeof issueLike.message === 'string' ? issueLike.message.trim() : ''
+    if (!message) continue
+
+    const normalizedIssue = {
+      field: typeof issueLike.field === 'string' ? issueLike.field : null,
+      message,
+      code: typeof issueLike.code === 'string' ? issueLike.code : undefined,
+    }
+
+    issuesByStep[issueLike.stepId] = [...(issuesByStep[issueLike.stepId] ?? []), normalizedIssue]
+  }
+
+  const stepIds = Object.keys(issuesByStep) as OnboardingStepId[]
+  if (!stepIds.length) {
+    return null
+  }
+
+  const blockingCandidate = (candidate as { blockingStepId?: unknown }).blockingStepId
+  const blockingStepId = isOnboardingStepId(blockingCandidate) ? blockingCandidate : stepIds[0]
+
+  return { blockingStepId, issuesByStep }
+}
 
 export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
   const {
@@ -38,6 +89,8 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
   const [isCompleting, setIsCompleting] = useState(false)
   const stepData = useOnboardingStore(selectStepData(stepId))
   const setStepData = useOnboardingStore((state) => state.setStepData)
+  const setValidationIssues = useOnboardingValidationStore((state) => state.setStepIssues)
+  const clearValidationIssues = useOnboardingValidationStore((state) => state.clearAll)
 
   const step = useMemo(() => getStepById(stepId), [stepId])
   const nextStep = useMemo(() => getNextStep(stepId), [stepId])
@@ -45,6 +98,45 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
   const currentIndex = useMemo(() => getStepIndex(stepId), [stepId])
 
   const data = stepData
+
+  const goToStepId = useCallback(
+    (targetId: OnboardingStepId) => {
+      const target = getStepById(targetId)
+      if (!target) return
+      router.push(target.path)
+    },
+    [router],
+  )
+
+  const dispatchValidationSummary = useCallback(
+    (summary: unknown) => {
+      const payload = buildValidationDispatchPayload(summary)
+      if (!payload) {
+        return false
+      }
+
+      Object.entries(payload.issuesByStep).forEach(([targetId, issues]) => {
+        setValidationIssues(targetId as OnboardingStepId, issues)
+      })
+
+      const blockingStep = payload.blockingStepId
+      const blockingMeta = getStepById(blockingStep)
+      toast({
+        title: 'Review required',
+        description: blockingMeta
+          ? `Please update “${blockingMeta.title}” before finishing onboarding.`
+          : 'Please review the highlighted step before finishing onboarding.',
+        variant: 'destructive',
+      })
+
+      if (blockingStep !== stepId) {
+        goToStepId(blockingStep)
+      }
+
+      return true
+    },
+    [goToStepId, setValidationIssues, stepId, toast],
+  )
 
   useEffect(() => {
     if (status === 'pending') return
@@ -67,7 +159,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     }
   }, [onboardingStatus, router, status, step, stepId, user])
 
-  const persistProgress = useMutation({
+  const persistProgress = useResilientMutation({
     mutationFn: async (status: StoredOnboardingStatus) => {
       const token = await getAccessToken()
       if (!token) {
@@ -82,14 +174,31 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     onSuccess: (status) => {
       updateOnboardingStatus(() => status)
     },
-    onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : 'Unable to save onboarding progress.'
-      toast({
+    messages: {
+      pending: () => ({
+        title: 'Saving your progress…',
+        description: 'We will keep trying in the background if the connection is unstable.',
+      }),
+      retrying: (failureCount, maxAttempts) => ({
+        title: 'Still working on it…',
+        description: `Retrying to sync (${failureCount}/${maxAttempts}). Your answers are safe locally.`,
+      }),
+      success: () => ({
+        title: 'Progress synced',
+        description: 'All onboarding updates are now saved.',
+      }),
+      error: (error) => ({
         title: 'Progress not saved',
-        description: message,
+        description:
+          error instanceof Error
+            ? `${error.message} We kept your latest answers locally.`
+            : 'Unable to save onboarding progress. We kept your latest answers locally.',
         variant: 'destructive',
-      })
+      }),
     },
+    maxRetryAttempts: 3,
+    baseRetryDelayMs: 1_500,
+    maxRetryDelayMs: 10_000,
   })
 
   const updateData = (payload: StepDataMap[T]) => {
@@ -153,11 +262,18 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
             status: nextStatus,
             answers,
           })
-          if (!response) {
+          if (dispatchValidationSummary(response?.validation)) {
+            return
+          }
+          if (!response?.session) {
             throw new Error('Failed to finalize onboarding.')
           }
+          clearValidationIssues()
           markOnboardingComplete()
         } catch (error) {
+          if (error instanceof ApiError && dispatchValidationSummary(error.body?.validation)) {
+            return
+          }
           const message = error instanceof Error ? error.message : 'Unable to finish onboarding.'
           toast({
             title: 'Unable to finish',
@@ -212,12 +328,6 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
       }
     })
     router.push(previousStep.path)
-  }
-
-  const goToStepId = (targetId: OnboardingStepId) => {
-    const target = getStepById(targetId)
-    if (!target) return
-    router.push(target.path)
   }
 
   const completedSteps = onboardingStatus?.completedSteps ?? []

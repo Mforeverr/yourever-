@@ -3,10 +3,12 @@
 import { useEffect, useMemo } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { OnboardingShell } from '@/components/onboarding/onboarding-shell'
 import { useOnboardingStep } from '@/hooks/use-onboarding-step'
+import { useOnboardingValidationFeedback } from '@/hooks/use-onboarding-validation'
 import { preferencesStepSchema } from '@/lib/onboarding-schemas'
 import { deepEqual } from '@/lib/object-utils'
 
@@ -28,6 +30,7 @@ export default function PreferencesOnboardingPage() {
     mode: 'onChange',
     defaultValues: data,
   })
+  const { generalError } = useOnboardingValidationFeedback('preferences', form)
   const {
     control,
     formState: { isValid },
@@ -75,6 +78,12 @@ export default function PreferencesOnboardingPage() {
       onStepSelect={goToStepId}
       canNavigateToStep={canNavigateToStep}
     >
+      {generalError && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertTitle>We need a quick update</AlertTitle>
+          <AlertDescription>{generalError}</AlertDescription>
+        </Alert>
+      )}
       <form className="space-y-6" onSubmit={(event) => event.preventDefault()}>
         <div className="flex items-center justify-between rounded-lg border border-border/60 bg-card px-4 py-3">
           <div>
