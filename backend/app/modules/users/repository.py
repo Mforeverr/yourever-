@@ -9,7 +9,7 @@ Repository functions for user profile and onboarding session persistence.
 from __future__ import annotations
 
 import json
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -312,6 +312,63 @@ class UserRepository:
 
         if not row:
             # No session existed; create it
+            return await self.get_or_create_onboarding_session(user_id)
+
+        await self._session.commit()
+        return self._to_onboarding_session(row)
+
+    async def complete_onboarding(
+        self,
+        user_id: str,
+        status: StoredOnboardingStatus,
+        answers: Optional[Dict[str, Any]] = None,
+    ) -> OnboardingSession:
+        """Mark onboarding as complete and persist the final payload."""
+
+        # Ensure a session exists before attempting to update completion state.
+        await self.get_or_create_onboarding_session(user_id)
+
+        last_step = (
+            status.lastStep
+            or (status.completedSteps[-1] if status.completedSteps else None)
+            or "workspace-hub"
+        )
+        final_status = status.model_copy(
+            update={
+                "completed": True,
+                "lastStep": last_step,
+            }
+        )
+
+        payload: Dict[str, Any] = {"status": final_status.model_dump()}
+        if answers:
+            payload["answers"] = answers
+
+        update_query = text(
+            """
+            UPDATE public.onboarding_sessions
+            SET
+                current_step = :current_step,
+                is_completed = TRUE,
+                data = :data::jsonb,
+                completed_at = NOW()
+            WHERE user_id = :user_id
+            RETURNING id, user_id, current_step, is_completed, data, started_at, completed_at
+            """
+        )
+
+        result = await self._session.execute(
+            update_query,
+            {
+                "user_id": user_id,
+                "current_step": last_step,
+                "data": json.dumps(payload),
+            },
+        )
+        row = result.mappings().first()
+
+        if not row:
+            # Fallback to ensure we always return a session snapshot.
             return await self.get_or_create_onboarding_session(user_id)
 
         await self._session.commit()

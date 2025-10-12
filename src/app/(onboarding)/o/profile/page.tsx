@@ -16,7 +16,18 @@ const ROLE_OPTIONS = ['Founder', 'Executive', 'Manager', 'Individual Contributor
 
 export default function ProfileOnboardingPage() {
   const { user } = useCurrentUser()
-  const { data, completeStep, updateData, previousStep, goPrevious, isSaving } = useOnboardingStep('profile')
+  const {
+    data,
+    completeStep,
+    updateData,
+    previousStep,
+    goPrevious,
+    isSaving,
+    completedSteps,
+    skippedSteps,
+    goToStepId,
+    canNavigateToStep,
+  } = useOnboardingStep('profile')
   const hasPrefilledRef = useRef(false)
   const form = useForm<ProfileStepData>({
     resolver: zodResolver(profileStepSchema),
@@ -78,6 +89,11 @@ export default function ProfileOnboardingPage() {
       onNext={handleSubmit}
       onBack={previousStep ? goPrevious : undefined}
       isNextDisabled={!isValid || isSaving}
+      isBackDisabled={isSaving}
+      completedSteps={completedSteps}
+      skippedSteps={skippedSteps}
+      onStepSelect={goToStepId}
+      canNavigateToStep={canNavigateToStep}
     >
       <form className="grid grid-cols-1 gap-6" onSubmit={(event) => event.preventDefault()}>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

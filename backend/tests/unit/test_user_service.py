@@ -121,3 +121,28 @@ class TestUserService:
         assert result is not None  # Should create new session
         mock_repository.update_onboarding_status.assert_called_once_with(mock_principal.id, status)
         mock_repository.get_or_create_onboarding_session.assert_called_once_with(mock_principal.id)
+
+    async def test_complete_onboarding(self, mock_principal):
+        """Test completing onboarding delegates to repository."""
+        mock_repository = AsyncMock(spec=UserRepository)
+        service = UserService(repository=mock_repository)
+
+        status = StoredOnboardingStatus(completedSteps=["profile"], lastStep="profile")
+        answers = {"profile": {"firstName": "Ada"}}
+
+        expected_session = OnboardingSession(
+            id="session-789",
+            userId=mock_principal.id,
+            currentStep="workspace-hub",
+            isCompleted=True,
+            startedAt="2023-01-01T00:00:00Z",
+            completedAt="2023-01-01T00:05:00Z",
+            status=status,
+        )
+
+        mock_repository.complete_onboarding.return_value = expected_session
+
+        result = await service.complete_onboarding(mock_principal, status, answers)
+
+        assert result == expected_session
+        mock_repository.complete_onboarding.assert_called_once_with(mock_principal.id, status, answers)

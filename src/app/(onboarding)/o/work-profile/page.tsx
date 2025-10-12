@@ -22,7 +22,18 @@ const EXPERIENCE_LEVELS = ['New to role', '1-3 years', '4-7 years', '8+ years']
 
 export default function WorkProfileOnboardingPage() {
   const { user } = useCurrentUser()
-  const { data, completeStep, updateData, previousStep, goPrevious, isSaving } = useOnboardingStep('work-profile')
+  const {
+    data,
+    completeStep,
+    updateData,
+    previousStep,
+    goPrevious,
+    isSaving,
+    completedSteps,
+    skippedSteps,
+    goToStepId,
+    canNavigateToStep,
+  } = useOnboardingStep('work-profile')
   const hasPrefilledRef = useRef(false)
   const form = useForm<WorkProfileStepData>({
     resolver: zodResolver(workProfileStepSchema),
@@ -120,6 +131,11 @@ export default function WorkProfileOnboardingPage() {
       onNext={handleSubmit}
       onBack={previousStep ? goPrevious : undefined}
       isNextDisabled={!isValid || isSaving}
+      isBackDisabled={isSaving}
+      completedSteps={completedSteps}
+      skippedSteps={skippedSteps}
+      onStepSelect={goToStepId}
+      canNavigateToStep={canNavigateToStep}
     >
       <form className="grid grid-cols-1 gap-6" onSubmit={(event) => event.preventDefault()}>
         <div className="space-y-2">

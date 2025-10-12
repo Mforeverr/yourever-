@@ -76,7 +76,20 @@ const TOOL_OPTIONS = [
 type IntegrationStatus = 'not-started' | 'in-progress' | 'connected'
 
 export default function ToolsOnboardingPage() {
-  const { data, completeStep, updateData, skipStep, previousStep, goPrevious, isSaving } = useOnboardingStep('tools')
+  const {
+    data,
+    completeStep,
+    updateData,
+    skipStep,
+    previousStep,
+    goPrevious,
+    isSaving,
+    nextStep,
+    completedSteps,
+    skippedSteps,
+    goToStepId,
+    canNavigateToStep,
+  } = useOnboardingStep('tools')
   const form = useForm({
     resolver: zodResolver(toolsStepSchema),
     mode: 'onChange',
@@ -161,8 +174,10 @@ export default function ToolsOnboardingPage() {
     })
   })
 
+  const canSkipStep = Boolean(nextStep)
+
   const handleSkip = async () => {
-    if (isSaving) return
+    if (isSaving || !canSkipStep) return
     await skipStep()
   }
 
@@ -173,11 +188,16 @@ export default function ToolsOnboardingPage() {
       description="We&apos;ll personalise integrations based on what you select here."
       onNext={handleSubmit}
       onBack={previousStep ? goPrevious : undefined}
-      onSkip={handleSkip}
-      canSkip
+      onSkip={canSkipStep ? handleSkip : undefined}
+      canSkip={canSkipStep}
       isNextDisabled={!isValid || isSaving}
       isSkipDisabled={isSaving}
       nextLabel={hasSelection ? 'Continue' : 'Skip & continue'}
+      isBackDisabled={isSaving}
+      completedSteps={completedSteps}
+      skippedSteps={skippedSteps}
+      onStepSelect={goToStepId}
+      canNavigateToStep={canNavigateToStep}
     >
       <form className="space-y-6" onSubmit={(event) => event.preventDefault()}>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

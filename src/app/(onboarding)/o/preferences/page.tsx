@@ -11,7 +11,18 @@ import { preferencesStepSchema } from '@/lib/onboarding-schemas'
 import { deepEqual } from '@/lib/object-utils'
 
 export default function PreferencesOnboardingPage() {
-  const { data, completeStep, updateData, previousStep, goPrevious, isSaving } = useOnboardingStep('preferences')
+  const {
+    data,
+    completeStep,
+    updateData,
+    previousStep,
+    goPrevious,
+    isSaving,
+    completedSteps,
+    skippedSteps,
+    goToStepId,
+    canNavigateToStep,
+  } = useOnboardingStep('preferences')
   const form = useForm({
     resolver: zodResolver(preferencesStepSchema),
     mode: 'onChange',
@@ -58,6 +69,11 @@ export default function PreferencesOnboardingPage() {
       onBack={previousStep ? goPrevious : undefined}
       isNextDisabled={!isValid || isSaving}
       nextLabel={nextLabel}
+      isBackDisabled={isSaving}
+      completedSteps={completedSteps}
+      skippedSteps={skippedSteps}
+      onStepSelect={goToStepId}
+      canNavigateToStep={canNavigateToStep}
     >
       <form className="space-y-6" onSubmit={(event) => event.preventDefault()}>
         <div className="flex items-center justify-between rounded-lg border border-border/60 bg-card px-4 py-3">

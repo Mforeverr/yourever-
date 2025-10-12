@@ -6,6 +6,8 @@
 User service orchestrating repository access.
 """
 
+from typing import Any, Dict, Optional
+
 from ...dependencies import CurrentPrincipal
 from .repository import UserRepository
 from .schemas import OnboardingSession, StoredOnboardingStatus, WorkspaceUser
@@ -35,3 +37,12 @@ class UserService:
     ) -> OnboardingSession:
         await self._ensure_user(principal)
         return await self._repository.update_onboarding_status(principal.id, status)
+
+    async def complete_onboarding(
+        self,
+        principal: CurrentPrincipal,
+        status: StoredOnboardingStatus,
+        answers: Optional[Dict[str, Any]] = None,
+    ) -> OnboardingSession:
+        await self._ensure_user(principal)
+        return await self._repository.complete_onboarding(principal.id, status, answers)

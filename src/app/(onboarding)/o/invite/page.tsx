@@ -15,7 +15,20 @@ import { inviteStepSchema } from '@/lib/onboarding-schemas'
 import { deepEqual } from '@/lib/object-utils'
 
 export default function InviteOnboardingPage() {
-  const { data, completeStep, updateData, skipStep, previousStep, goPrevious, isSaving } = useOnboardingStep('invite')
+  const {
+    data,
+    completeStep,
+    updateData,
+    skipStep,
+    previousStep,
+    goPrevious,
+    isSaving,
+    nextStep,
+    completedSteps,
+    skippedSteps,
+    goToStepId,
+    canNavigateToStep,
+  } = useOnboardingStep('invite')
   const [pendingEmail, setPendingEmail] = useState('')
   const form = useForm({
     resolver: zodResolver(inviteStepSchema),
@@ -87,8 +100,10 @@ export default function InviteOnboardingPage() {
     })
   })
 
+  const canSkipStep = Boolean(nextStep)
+
   const handleSkip = async () => {
-    if (isSaving) return
+    if (isSaving || !canSkipStep) return
     await skipStep()
   }
 
@@ -104,11 +119,16 @@ export default function InviteOnboardingPage() {
       description="Bring your teammates in now or skip and invite them later from the workspace."
       onNext={handleContinue}
       onBack={previousStep ? goPrevious : undefined}
-      onSkip={handleSkip}
-      canSkip
+      onSkip={canSkipStep ? handleSkip : undefined}
+      canSkip={canSkipStep}
       isNextDisabled={!canContinue || !isValid || isSaving}
       isSkipDisabled={isSaving}
       nextLabel={inviteCount > 0 ? 'Send invites' : 'Skip & continue'}
+      isBackDisabled={isSaving}
+      completedSteps={completedSteps}
+      skippedSteps={skippedSteps}
+      onStepSelect={goToStepId}
+      canNavigateToStep={canNavigateToStep}
     >
       <form className="space-y-6" onSubmit={(event) => event.preventDefault()}>
         <div className="space-y-3">

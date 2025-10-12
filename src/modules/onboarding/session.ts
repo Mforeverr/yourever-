@@ -6,6 +6,11 @@ import { notifyUnauthorized } from '@/lib/api/unauthorized-handler'
 import { resolveApiUrl } from '@/lib/api/endpoints'
 import type { OnboardingSession } from './transform'
 
+export interface OnboardingCompletionPayload {
+  status: StoredOnboardingStatus
+  answers: Record<string, unknown>
+}
+
 const parseErrorBody = async (response: Response): Promise<ApiErrorBody | null> => {
   try {
     return (await response.json()) as ApiErrorBody
@@ -84,4 +89,18 @@ export const persistOnboardingStatus = async (
     '/api/users/me/onboarding-progress',
   )
   return payload?.session ?? null
+}
+
+export const submitOnboardingCompletion = async (
+  accessToken: string | null,
+  payload: OnboardingCompletionPayload,
+): Promise<OnboardingSession | null> => {
+  if (!accessToken) return null
+  const response = await request<{ session: OnboardingSession | null }>(
+    'POST',
+    accessToken,
+    payload,
+    '/api/onboarding/complete',
+  )
+  return response?.session ?? null
 }

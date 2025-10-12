@@ -157,3 +157,17 @@ export const selectStepData = <T extends OnboardingStepId>(stepId: T) => (state:
   const key = STEP_KEY_MAP[stepId]
   return state[key] as StepDataMap[T]
 }
+
+export const readOnboardingSnapshot = () => {
+  const state = useOnboardingStore.getState()
+  return {
+    profile: { ...state.profile },
+    workProfile: { ...state.workProfile },
+    tools: { ...state.tools },
+    invite: { ...state.invite },
+    preferences: { ...state.preferences },
+    workspaceHub: { ...state.workspaceHub },
+  }
+}
+
+export type OnboardingSnapshot = ReturnType<typeof readOnboardingSnapshot>

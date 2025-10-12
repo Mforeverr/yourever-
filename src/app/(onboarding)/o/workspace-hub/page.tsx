@@ -34,7 +34,18 @@ const templates = [
 
 export default function WorkspaceHubOnboardingPage() {
   const { user } = useCurrentUser()
-  const { data, completeStep, updateData, previousStep, goPrevious, isSaving } = useOnboardingStep('workspace-hub')
+  const {
+    data,
+    completeStep,
+    updateData,
+    previousStep,
+    goPrevious,
+    isSaving,
+    completedSteps,
+    skippedSteps,
+    goToStepId,
+    canNavigateToStep,
+  } = useOnboardingStep('workspace-hub')
   const form = useForm({
     resolver: zodResolver(workspaceHubStepSchema),
     mode: 'onChange',
@@ -98,6 +109,11 @@ export default function WorkspaceHubOnboardingPage() {
       onNext={handleSubmit}
       onBack={previousStep ? goPrevious : undefined}
       isNextDisabled={!canContinue || !isValid || isSaving}
+      isBackDisabled={isSaving}
+      completedSteps={completedSteps}
+      skippedSteps={skippedSteps}
+      onStepSelect={goToStepId}
+      canNavigateToStep={canNavigateToStep}
       nextLabel={watchChoice === 'create-new' ? 'Create workspace' : 'Continue'}
     >
       <form className="space-y-6" onSubmit={(event) => event.preventDefault()}>

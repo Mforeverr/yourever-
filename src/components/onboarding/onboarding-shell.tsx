@@ -1,10 +1,11 @@
 'use client'
 
-import { type ReactNode } from 'react'
-import { useMemo } from 'react'
+import { type ReactNode, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { ONBOARDING_STEPS, getStepIndex, type OnboardingStepId } from '@/lib/onboarding'
+import { cn } from '@/lib/utils'
+import { CheckCircle2, Circle, CircleDot } from 'lucide-react'
 
 interface OnboardingShellProps {
   stepId: OnboardingStepId
@@ -18,6 +19,11 @@ interface OnboardingShellProps {
   canSkip?: boolean
   isSkipDisabled?: boolean
   nextLabel?: string
+  completedSteps?: OnboardingStepId[]
+  skippedSteps?: OnboardingStepId[]
+  onStepSelect?: (stepId: OnboardingStepId) => void
+  canNavigateToStep?: (stepId: OnboardingStepId) => boolean
+  isBackDisabled?: boolean
 }
 
 export function OnboardingShell({
@@ -31,11 +37,18 @@ export function OnboardingShell({
   isNextDisabled,
   canSkip,
   isSkipDisabled,
-  nextLabel = 'Continue'
+  nextLabel = 'Continue',
+  completedSteps,
+  skippedSteps,
+  onStepSelect,
+  canNavigateToStep,
+  isBackDisabled,
 }: OnboardingShellProps) {
   const stepIndex = useMemo(() => Math.max(getStepIndex(stepId), 0), [stepId])
   const totalSteps = ONBOARDING_STEPS.length
   const progressValue = ((stepIndex + 1) / totalSteps) * 100
+  const completedSet = useMemo(() => new Set(completedSteps ?? []), [completedSteps])
+  const skippedSet = useMemo(() => new Set(skippedSteps ?? []), [skippedSteps])
 
   const stepLabel = useMemo(() => {
     const step = ONBOARDING_STEPS[stepIndex]
@@ -62,6 +75,63 @@ export function OnboardingShell({
           </div>
         </header>
 
+        <nav className="mb-8">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {ONBOARDING_STEPS.map((step) => {
+              const isCurrent = step.id === stepId
+              const isComplete = completedSet.has(step.id)
+              const isSkipped = skippedSet.has(step.id)
+              const StepIcon = isComplete ? CheckCircle2 : isCurrent ? CircleDot : Circle
+              const statusLabel = isCurrent
+                ? 'In progress'
+                : isComplete
+                  ? 'Completed'
+                  : isSkipped
+                    ? 'Skipped'
+                    : 'Pending'
+              const canNavigate =
+                !!onStepSelect && (canNavigateToStep ? canNavigateToStep(step.id) : isCurrent || isComplete)
+
+              return (
+                <button
+                  key={step.id}
+                  type="button"
+                  onClick={() => {
+                    if (canNavigate) {
+                      onStepSelect(step.id)
+                    }
+                  }}
+                  aria-current={isCurrent ? 'step' : undefined}
+                  className={cn(
+                    'flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+                    isCurrent
+                      ? 'border-primary/70 bg-primary/10 text-primary'
+                      : 'border-border/60 bg-card hover:border-primary/40',
+                    !canNavigate && 'cursor-default opacity-70 hover:border-border/60',
+                  )}
+                  disabled={!canNavigate}
+                >
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium">{step.title}</span>
+                    <span className="text-xs text-muted-foreground">{statusLabel}</span>
+                  </div>
+                  <StepIcon
+                    aria-hidden
+                    className={cn(
+                      'ml-3 h-5 w-5 flex-shrink-0',
+                      isComplete
+                        ? 'text-emerald-500'
+                        : isCurrent
+                          ? 'text-primary'
+                          : 'text-muted-foreground',
+                    )}
+                  />
+                </button>
+              )
+            })}
+          </div>
+        </nav>
+
         <main className="flex-1">
           <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
             {children}
@@ -71,7 +141,7 @@ export function OnboardingShell({
         <footer className="mt-10 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex gap-2">
             {onBack && (
-              <Button variant="ghost" onClick={onBack}>
+              <Button variant="ghost" onClick={onBack} disabled={isBackDisabled}>
                 Back
               </Button>
             )}
