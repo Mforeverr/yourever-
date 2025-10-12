@@ -16,7 +16,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...dependencies import CurrentPrincipal
 from .constants import coerce_onboarding_status_version
-from .schemas import OnboardingSession, StoredOnboardingStatus, WorkspaceDivision, WorkspaceOrganization, WorkspaceUser
+from .schemas import (
+    OnboardingSession,
+    StoredOnboardingStatus,
+    WorkspaceDivision,
+    WorkspaceOrganization,
+    WorkspaceUser,
+    new_onboarding_revision,
+)
 
 
 class UserRepository:
@@ -261,7 +268,7 @@ class UserRepository:
                 RETURNING id, user_id, current_step, is_completed, data, started_at, completed_at
                 """
             )
-            status = StoredOnboardingStatus()
+            status = StoredOnboardingStatus(revision=new_onboarding_revision())
             result = await self._session.execute(
                 insert_query,
                 {
@@ -444,4 +451,10 @@ class UserRepository:
         if "last_step" in normalized and "lastStep" not in normalized:
             normalized["lastStep"] = normalized.pop("last_step")
         normalized["version"] = coerce_onboarding_status_version(normalized.get("version"))
+        revision = normalized.get("revision")
+        if isinstance(revision, str):
+            revision = revision.strip() or None
+        elif revision is not None:
+            revision = None
+        normalized["revision"] = revision
         return normalized

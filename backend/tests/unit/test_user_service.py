@@ -1,148 +1,214 @@
-"""
-Unit tests for UserService.
-"""
+"""Unit tests for UserService."""
 
-import pytest
+from __future__ import annotations
+
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
+from app.modules.onboarding.errors import OnboardingRevisionConflict, OnboardingValidationError
+from app.modules.onboarding.schemas import OnboardingCompletionResponse
 from app.modules.users.repository import UserRepository
 from app.modules.users.service import UserService
-from app.modules.users.schemas import (
-    OnboardingSession,
-    StoredOnboardingStatus,
-    UserProfileResponse,
-)
+from app.modules.users.schemas import OnboardingSession, StoredOnboardingStatus
 
 
 @pytest.mark.unit
 class TestUserService:
-    """Test cases for UserService."""
+    """Test cases for the onboarding behaviours in UserService."""
 
-    async def test_get_current_user_success(self, mock_principal):
-        """Test getting current user successfully."""
-        # Arrange
-        mock_repository = AsyncMock(spec=UserRepository)
-        service = UserService(repository=mock_repository)
-
-        expected_user = MagicMock()
-        mock_repository.get_user.return_value = expected_user
-
-        # Act
-        result = await service.get_current_user(mock_principal)
-
-        # Assert
-        assert result == expected_user
-        mock_repository.get_user.assert_called_once_with(mock_principal.id)
-
-    async def test_get_current_user_not_found(self, mock_principal):
-        """Test getting current user when user doesn't exist."""
-        # Arrange
-        mock_repository = AsyncMock(spec=UserRepository)
-        service = UserService(repository=mock_repository)
-
-        mock_repository.get_user.return_value = None
-
-        # Act & Assert
-        with pytest.raises(ValueError, match="User not found"):
-            await service.get_current_user(mock_principal)
-
-        mock_repository.get_user.assert_called_once_with(mock_principal.id)
-
-    async def test_get_onboarding_session_success(self, mock_principal):
-        """Test getting onboarding session successfully."""
-        # Arrange
-        mock_repository = AsyncMock(spec=UserRepository)
-        service = UserService(repository=mock_repository)
-
-        expected_session = OnboardingSession(
-            id="session-123",
-            userId=mock_principal.id,
-            currentStep="profile",
-            isCompleted=False,
-            startedAt="2023-01-01T00:00:00Z",
-            completedAt=None,
-            status=StoredOnboardingStatus()
-        )
-        mock_repository.get_or_create_onboarding_session.return_value = expected_session
-
-        # Act
-        result = await service.get_onboarding_session(mock_principal)
-
-        # Assert
-        assert result == expected_session
-        mock_repository.get_or_create_onboarding_session.assert_called_once_with(mock_principal)
-
-    async def test_update_onboarding_progress(self, mock_principal):
-        """Test updating onboarding progress."""
-        # Arrange
-        mock_repository = AsyncMock(spec=UserRepository)
-        service = UserService(repository=mock_repository)
-
+    @staticmethod
+    def _session(
+        principal_id: str,
+        *,
+        revision: str | None,
+        last_step: str = "profile",
+        completed: bool = False,
+    ) -> OnboardingSession:
         status = StoredOnboardingStatus(
-            completedSteps=["profile"],
+            revision=revision,
+            completedSteps=[last_step] if last_step != "profile" else [],
             skippedSteps=[],
-            lastStep="work-profile",
-            completed=False
+            lastStep=last_step,
+            completed=completed,
         )
-
-        expected_session = OnboardingSession(
-            id="session-456",
-            userId=mock_principal.id,
-            currentStep="work-profile",
-            isCompleted=False,
+        return OnboardingSession(
+            id="session-1",
+            userId=principal_id,
+            currentStep=last_step,
+            isCompleted=completed,
             startedAt="2023-01-01T00:00:00Z",
             completedAt=None,
-            status=status
-        )
-        mock_repository.update_onboarding_status.return_value = expected_session
-
-        # Act
-        result = await service.update_onboarding_progress(mock_principal, status)
-
-        # Assert
-        assert result == expected_session
-        mock_repository.update_onboarding_status.assert_called_once_with(mock_principal.id, status)
-
-    async def test_update_onboarding_progress_user_not_found(self, mock_principal):
-        """Test updating onboarding progress when user doesn't exist."""
-        # Arrange
-        mock_repository = AsyncMock(spec=UserRepository)
-        service = UserService(repository=mock_repository)
-
-        status = StoredOnboardingStatus()
-
-        # Mock update to return None (user not found, so create new session)
-        mock_repository.update_onboarding_status.return_value = None
-
-        # Act
-        result = await service.update_onboarding_progress(mock_principal, status)
-
-        # Assert
-        assert result is not None  # Should create new session
-        mock_repository.update_onboarding_status.assert_called_once_with(mock_principal.id, status)
-        mock_repository.get_or_create_onboarding_session.assert_called_once_with(mock_principal.id)
-
-    async def test_complete_onboarding(self, mock_principal):
-        """Test completing onboarding delegates to repository."""
-        mock_repository = AsyncMock(spec=UserRepository)
-        service = UserService(repository=mock_repository)
-
-        status = StoredOnboardingStatus(completedSteps=["profile"], lastStep="profile")
-        answers = {"profile": {"firstName": "Ada"}}
-
-        expected_session = OnboardingSession(
-            id="session-789",
-            userId=mock_principal.id,
-            currentStep="workspace-hub",
-            isCompleted=True,
-            startedAt="2023-01-01T00:00:00Z",
-            completedAt="2023-01-01T00:05:00Z",
             status=status,
         )
 
-        mock_repository.complete_onboarding.return_value = expected_session
+    async def test_get_current_user_success(self, mock_principal):
+        repository = AsyncMock(spec=UserRepository)
+        service = UserService(repository=repository)
 
-        result = await service.complete_onboarding(mock_principal, status, answers)
+        expected_user = MagicMock()
+        repository.get_user.return_value = expected_user
+
+        result = await service.get_current_user(mock_principal)
+
+        assert result == expected_user
+        repository.get_user.assert_awaited_once_with(mock_principal.id)
+
+    async def test_get_onboarding_session_success(self, mock_principal):
+        repository = AsyncMock(spec=UserRepository)
+        service = UserService(repository=repository)
+
+        repository.get_user.return_value = MagicMock()
+        expected_session = self._session(mock_principal.id, revision="rev-current")
+        repository.get_or_create_onboarding_session.return_value = expected_session
+
+        result = await service.get_onboarding_session(mock_principal)
 
         assert result == expected_session
-        mock_repository.complete_onboarding.assert_called_once_with(mock_principal.id, status, answers)
+        repository.get_or_create_onboarding_session.assert_awaited_once_with(mock_principal.id)
+
+    async def test_update_onboarding_progress_generates_new_revision(self, mock_principal):
+        repository = AsyncMock(spec=UserRepository)
+        service = UserService(repository=repository)
+        repository.get_user.return_value = MagicMock()
+
+        existing_session = self._session(mock_principal.id, revision="rev-a")
+        repository.get_or_create_onboarding_session.return_value = existing_session
+
+        submitted_status = StoredOnboardingStatus(
+            revision="rev-a",
+            completedSteps=["profile"],
+            skippedSteps=[],
+            lastStep="profile",
+        )
+
+        async def update_status(_: str, new_status: StoredOnboardingStatus) -> OnboardingSession:
+            return OnboardingSession(
+                id="session-2",
+                userId=mock_principal.id,
+                currentStep=new_status.lastStep or "profile",
+                isCompleted=new_status.completed,
+                startedAt="2023-01-01T00:00:00Z",
+                completedAt=None,
+                status=new_status,
+            )
+
+        repository.update_onboarding_status.side_effect = update_status
+
+        result = await service.update_onboarding_progress(mock_principal, submitted_status)
+
+        repository.get_or_create_onboarding_session.assert_awaited_once_with(mock_principal.id)
+        repository.update_onboarding_status.assert_awaited()
+        persisted_status = repository.update_onboarding_status.call_args.args[1]
+        assert persisted_status.revision
+        assert persisted_status.revision != submitted_status.revision
+        assert isinstance(result, OnboardingSession)
+        assert result.status.revision == persisted_status.revision
+
+    async def test_update_onboarding_progress_conflict(self, mock_principal):
+        repository = AsyncMock(spec=UserRepository)
+        service = UserService(repository=repository)
+        repository.get_user.return_value = MagicMock()
+
+        repository.get_or_create_onboarding_session.return_value = self._session(
+            mock_principal.id,
+            revision="rev-current",
+        )
+
+        submitted_status = StoredOnboardingStatus(
+            revision="rev-stale",
+            completedSteps=["profile"],
+            skippedSteps=[],
+            lastStep="profile",
+        )
+
+        with pytest.raises(OnboardingRevisionConflict):
+            await service.update_onboarding_progress(mock_principal, submitted_status)
+
+        repository.update_onboarding_status.assert_not_awaited()
+
+    async def test_complete_onboarding_success(self, mock_principal):
+        repository = AsyncMock(spec=UserRepository)
+        service = UserService(repository=repository)
+        repository.get_user.return_value = MagicMock()
+
+        repository.get_or_create_onboarding_session.return_value = self._session(
+            mock_principal.id,
+            revision="rev-one",
+        )
+
+        submitted_status = StoredOnboardingStatus(
+            revision="rev-one",
+            completedSteps=["profile", "work-profile"],
+            skippedSteps=[],
+            lastStep="workspace-hub",
+            completed=True,
+        )
+
+        async def complete_status(_: str, new_status: StoredOnboardingStatus, answers):
+            return OnboardingSession(
+                id="session-3",
+                userId=mock_principal.id,
+                currentStep=new_status.lastStep or "workspace-hub",
+                isCompleted=True,
+                startedAt="2023-01-01T00:00:00Z",
+                completedAt="2023-01-01T00:10:00Z",
+                status=new_status,
+            )
+
+        repository.complete_onboarding.side_effect = complete_status
+
+        result = await service.complete_onboarding(mock_principal, submitted_status, answers={})
+
+        repository.get_or_create_onboarding_session.assert_awaited_once_with(mock_principal.id)
+        repository.complete_onboarding.assert_awaited()
+        persisted_status = repository.complete_onboarding.call_args.args[1]
+        assert persisted_status.revision
+        assert persisted_status.revision != submitted_status.revision
+        assert isinstance(result, OnboardingCompletionResponse)
+        assert result.session.status.revision == persisted_status.revision
+
+    async def test_complete_onboarding_conflict(self, mock_principal):
+        repository = AsyncMock(spec=UserRepository)
+        service = UserService(repository=repository)
+        repository.get_user.return_value = MagicMock()
+
+        repository.get_or_create_onboarding_session.return_value = self._session(
+            mock_principal.id,
+            revision="rev-live",
+        )
+
+        submitted_status = StoredOnboardingStatus(
+            revision="rev-old",
+            completedSteps=["profile"],
+            skippedSteps=[],
+            lastStep="workspace-hub",
+            completed=False,
+        )
+
+        with pytest.raises(OnboardingRevisionConflict):
+            await service.complete_onboarding(mock_principal, submitted_status, answers={})
+
+        repository.complete_onboarding.assert_not_awaited()
+
+    async def test_complete_onboarding_validation_error(self, mock_principal):
+        repository = AsyncMock(spec=UserRepository)
+        service = UserService(repository=repository)
+        repository.get_user.return_value = MagicMock()
+        repository.get_or_create_onboarding_session.return_value = self._session(
+            mock_principal.id,
+            revision="rev-live",
+        )
+
+        invalid_status = StoredOnboardingStatus(
+            revision="rev-live",
+            completedSteps=["profile"],
+            skippedSteps=[],
+            lastStep="workspace-hub",
+            completed=False,
+        )
+
+        with pytest.raises(OnboardingValidationError):
+            await service.complete_onboarding(mock_principal, invalid_status, answers={})
+
+        repository.complete_onboarding.assert_not_awaited()

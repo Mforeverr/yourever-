@@ -1,6 +1,7 @@
 'use client'
 
 import type { StoredOnboardingStatus } from '@/lib/auth-utils'
+import type { OnboardingStepId } from '@/lib/onboarding'
 import { ApiError, type ApiErrorBody } from '@/lib/api/http'
 import { notifyUnauthorized } from '@/lib/api/unauthorized-handler'
 import { resolveApiUrl } from '@/lib/api/endpoints'
@@ -9,6 +10,24 @@ import type { OnboardingSession } from './transform'
 export interface OnboardingCompletionPayload {
   status: StoredOnboardingStatus
   answers: Record<string, unknown>
+}
+
+export interface OnboardingValidationIssue {
+  stepId: OnboardingStepId | (string & {})
+  message: string
+  field?: string | null
+  code?: string | null
+}
+
+export interface OnboardingValidationSummary {
+  hasBlockingIssue: boolean
+  blockingStepId?: OnboardingStepId | (string & {}) | null
+  issues: OnboardingValidationIssue[]
+}
+
+export interface OnboardingCompletionResponse {
+  session: OnboardingSession | null
+  validation?: OnboardingValidationSummary | null
 }
 
 const parseErrorBody = async (response: Response): Promise<ApiErrorBody | null> => {
@@ -94,13 +113,13 @@ export const persistOnboardingStatus = async (
 export const submitOnboardingCompletion = async (
   accessToken: string | null,
   payload: OnboardingCompletionPayload,
-): Promise<OnboardingSession | null> => {
+): Promise<OnboardingCompletionResponse | null> => {
   if (!accessToken) return null
-  const response = await request<{ session: OnboardingSession | null }>(
+  const response = await request<OnboardingCompletionResponse>(
     'POST',
     accessToken,
     payload,
     '/api/onboarding/complete',
   )
-  return response?.session ?? null
+  return response ?? null
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCurrentUser } from '@/hooks/use-auth'
 import {
@@ -17,11 +17,79 @@ import {
 import { CURRENT_ONBOARDING_STATUS_VERSION } from '@/lib/onboarding-version'
 import type { StoredOnboardingStatus } from '@/lib/auth-utils'
 import { readOnboardingSnapshot, selectStepData, useOnboardingStore } from '@/state/onboarding.store'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { persistOnboardingStatus, submitOnboardingCompletion } from '@/modules/onboarding/session'
+import { useOnboardingValidationStore } from '@/state/onboarding-validation.store'
+import { useQueryClient } from '@tanstack/react-query'
+import {
+  fetchOrCreateOnboardingSession,
+  persistOnboardingStatus,
+  submitOnboardingCompletion,
+} from '@/modules/onboarding/session'
+import type { OnboardingValidationSummary } from '@/modules/onboarding/session'
 import { toast } from '@/hooks/use-toast'
+import { useResilientMutation } from '@/lib/react-query/resilient-mutation'
+import { ApiError } from '@/lib/api/http'
+import {
+  trackOnboardingSaveFailed,
+  trackOnboardingSaveStarted,
+  trackOnboardingSaveSucceeded,
+} from '@/lib/telemetry/onboarding'
 
 const allStepIds = ONBOARDING_STEPS.map((step) => step.id)
+
+const isOnboardingStepId = (value: unknown): value is OnboardingStepId =>
+  typeof value === 'string' && allStepIds.includes(value as OnboardingStepId)
+
+type PersistProgressIntent = 'complete-step' | 'skip-step'
+
+type PersistProgressVariables = {
+  status: StoredOnboardingStatus
+  originStepId: OnboardingStepId
+  intent: PersistProgressIntent
+}
+
+type ValidationDispatchPayload = {
+  blockingStepId: OnboardingStepId
+  issuesByStep: Record<OnboardingStepId, Array<{ field: string | null; message: string; code?: string | null }>>
+}
+
+const buildValidationDispatchPayload = (
+  input: OnboardingValidationSummary | null | undefined | unknown,
+): ValidationDispatchPayload | null => {
+  if (!input || typeof input !== 'object') {
+    return null
+  }
+
+  const candidate = input as Partial<OnboardingValidationSummary> & { issues?: unknown }
+  const issuesSource = Array.isArray(candidate.issues) ? candidate.issues : []
+  const issuesByStep: ValidationDispatchPayload['issuesByStep'] = {}
+
+  for (const rawIssue of issuesSource) {
+    if (!rawIssue || typeof rawIssue !== 'object') continue
+    const issueLike = rawIssue as { stepId?: unknown; message?: unknown; field?: unknown; code?: unknown }
+    if (!isOnboardingStepId(issueLike.stepId)) continue
+
+    const message = typeof issueLike.message === 'string' ? issueLike.message.trim() : ''
+    if (!message) continue
+
+    const normalizedIssue = {
+      field: typeof issueLike.field === 'string' ? issueLike.field : null,
+      message,
+      code: typeof issueLike.code === 'string' ? issueLike.code : undefined,
+    }
+
+    issuesByStep[issueLike.stepId] = [...(issuesByStep[issueLike.stepId] ?? []), normalizedIssue]
+  }
+
+  const stepIds = Object.keys(issuesByStep) as OnboardingStepId[]
+  if (!stepIds.length) {
+    return null
+  }
+
+  const blockingCandidate = (candidate as { blockingStepId?: unknown }).blockingStepId
+  const blockingStepId = isOnboardingStepId(blockingCandidate) ? blockingCandidate : stepIds[0]
+
+  return { blockingStepId, issuesByStep }
+}
 
 export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
   const {
@@ -38,6 +106,22 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
   const [isCompleting, setIsCompleting] = useState(false)
   const stepData = useOnboardingStore(selectStepData(stepId))
   const setStepData = useOnboardingStore((state) => state.setStepData)
+  const setValidationIssues = useOnboardingValidationStore((state) => state.setStepIssues)
+  const clearValidationIssues = useOnboardingValidationStore((state) => state.clearAll)
+  const persistAttemptRef = useRef({
+    startedAt: 0,
+    retries: 0,
+    intent: 'complete-step' as PersistProgressIntent,
+    originStepId: stepId as OnboardingStepId,
+  })
+
+  const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
+
+  const computeDurationMs = () => {
+    const startedAt = persistAttemptRef.current.startedAt
+    if (!startedAt) return undefined
+    return Math.max(0, Math.round(now() - startedAt))
+  }
 
   const step = useMemo(() => getStepById(stepId), [stepId])
   const nextStep = useMemo(() => getNextStep(stepId), [stepId])
@@ -45,6 +129,45 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
   const currentIndex = useMemo(() => getStepIndex(stepId), [stepId])
 
   const data = stepData
+
+  const goToStepId = useCallback(
+    (targetId: OnboardingStepId) => {
+      const target = getStepById(targetId)
+      if (!target) return
+      router.push(target.path)
+    },
+    [router],
+  )
+
+  const dispatchValidationSummary = useCallback(
+    (summary: unknown) => {
+      const payload = buildValidationDispatchPayload(summary)
+      if (!payload) {
+        return false
+      }
+
+      Object.entries(payload.issuesByStep).forEach(([targetId, issues]) => {
+        setValidationIssues(targetId as OnboardingStepId, issues)
+      })
+
+      const blockingStep = payload.blockingStepId
+      const blockingMeta = getStepById(blockingStep)
+      toast({
+        title: 'Review required',
+        description: blockingMeta
+          ? `Please update “${blockingMeta.title}” before finishing onboarding.`
+          : 'Please review the highlighted step before finishing onboarding.',
+        variant: 'destructive',
+      })
+
+      if (blockingStep !== stepId) {
+        goToStepId(blockingStep)
+      }
+
+      return true
+    },
+    [goToStepId, setValidationIssues, stepId, toast],
+  )
 
   useEffect(() => {
     if (status === 'pending') return
@@ -67,30 +190,104 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     }
   }, [onboardingStatus, router, status, step, stepId, user])
 
-  const persistProgress = useMutation({
-    mutationFn: async (status: StoredOnboardingStatus) => {
+  const persistProgress = useResilientMutation<StoredOnboardingStatus, unknown, PersistProgressVariables>({
+    mutationFn: async ({ status }) => {
       const token = await getAccessToken()
       if (!token) {
         throw new Error('Authentication expired. Please sign in again.')
       }
       const response = await persistOnboardingStatus(token, status)
-      if (!response) {
+      if (!response?.status) {
         throw new Error('Failed to sync onboarding progress.')
       }
-      return status
+      return response.status
     },
-    onSuccess: (status) => {
-      updateOnboardingStatus(() => status)
-    },
-    onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : 'Unable to save onboarding progress.'
-      toast({
-        title: 'Progress not saved',
-        description: message,
-        variant: 'destructive',
+    onMutate: (variables) => {
+      persistAttemptRef.current = {
+        startedAt: now(),
+        retries: 0,
+        intent: variables.intent,
+        originStepId: variables.originStepId,
+      }
+      trackOnboardingSaveStarted({
+        status: variables.status,
+        stepId: variables.originStepId,
+        intent: variables.intent,
       })
     },
+    onRetry: (failureCount) => {
+      persistAttemptRef.current = {
+        ...persistAttemptRef.current,
+        retries: failureCount,
+      }
+    },
+    onSuccess: (status, variables) => {
+      trackOnboardingSaveSucceeded({
+        status,
+        stepId: variables.originStepId,
+        intent: variables.intent,
+        durationMs: computeDurationMs(),
+        retries: persistAttemptRef.current.retries,
+      })
+      updateOnboardingStatus(() => status)
+    },
+    onError: (error, variables) => {
+      trackOnboardingSaveFailed({
+        status: variables.status,
+        stepId: variables.originStepId,
+        intent: variables.intent,
+        durationMs: computeDurationMs(),
+        retries: persistAttemptRef.current.retries,
+        errorName: error instanceof Error ? error.name : undefined,
+        errorMessage: error instanceof Error ? error.message : undefined,
+        errorStatus: error instanceof ApiError ? error.status : null,
+      })
+      if (error instanceof ApiError && error.status === 409) {
+        void resyncFromServer()
+      }
+    },
+    messages: {
+      pending: () => ({
+        title: 'Saving your progress…',
+        description: 'We will keep trying in the background if the connection is unstable.',
+      }),
+      retrying: (failureCount, maxAttempts) => ({
+        title: 'Still working on it…',
+        description: `Retrying to sync (${failureCount}/${maxAttempts}). Your answers are safe locally.`,
+      }),
+      success: () => ({
+        title: 'Progress synced',
+        description: 'All onboarding updates are now saved.',
+      }),
+      error: (error) => ({
+        title: error instanceof ApiError && error.status === 409 ? 'Refreshing your answers' : 'Progress not saved',
+        description:
+          error instanceof ApiError && error.status === 409
+            ? 'Another device updated this onboarding session. We pulled the latest answers so you can continue safely.'
+            : error instanceof Error
+              ? `${error.message} We kept your latest answers locally.`
+              : 'Unable to save onboarding progress. We kept your latest answers locally.',
+        variant: error instanceof ApiError && error.status === 409 ? 'default' : 'destructive',
+      }),
+    },
+    maxRetryAttempts: 3,
+    baseRetryDelayMs: 1_500,
+    maxRetryDelayMs: 10_000,
   })
+
+  const resyncFromServer = useCallback(async () => {
+    const token = await getAccessToken()
+    if (!token) return
+    try {
+      const session = await fetchOrCreateOnboardingSession(token)
+      if (session?.status) {
+        updateOnboardingStatus(() => session.status)
+        useOnboardingStore.getState().hydrateFromStatus(session.status)
+      }
+    } catch (error) {
+      console.error('[onboarding] failed to refresh session after conflict', error)
+    }
+  }, [getAccessToken, updateOnboardingStatus])
 
   const updateData = (payload: StepDataMap[T]) => {
     setStepData(stepId, payload)
@@ -140,7 +337,11 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     setStepData(stepId, payload)
     const nextStatus = buildNextStatus(payload, { markCompleted: !nextStep })
     try {
-      await persistProgress.mutateAsync(nextStatus)
+      const syncedStatus = await persistProgress.mutateAsync({
+        status: nextStatus,
+        originStepId: stepId,
+        intent: 'complete-step',
+      })
       if (!nextStep) {
         setIsCompleting(true)
         try {
@@ -150,14 +351,30 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
           }
           const answers = readOnboardingSnapshot()
           const response = await submitOnboardingCompletion(token, {
-            status: nextStatus,
+            status: syncedStatus,
             answers,
           })
-          if (!response) {
+          if (dispatchValidationSummary(response?.validation)) {
+            return
+          }
+          if (!response?.session) {
             throw new Error('Failed to finalize onboarding.')
           }
+          clearValidationIssues()
           markOnboardingComplete()
         } catch (error) {
+          if (error instanceof ApiError && error.status === 409) {
+            toast({
+              title: 'Progress updated elsewhere',
+              description: 'We refreshed your onboarding session. Please review your latest answers before finishing.',
+              variant: 'destructive',
+            })
+            void resyncFromServer()
+            return
+          }
+          if (error instanceof ApiError && dispatchValidationSummary(error.body?.validation)) {
+            return
+          }
           const message = error instanceof Error ? error.message : 'Unable to finish onboarding.'
           toast({
             title: 'Unable to finish',
@@ -180,7 +397,11 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     if (persistProgress.isPending || isInvalidatingUser || isCompleting) return
     const nextStatus = buildSkippedStatus()
     try {
-      await persistProgress.mutateAsync(nextStatus)
+      await persistProgress.mutateAsync({
+        status: nextStatus,
+        originStepId: stepId,
+        intent: 'skip-step',
+      })
       await invalidateUser()
       await goNext()
     } catch {
@@ -212,12 +433,6 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
       }
     })
     router.push(previousStep.path)
-  }
-
-  const goToStepId = (targetId: OnboardingStepId) => {
-    const target = getStepById(targetId)
-    if (!target) return
-    router.push(target.path)
   }
 
   const completedSteps = onboardingStatus?.completedSteps ?? []

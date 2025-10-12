@@ -177,6 +177,7 @@ export const defaultOnboardingStatus = (): StoredOnboardingStatus => ({
   skippedSteps: [],
   data: {},
   lastStep: undefined,
+  revision: null,
 })
 
 export const getOnboardingStatusVersion = (status: StoredOnboardingStatus | null | undefined) => {

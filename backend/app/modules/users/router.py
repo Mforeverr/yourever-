@@ -7,11 +7,13 @@ User profile and onboarding progress endpoints.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 
 from ...dependencies import CurrentPrincipal, require_current_principal
 from .di import get_user_service
 from .schemas import OnboardingProgressUpdate, OnboardingSessionResponse, UserProfileResponse
 from .service import UserService
+from ..onboarding.errors import OnboardingRevisionConflict
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -47,5 +49,15 @@ async def update_onboarding_progress(
     principal: CurrentPrincipal = Depends(require_current_principal),
     service: UserService = Depends(get_user_service),
 ) -> OnboardingSessionResponse:
-    session = await service.update_onboarding_progress(principal, payload.status)
+    try:
+        session = await service.update_onboarding_progress(principal, payload.status)
+    except OnboardingRevisionConflict as error:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "detail": error.detail,
+                "conflict": error.context,
+            },
+        )
+
     return OnboardingSessionResponse(session=session)
