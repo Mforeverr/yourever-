@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FieldValues, UseFormReturn } from 'react-hook-form'
 import type { OnboardingStepId } from '@/lib/onboarding'
 import { useOnboardingValidationStore } from '@/state/onboarding-validation.store'
@@ -10,17 +10,22 @@ export const useOnboardingValidationFeedback = <TFieldValues extends FieldValues
   form: UseFormReturn<TFieldValues>,
 ) => {
   const consumeStepIssues = useOnboardingValidationStore((state) => state.consumeStepIssues)
+  const stepIssues = useOnboardingValidationStore(
+    useMemo(
+      () => (state) => state.issues[stepId],
+      [stepId],
+    ),
+  )
   const [generalError, setGeneralError] = useState<string | null>(null)
 
   useEffect(() => {
-    const issues = consumeStepIssues(stepId)
-    if (!issues?.length) {
+    if (!stepIssues?.length) {
       return
     }
 
     let nextGeneralError: string | null = null
 
-    issues.forEach((issue) => {
+    stepIssues.forEach((issue) => {
       if (issue.field) {
         form.setError(issue.field as keyof TFieldValues, {
           type: 'server',
@@ -32,7 +37,8 @@ export const useOnboardingValidationFeedback = <TFieldValues extends FieldValues
     })
 
     setGeneralError(nextGeneralError)
-  }, [consumeStepIssues, form, stepId])
+    consumeStepIssues(stepId)
+  }, [consumeStepIssues, form, stepId, stepIssues])
 
   const dismissGeneralError = useCallback(() => setGeneralError(null), [])
 
