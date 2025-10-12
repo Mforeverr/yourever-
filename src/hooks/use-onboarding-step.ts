@@ -23,7 +23,14 @@ import { toast } from '@/hooks/use-toast'
 const allStepIds = ONBOARDING_STEPS.map((step) => step.id)
 
 export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
-  const { onboardingStatus, updateOnboardingStatus, markOnboardingComplete, user, getAccessToken } = useCurrentUser()
+  const {
+    onboardingStatus,
+    updateOnboardingStatus,
+    markOnboardingComplete,
+    user,
+    getAccessToken,
+    status,
+  } = useCurrentUser()
   const router = useRouter()
   const stepData = useOnboardingStore(selectStepData(stepId))
   const setStepData = useOnboardingStore((state) => state.setStepData)
@@ -35,6 +42,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
   const data = stepData
 
   useEffect(() => {
+    if (status === 'pending') return
     if (!user || !onboardingStatus) return
     if (!step) {
       router.replace('/select-org')
@@ -52,7 +60,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     if (firstIncomplete && firstIncomplete.id !== stepId && !completedSet.has(stepId)) {
       router.replace(firstIncomplete.path)
     }
-  }, [onboardingStatus, router, step, stepId, user])
+  }, [onboardingStatus, router, status, step, stepId, user])
 
   const persistProgress = useMutation({
     mutationFn: async (status: StoredOnboardingStatus) => {

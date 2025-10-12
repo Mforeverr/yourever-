@@ -8,11 +8,18 @@ export const useCurrentUser = () => {
     onboardingStatus,
     updateOnboardingStatus,
     markOnboardingComplete,
+    userStatus,
+    userError,
+    refetchUser,
     ...auth
   } = useAuth()
 
   return {
     user,
+    status: userStatus,
+    userStatus,
+    error: userError,
+    refetchUser,
     isAuthenticated: !!user,
     isDevUser: user?.email === 'dev@yourever.com',
     canAccessOrg: (orgId: string) => user?.organizations.some((org) => org.id === orgId) ?? false,
