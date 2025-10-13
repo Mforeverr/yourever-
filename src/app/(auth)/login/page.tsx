@@ -199,7 +199,7 @@ export default function LoginPage() {
           <AuthFooter>
             Don't have an account?{' '}
             <Link
-              href="/auth/signup"
+              href="/signup"
               className="font-medium text-primary hover:underline transition-colors"
             >
               Sign up

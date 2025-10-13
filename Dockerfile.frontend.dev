@@ -1,0 +1,39 @@
+# Development Dockerfile - For development with hot reload
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies
+RUN apk add --no-cache libc6-compat curl
+
+# Copy package files
+COPY package.json package-lock.json* ./
+
+# Install dependencies
+RUN npm ci && npm cache clean --force
+
+# Copy source code
+COPY . .
+
+# Generate Prisma client
+RUN npx prisma generate
+
+# Set development environment
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3005
+ENV HOSTNAME=0.0.0.0
+
+# Create non-root user for development
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Change ownership of app directory
+RUN chown -R nextjs:nodejs /app
+
+USER nextjs
+
+EXPOSE 3005
+
+# Start development server with hot reload
+CMD ["npm", "run", "dev"]

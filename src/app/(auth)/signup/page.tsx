@@ -211,7 +211,7 @@ function SignupPageContent() {
           <AuthFooter>
             Already have an account?{' '}
             <Link
-              href="/auth/login"
+              href="/login"
               className="font-medium text-primary hover:underline transition-colors"
             >
               Sign in
