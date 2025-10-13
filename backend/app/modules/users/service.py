@@ -7,9 +7,10 @@ User service orchestrating repository access.
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 from ...dependencies import CurrentPrincipal
+from .checksums import compute_status_checksum
 from .repository import UserRepository
 from .schemas import (
     OnboardingSession,
@@ -33,6 +34,41 @@ def _status_metrics(status: StoredOnboardingStatus) -> Dict[str, Any]:
         "status_skipped_steps": len(status.skippedSteps),
         "status_last_step": status.lastStep or None,
     }
+
+
+def _as_dict(value: Any) -> Dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, Mapping):
+        return dict(value)
+    return {}
+
+
+def _collect_changed_fields(
+    persisted: Dict[str, Any], submitted: Dict[str, Any], prefix: str = ""
+) -> List[str]:
+    changed: List[str] = []
+    keys = {str(key) for key in persisted.keys()} | {str(key) for key in submitted.keys()}
+
+    for key in sorted(keys):
+        path = f"{prefix}.{key}" if prefix else key
+        persisted_value = persisted.get(key)
+        submitted_value = submitted.get(key)
+
+        persisted_mapping = _as_dict(persisted_value)
+        submitted_mapping = _as_dict(submitted_value)
+
+        if persisted_mapping or submitted_mapping:
+            if persisted_mapping and submitted_mapping:
+                changed.extend(_collect_changed_fields(persisted_mapping, submitted_mapping, path))
+            else:
+                changed.append(path)
+            continue
+
+        if persisted_value != submitted_value:
+            changed.append(path)
+
+    return changed
 
 
 class UserService:
@@ -72,19 +108,37 @@ class UserService:
         persisted_revision = (persisted.revision or "").strip() or None
         submitted_revision = (submitted.revision or "").strip() or None
 
+        persisted_data = _as_dict(persisted.data)
+        submitted_data = _as_dict(submitted.data)
+        persisted_checksum = persisted.checksum or compute_status_checksum(persisted_data)
+        submitted_checksum = submitted.checksum or compute_status_checksum(submitted_data)
+        changed_fields = _collect_changed_fields(persisted_data, submitted_data)
+
         if persisted_revision and not submitted_revision:
-            raise OnboardingRevisionConflict(persisted_revision, submitted_revision)
+            raise OnboardingRevisionConflict(
+                persisted_revision,
+                submitted_revision,
+                current_checksum=persisted_checksum,
+                submitted_checksum=submitted_checksum,
+                changed_fields=changed_fields or None,
+            )
 
         if (
             persisted_revision
             and submitted_revision
             and persisted_revision != submitted_revision
         ):
-            raise OnboardingRevisionConflict(persisted_revision, submitted_revision)
+            raise OnboardingRevisionConflict(
+                persisted_revision,
+                submitted_revision,
+                current_checksum=persisted_checksum,
+                submitted_checksum=submitted_checksum,
+                changed_fields=changed_fields or None,
+            )
 
     @staticmethod
     def _with_next_revision(status: StoredOnboardingStatus) -> StoredOnboardingStatus:
-        return status.model_copy(update={"revision": new_onboarding_revision()})
+        return status.model_copy(update={"revision": new_onboarding_revision(), "checksum": None})
 
     async def update_onboarding_progress(
         self,

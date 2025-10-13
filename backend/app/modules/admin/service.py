@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import datetime
 
 from ..users.aggregation import OnboardingAnswerSnapshot, OnboardingAnswerSnapshotRepository
@@ -40,3 +41,13 @@ class AdminOnboardingAnswersService:
     ) -> list[OnboardingAnswerSnapshot]:
         await self._repository.ensure_schema()
         return await self._repository.list_snapshots_for_user(user_id)
+
+    async def stream_all_snapshots(
+        self,
+        *,
+        batch_size: int = 500,
+    ) -> AsyncIterator[OnboardingAnswerSnapshot]:
+        await self._repository.ensure_schema()
+        async for batch in self._repository.iter_all_snapshots(batch_size=batch_size):
+            for snapshot in batch:
+                yield snapshot

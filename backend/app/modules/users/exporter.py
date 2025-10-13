@@ -36,7 +36,7 @@ class JsonLinesWarehouseWriter:
     async def write_batch(self, records: Iterable[OnboardingAnswerSnapshot]) -> None:
         lines: list[str] = []
         for record in records:
-            payload = _snapshot_to_json(record)
+            payload = snapshot_to_dict(record)
             lines.append(json.dumps(payload, separators=(",", ":")))
         if not lines:
             return
@@ -74,7 +74,7 @@ class OnboardingAnswerWarehouseExporter:
         return ExportStats(total_snapshots=total_written)
 
 
-def _snapshot_to_json(snapshot: OnboardingAnswerSnapshot) -> dict:
+def snapshot_to_dict(snapshot: OnboardingAnswerSnapshot) -> dict:
     return {
         "session_id": snapshot.session_id,
         "user_id": snapshot.user_id,

@@ -5,7 +5,7 @@ This document evaluates the current onboarding build against the requested state
 ## 1. Current Architecture Snapshot
 
 ### 1.1 Server state orchestration
-* **Resilient mutations.** `useOnboardingStep` pushes progress through a dedicated `useResilientMutation` wrapper that adds telemetry hooks, exponential backoff (3 attempts, jittered delay), and toast feedback while syncing with the backend. 【F:src/hooks/use-onboarding-step.ts†L193-L277】【F:src/lib/react-query/resilient-mutation.ts†L1-L218】
+* **Resilient mutations.** `useOnboardingStep` pushes progress through a dedicated `useResilientMutation` wrapper that adds telemetry hooks, exponential backoff (3 attempts, jittered delay), and toast feedback while syncing with the backend. 【F:src/hooks/use-onboarding-step.tsx†L193-L277】【F:src/lib/react-query/resilient-mutation.ts†L1-L218】
 * **Session endpoints.** The frontend targets RESTful `GET /api/users/me/onboarding-progress`, `PATCH /api/users/me/onboarding-progress`, and `POST /api/onboarding/complete` helpers that normalize error handling and unauthorized fallbacks. 【F:src/modules/onboarding/session.ts†L41-L125】
 * **Revision-aware persistence.** Backend services require matching revision tokens, regenerate revisions on every write, log structured metrics, and enforce validation before completion. 【F:backend/app/modules/users/service.py†L70-L148】
 * **Durable storage.** Repository methods create the onboarding row on demand, persist versioned payloads (including answers) with timestamps, and ensure a final snapshot even on race conditions. 【F:backend/app/modules/users/repository.py†L251-L382】
@@ -24,11 +24,11 @@ This document evaluates the current onboarding build against the requested state
 * **Analytics.** Telemetry helpers emit lifecycle events for save attempts and resume scenarios, capturing retries, durations, and completion ratios. 【F:src/lib/telemetry/onboarding.ts†L1-L124】
 
 ## 2. Scenario Validation: “User exits mid-onboarding, returns later”
-1. **Progress capture.** Completing a step snapshots the payload, persists it with retries, and updates the canonical status (including last step and revision). 【F:src/hooks/use-onboarding-step.ts†L296-L394】
+1. **Progress capture.** Completing a step snapshots the payload, persists it with retries, and updates the canonical status (including last step and revision). 【F:src/hooks/use-onboarding-step.tsx†L296-L394】
 2. **Local persistence.** The Zustand store mirrors the payload immediately and survives refreshes or new tabs via `localStorage`. 【F:src/state/onboarding.store.ts†L173-L255】
 3. **Resume on login.** Authentication bootstraps the latest session, handles version resets, and rehydrates the store before routing. 【F:src/contexts/auth-context.tsx†L100-L213】
-4. **Redirect enforcement.** The global watcher and per-step guard both push the user back to the first incomplete step if they land elsewhere prematurely. 【F:src/components/onboarding/onboarding-watcher.tsx†L10-L30】【F:src/hooks/use-onboarding-step.ts†L172-L191】
-5. **Completion.** The final step bundles all persisted answers, sends them to `/api/onboarding/complete`, applies server validation feedback, and marks onboarding complete locally and remotely. 【F:src/hooks/use-onboarding-step.ts†L338-L387】【F:src/modules/onboarding/session.ts†L113-L124】【F:backend/app/modules/users/repository.py†L327-L382】
+4. **Redirect enforcement.** The global watcher and per-step guard both push the user back to the first incomplete step if they land elsewhere prematurely. 【F:src/components/onboarding/onboarding-watcher.tsx†L10-L30】【F:src/hooks/use-onboarding-step.tsx†L172-L191】
+5. **Completion.** The final step bundles all persisted answers, sends them to `/api/onboarding/complete`, applies server validation feedback, and marks onboarding complete locally and remotely. 【F:src/hooks/use-onboarding-step.tsx†L338-L387】【F:src/modules/onboarding/session.ts†L113-L124】【F:backend/app/modules/users/repository.py†L327-L382】
 
 **Result:** The build already fulfills the “leave mid-flow, resume later” requirement with redundant persistence layers, routing guards, and validation-aware completion.
 
@@ -36,25 +36,25 @@ This document evaluates the current onboarding build against the requested state
 
 | Case | Existing Handling |
 | --- | --- |
-| Browser back navigation | `goPrevious` rewinds the completion list, updates status, and routes to the prior step without losing form state. 【F:src/hooks/use-onboarding-step.ts†L412-L435】 |
-| Network instability | Resilient mutations add exponential backoff, retry toasts, and keep latest answers locally until sync succeeds. 【F:src/hooks/use-onboarding-step.ts†L193-L276】 |
+| Browser back navigation | `goPrevious` rewinds the completion list, updates status, and routes to the prior step without losing form state. 【F:src/hooks/use-onboarding-step.tsx†L412-L435】 |
+| Network instability | Resilient mutations add exponential backoff, retry toasts, and keep latest answers locally until sync succeeds. 【F:src/hooks/use-onboarding-step.tsx†L193-L276】 |
 | Multi-tab editing | Persisted Zustand state hydrates across storage events, so edits from another tab appear instantly on focus. 【F:src/state/onboarding.store.ts†L173-L235】 |
 | Token expiration | API helpers detect 401s, trigger the global unauthorized handler, and block retries that would loop forever. 【F:src/modules/onboarding/session.ts†L41-L83】 |
-| Revision conflicts | Backend revision checks raise 409 conflicts; the client refreshes from the server and notifies the user before retrying. 【F:backend/app/modules/users/service.py†L70-L132】【F:src/hooks/use-onboarding-step.ts†L224-L286】【F:src/hooks/use-onboarding-step.ts†L366-L373】 |
+| Revision conflicts | Backend revision checks raise 409 conflicts; the client refreshes from the server and notifies the user before retrying. 【F:backend/app/modules/users/service.py†L70-L132】【F:src/hooks/use-onboarding-step.tsx†L224-L286】【F:src/hooks/use-onboarding-step.tsx†L366-L373】 |
 | Version resets | Legacy status versions trigger a local reset, toast notification, and upstream PATCH with the new baseline. 【F:src/contexts/auth-context.tsx†L133-L177】 |
-| Server validation failures | Completion responses dispatch structured issues to the validation store, surface inline errors, and route to the blocking step. 【F:backend/app/modules/onboarding/validation.py†L35-L71】【F:src/hooks/use-onboarding-step.ts†L142-L168】【F:src/hooks/use-onboarding-validation.ts†L8-L45】 |
+| Server validation failures | Completion responses dispatch structured issues to the validation store, surface inline errors, and route to the blocking step. 【F:backend/app/modules/onboarding/validation.py†L35-L71】【F:src/hooks/use-onboarding-step.tsx†L142-L168】【F:src/hooks/use-onboarding-validation.ts†L8-L45】 |
 
 ## 4. Observed Strengths
-* **Three-layer state separation** (TanStack Query for server state, persisted Zustand for global UI state, `useState`/forms for local state) exactly matches the recommended architecture. 【F:src/hooks/use-onboarding-step.ts†L19-L138】【F:src/state/onboarding.store.ts†L1-L235】【F:src/app/(onboarding)/o/profile/page.tsx†L33-L185】
-* **Redundancy against data loss** thanks to local snapshots, revisioned backend rows, and telemetry-backed retries. 【F:src/hooks/use-onboarding-step.ts†L296-L388】【F:backend/app/modules/users/repository.py†L251-L382】【F:src/lib/telemetry/onboarding.ts†L46-L124】
-* **User guidance** through toasts, inline validation, and automatic rerouting keeps the flow self-healing even under conflicting edits. 【F:src/hooks/use-onboarding-step.ts†L142-L383】【F:src/hooks/use-onboarding-validation.ts†L8-L45】
+* **Three-layer state separation** (TanStack Query for server state, persisted Zustand for global UI state, `useState`/forms for local state) exactly matches the recommended architecture. 【F:src/hooks/use-onboarding-step.tsx†L19-L138】【F:src/state/onboarding.store.ts†L1-L235】【F:src/app/(onboarding)/o/profile/page.tsx†L33-L185】
+* **Redundancy against data loss** thanks to local snapshots, revisioned backend rows, and telemetry-backed retries. 【F:src/hooks/use-onboarding-step.tsx†L296-L388】【F:backend/app/modules/users/repository.py†L251-L382】【F:src/lib/telemetry/onboarding.ts†L46-L124】
+* **User guidance** through toasts, inline validation, and automatic rerouting keeps the flow self-healing even under conflicting edits. 【F:src/hooks/use-onboarding-step.tsx†L142-L383】【F:src/hooks/use-onboarding-validation.ts†L8-L45】
 
 ## 5. Insight Capture & Reporting Readiness
 
 The onboarding flow does more than guide people to the dashboard—it captures a full research-grade snapshot you can review later when planning playbooks, success interventions, or product experiments.
 
 * **Typed step payloads cover every question you raised.** Each page maps to a dedicated schema so the store always holds normalized data for profile basics, work profile (team, timezone, functions, intents, experience), tools, invites, preferences, and workspace choice. 【F:src/lib/onboarding.ts†L24-L109】【F:src/state/onboarding.store.ts†L21-L92】
-* **Snapshots are bundled automatically on completion.** When the last step finishes, the client pulls the latest Zustand snapshot—containing all answers keyed by step—and includes it in the completion payload sent to the backend. 【F:src/state/onboarding.store.ts†L243-L255】【F:src/hooks/use-onboarding-step.ts†L320-L372】
+* **Snapshots are bundled automatically on completion.** When the last step finishes, the client pulls the latest Zustand snapshot—containing all answers keyed by step—and includes it in the completion payload sent to the backend. 【F:src/state/onboarding.store.ts†L243-L255】【F:src/hooks/use-onboarding-step.tsx†L320-L372】
 * **Backend persists answers for later review.** The completion handler stores the final status alongside the `answers` blob inside `onboarding_sessions.data`, giving downstream jobs a single JSON document with every field that was asked during onboarding. 【F:backend/app/modules/users/repository.py†L327-L373】【F:backend/app/modules/users/service.py†L120-L148】
 * **Server validation keeps the dataset trustworthy.** Required steps are enforced and workspace selections are checked again server-side so incomplete or malformed submissions never enter analytics. 【F:backend/app/modules/onboarding/validation.py†L19-L72】
 
@@ -93,7 +93,7 @@ single aggregation surface that groups submissions from the moment they are firs
   【F:backend/app/modules/admin/service.py†L8-L37】【F:backend/app/modules/admin/schemas.py†L8-L57】
 * **Nightly warehouse export.** A reusable exporter and CLI (`scripts/export_onboarding_answers.py`) stream every snapshot into
   NDJSON batches, ready for S3 drops or ingestion jobs—set `ONBOARDING_ANSWERS_EXPORT_PATH` and schedule the script nightly.
-  【F:backend/app/modules/users/exporter.py†L1-L98】【F:scripts/export_onboarding_answers.py†L1-L39】
+  【F:backend/app/modules/users/exporter.py†L1-L95】【F:scripts/export_onboarding_answers.py†L1-L39】
 
 ### 6.4 Operational safeguards
 * **Schema contracts shipped.** Every completion now stamps an `answer_schema_version` both in the transactional payload and
@@ -107,16 +107,23 @@ original step definitions, and is queryable through a dedicated API or data expo
 
 ## 7. Server-driven onboarding manifest (live)
 * **Backend-configured manifest + endpoint.** The onboarding service now owns a manifest provider, exposes it through `GET /api/onboarding/manifest`, and serves structured step metadata (id, title, description, routing, required/skip flags, version, and variant). This keeps the client contract stable while enabling future experimentation. 【F:backend/app/modules/onboarding/manifest.py†L1-L74】【F:backend/app/modules/onboarding/service.py†L1-L22】【F:backend/app/modules/onboarding/di.py†L1-L15】【F:backend/app/modules/onboarding/router.py†L1-L64】【F:backend/app/modules/onboarding/schemas.py†L1-L60】
-* **React Query hydration with safe fallback.** A dedicated hook fetches the manifest, caches the sanitized payload, and falls back to the default ordering if the network is unavailable. All onboarding flows (auth context, watcher, shell, step hook, telemetry) now derive their step list from this runtime manifest, so experiments roll out instantly without redeploying the frontend. 【F:src/hooks/use-onboarding-manifest.ts†L1-L72】【F:src/modules/onboarding/manifest.ts†L1-L54】【F:src/lib/onboarding.ts†L1-L210】【F:src/hooks/use-onboarding-step.ts†L1-L540】【F:src/components/onboarding/onboarding-shell.tsx†L1-L140】【F:src/components/onboarding/onboarding-watcher.tsx†L1-L60】【F:src/contexts/auth-context.tsx†L1-L520】【F:src/lib/telemetry/onboarding.ts†L1-L116】
+* **React Query hydration with safe fallback.** A dedicated hook fetches the manifest, caches the sanitized payload, and falls back to the default ordering if the network is unavailable. All onboarding flows (auth context, watcher, shell, step hook, telemetry) now derive their step list from this runtime manifest, so experiments roll out instantly without redeploying the frontend. 【F:src/hooks/use-onboarding-manifest.ts†L1-L72】【F:src/modules/onboarding/manifest.ts†L1-L54】【F:src/lib/onboarding.ts†L1-L210】【F:src/hooks/use-onboarding-step.tsx†L1-L540】【F:src/components/onboarding/onboarding-shell.tsx†L1-L140】【F:src/components/onboarding/onboarding-watcher.tsx†L1-L60】【F:src/contexts/auth-context.tsx†L1-L520】【F:src/lib/telemetry/onboarding.ts†L1-L116】
 
 ## 8. Offline resilience (service-worker queue shipped)
-* **Background queue with service worker + IndexedDB.** When the browser is offline or transient network errors occur, `useOnboardingStep` now hands requests to a dedicated queue powered by a service worker and IndexedDB. Payloads (`status`, schema version, and originating step) are persisted immediately and replayed once connectivity resumes, so users never lose progress. 【F:src/hooks/use-onboarding-step.ts†L193-L370】【F:src/lib/offline/onboarding-queue.ts†L1-L206】【F:public/onboarding-sync-sw.js†L1-L218】
-* **Automatic retries & notifications.** The worker registers background sync when available, retries transient failures, and informs the client when a job ultimately fails so the UI can notify the user. Telemetry now marks queued saves, ensuring the product team can monitor offline usage. 【F:public/onboarding-sync-sw.js†L94-L206】【F:src/hooks/use-onboarding-step.ts†L224-L296】【F:src/lib/telemetry/onboarding.ts†L1-L116】
+* **Background queue with service worker + IndexedDB.** When the browser is offline or transient network errors occur, `useOnboardingStep` now hands requests to a dedicated queue powered by a service worker and IndexedDB. Payloads (`status`, schema version, and originating step) are persisted immediately and replayed once connectivity resumes, so users never lose progress. 【F:src/hooks/use-onboarding-step.tsx†L193-L370】【F:src/lib/offline/onboarding-queue.ts†L1-L206】【F:public/onboarding-sync-sw.js†L1-L218】
+* **Automatic retries & notifications.** The worker registers background sync when available, retries transient failures, and informs the client when a job ultimately fails so the UI can notify the user. Telemetry now marks queued saves, ensuring the product team can monitor offline usage. 【F:public/onboarding-sync-sw.js†L94-L206】【F:src/hooks/use-onboarding-step.tsx†L224-L296】【F:src/lib/telemetry/onboarding.ts†L1-L116】
 
-## 9. Next-level Enhancements (Beyond the Current Build)
-1. **Conflict-aware diffing.** Extend revision checks by storing a checksum (e.g., SHA-1 of `status.data`) so the client can show users exactly which fields changed when a 409 occurs, instead of a generic refresh toast. 【F:backend/app/modules/users/service.py†L70-L133】【F:src/hooks/use-onboarding-step.ts†L224-L387】
-2. **Automated answer exports.** Add a nightly job or admin endpoint that emits the `answers` payload into your warehouse/CRM so GTM and success teams can react without touching the transactional DB. This builds directly on the persisted JSON snapshot. 【F:backend/app/modules/users/repository.py†L327-L382】
-3. **Drop-off analytics.** Stream telemetry events to a dedicated funnel dashboard (server or product analytics) and correlate retries, conflicts, and validation errors to identify friction hot-spots in real time. 【F:src/lib/telemetry/onboarding.ts†L1-L116】
-4. **Scoped feature flags.** Wrap experimental steps or questions with a feature-flag contract so new fields can be rolled out to specific cohorts without affecting persisted schemas, leveraging the existing version reset path as a safety net. 【F:src/contexts/auth-context.tsx†L1-L520】【F:src/state/onboarding.store.ts†L173-L235】
+## 9. Conflict-aware diffing (shipped)
+* **Revision conflicts now return field-level insight.** Every onboarding status stores a deterministic checksum alongside the persisted data, and revision checks compare both the revision token and SHA-1 hash to detect drift. When a conflict occurs, the backend surfaces the submitted vs. current checksum and a list of changed fields so the client can react intelligently. 【F:backend/app/modules/users/checksums.py†L1-L20】【F:backend/app/modules/users/service.py†L32-L111】
+* **Sessions persist the checksum for every write.** Repository helpers normalize the status payload, stamp the checksum into the JSON envelope, and rehydrate it when sessions are loaded so downstream consumers receive the latest digest without re-computation. 【F:backend/app/modules/users/repository.py†L43-L382】
+* **UI highlights the impacted answers.** When a 409 arrives, `useOnboardingStep` parses the conflict context, groups the changed fields by manifest step, and renders a toast with bullet-point diffs so users know exactly what shifted before continuing. Completion conflicts reuse the same renderer to keep messaging consistent. 【F:src/hooks/use-onboarding-step.tsx†L33-L540】
 
-With these upgrades, the onboarding system not only satisfies the requested scenarios but also gains offline resilience, product-ops agility, and richer observability for future iterations.
+## 10. Automated answer exports (shipped)
+* **Admin streaming export.** Admins can now call `GET /api/admin/onboarding/answers/export` to receive an NDJSON stream of every grouped answer snapshot, backed by the same repository batches that feed the warehouse writer. Each line matches the `snapshot_to_dict` schema, ready for direct ingestion. 【F:backend/app/modules/admin/router.py†L1-L119】【F:backend/app/modules/admin/service.py†L1-L39】【F:backend/app/modules/users/exporter.py†L1-L95】
+* **Warehouse writer remains schedulable.** The existing CLI continues to drop nightly NDJSON files (configurable via `ONBOARDING_ANSWERS_EXPORT_PATH`), so ops teams can wire the export into S3 or their BI tool of choice without touching transactional tables. 【F:scripts/export_onboarding_answers.py†L1-L39】
+
+## 11. Remaining roadmap
+1. **Drop-off analytics.** Stream telemetry events to a dedicated funnel dashboard (server or product analytics) and correlate retries, conflicts, and validation errors to identify friction hot-spots in real time. 【F:src/lib/telemetry/onboarding.ts†L1-L116】
+2. **Scoped feature flags.** Wrap experimental steps or questions with a feature-flag contract so new fields can be rolled out to specific cohorts without affecting persisted schemas, leveraging the existing version reset path as a safety net. 【F:src/contexts/auth-context.tsx†L1-L520】【F:src/state/onboarding.store.ts†L173-L235】
+
+With these upgrades, the onboarding system not only satisfies the requested scenarios but also gains conflict transparency, automated data distribution, offline resilience, product-ops agility, and richer observability for future iterations.

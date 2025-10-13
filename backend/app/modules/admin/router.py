@@ -6,7 +6,9 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
+import json
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 
 from ...dependencies import CurrentPrincipal, require_current_principal
 from .di import get_admin_onboarding_answers_service
@@ -15,6 +17,7 @@ from .schemas import (
     OnboardingAnswerUserResponse,
 )
 from .service import AdminOnboardingAnswersService
+from ..users.exporter import snapshot_to_dict
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -66,3 +69,20 @@ async def get_user_onboarding_answers(
 ) -> OnboardingAnswerUserResponse:
     snapshots = await service.list_user_answers(str(user_id))
     return OnboardingAnswerUserResponse.build(user_id=str(user_id), items=snapshots)
+
+
+@router.get("/onboarding/answers/export")
+async def export_onboarding_answers(
+    batch_size: int = Query(500, ge=1, le=2000, description="Number of records fetched per batch"),
+    _: CurrentPrincipal = Depends(require_admin_principal),
+    service: AdminOnboardingAnswersService = Depends(get_admin_onboarding_answers_service),
+) -> StreamingResponse:
+    async def line_iterator():
+        async for snapshot in service.stream_all_snapshots(batch_size=batch_size):
+            payload = snapshot_to_dict(snapshot)
+            line = json.dumps(payload, separators=(",", ":"))
+            yield (line + "\n").encode("utf-8")
+
+    filename = f"onboarding-answers-{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}.ndjson"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return StreamingResponse(line_iterator(), media_type="application/x-ndjson", headers=headers)

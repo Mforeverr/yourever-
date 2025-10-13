@@ -265,6 +265,7 @@ export const defaultOnboardingStatus = (): StoredOnboardingStatus => ({
   data: {},
   lastStep: undefined,
   revision: null,
+  checksum: null,
 })
 
 export const getOnboardingStatusVersion = (status: StoredOnboardingStatus | null | undefined) => {

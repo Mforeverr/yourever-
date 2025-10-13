@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCurrentUser } from '@/hooks/use-auth'
 import { useOnboardingManifest } from '@/hooks/use-onboarding-manifest'
@@ -47,6 +48,60 @@ type PersistProgressVariables = {
 type ValidationDispatchPayload = {
   blockingStepId: OnboardingStepId
   issuesByStep: Record<OnboardingStepId, Array<{ field: string | null; message: string; code?: string | null }>>
+}
+
+type ConflictDetails = {
+  currentRevision?: string
+  submittedRevision?: string
+  currentChecksum?: string
+  submittedChecksum?: string
+  changedFields: string[]
+}
+
+const parseConflictDetails = (input: unknown): ConflictDetails | null => {
+  if (!input || typeof input !== 'object') {
+    return null
+  }
+
+  const source = input as Record<string, unknown>
+
+  const toStringOrUndefined = (value: unknown) => (typeof value === 'string' ? value : undefined)
+  const changedFields = Array.isArray(source.changedFields)
+    ? Array.from(
+        new Set(
+          source.changedFields
+            .map((value) => (typeof value === 'string' ? value.trim() : ''))
+            .filter((value) => value.length > 0),
+        ),
+      )
+    : []
+
+  return {
+    currentRevision: toStringOrUndefined(source.currentRevision),
+    submittedRevision: toStringOrUndefined(source.submittedRevision),
+    currentChecksum: toStringOrUndefined(source.currentChecksum),
+    submittedChecksum: toStringOrUndefined(source.submittedChecksum),
+    changedFields,
+  }
+}
+
+const humanizeSegment = (segment: string): string => {
+  const normalized = segment
+    .replace(/\[(\d+)\]/g, ' $1 ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) {
+    return 'Field'
+  }
+
+  return normalized
+    .split(' ')
+    .filter((token) => token.length > 0)
+    .map((token) => token[0].toUpperCase() + token.slice(1))
+    .join(' ')
 }
 
 const buildValidationDispatchPayload = (
@@ -137,6 +192,87 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     (value: unknown): value is OnboardingStepId =>
       typeof value === 'string' && stepIdSet.has(value as OnboardingStepId),
     [stepIdSet],
+  )
+
+  const buildConflictToastDescription = useCallback(
+    (details: ConflictDetails | null): ReactNode => {
+      const changedFields = details?.changedFields ?? []
+
+      const defaultMessage = (
+        <div className="space-y-1">
+          <p>
+            Another session updated your onboarding answers. We refreshed the latest data so you can review before
+            continuing.
+          </p>
+        </div>
+      )
+
+      if (!changedFields.length) {
+        return defaultMessage
+      }
+
+      const groupsMap = new Map<string, { title: string; fields: string[] }>()
+
+      changedFields.forEach((path) => {
+        if (typeof path !== 'string' || !path.trim()) {
+          return
+        }
+        const segments = path.split('.').filter(Boolean)
+        if (!segments.length) {
+          return
+        }
+
+        const [stepSegment, ...fieldSegments] = segments
+        const step = getStepById(stepSegment as OnboardingStepId, manifestSteps)
+        const mapKey = step ? step.id : stepSegment
+        const existing = groupsMap.get(mapKey)
+        const entry =
+          existing ?? {
+            title: step?.title ?? humanizeSegment(stepSegment || 'Step'),
+            fields: [] as string[],
+          }
+
+        if (fieldSegments.length) {
+          const label = fieldSegments.map(humanizeSegment).join(' › ')
+          if (!entry.fields.includes(label)) {
+            entry.fields.push(label)
+          }
+        }
+
+        groupsMap.set(mapKey, entry)
+      })
+
+      const groups = Array.from(groupsMap.entries()).map(([key, entry]) => ({
+        key,
+        title: entry.title,
+        fields: entry.fields.length ? entry.fields : ['Step answers updated elsewhere'],
+      }))
+
+      if (!groups.length) {
+        return defaultMessage
+      }
+
+      return (
+        <div className="space-y-2">
+          <p>Another session updated your onboarding answers. Review the following before continuing:</p>
+          <ul className="list-disc space-y-1 pl-4">
+            {groups.map((group) => (
+              <li key={group.key}>
+                <span className="font-medium">{group.title}</span>
+                {group.fields.length ? (
+                  <ul className="list-disc space-y-1 pl-4">
+                    {group.fields.map((field) => (
+                      <li key={field}>{field}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )
+    },
+    [manifestSteps],
   )
 
   const data = stepData
@@ -325,16 +461,27 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
         title: 'Progress synced',
         description: 'All onboarding updates are now saved.',
       }),
-      error: (error) => ({
-        title: error instanceof ApiError && error.status === 409 ? 'Refreshing your answers' : 'Progress not saved',
-        description:
-          error instanceof ApiError && error.status === 409
-            ? 'Another device updated this onboarding session. We pulled the latest answers so you can continue safely.'
-            : error instanceof Error
-              ? `${error.message} We kept your latest answers locally.`
-              : 'Unable to save onboarding progress. We kept your latest answers locally.',
-        variant: error instanceof ApiError && error.status === 409 ? 'default' : 'destructive',
-      }),
+      error: (error) => {
+        if (error instanceof ApiError && error.status === 409) {
+          const conflict = parseConflictDetails(error.body?.conflict)
+          return {
+            title: 'Answers updated elsewhere',
+            description: buildConflictToastDescription(conflict),
+            variant: 'default',
+          }
+        }
+
+        const message =
+          error instanceof Error
+            ? `${error.message} We kept your latest answers locally.`
+            : 'Unable to save onboarding progress. We kept your latest answers locally.'
+
+        return {
+          title: 'Progress not saved',
+          description: message,
+          variant: 'destructive',
+        }
+      },
     },
     maxRetryAttempts: 3,
     baseRetryDelayMs: 1_500,
@@ -430,10 +577,11 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
           markOnboardingComplete()
         } catch (error) {
           if (error instanceof ApiError && error.status === 409) {
+            const conflict = parseConflictDetails(error.body?.conflict)
             toast({
-              title: 'Progress updated elsewhere',
-              description: 'We refreshed your onboarding session. Please review your latest answers before finishing.',
-              variant: 'destructive',
+              title: 'Answers updated elsewhere',
+              description: buildConflictToastDescription(conflict),
+              variant: 'default',
             })
             void resyncFromServer()
             return

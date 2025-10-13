@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +21,7 @@ from .constants import (
     coerce_onboarding_answer_schema_version,
     coerce_onboarding_status_version,
 )
+from .checksums import compute_status_checksum
 from .publishers import (
     NullOnboardingAnswerPublisher,
     OnboardingAnswerMessage,
@@ -49,6 +50,22 @@ class UserRepository:
         self._answer_publisher: OnboardingAnswerPublisher = (
             answer_publisher or NullOnboardingAnswerPublisher()
         )
+
+    @staticmethod
+    def _ensure_mapping(value: Any) -> Dict[str, Any]:
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, Mapping):
+            return dict(value)
+        return {}
+
+    def _serialize_status(self, status: StoredOnboardingStatus) -> tuple[dict, str]:
+        status_payload = status.model_dump()
+        data_payload = self._ensure_mapping(status_payload.get("data"))
+        status_payload["data"] = data_payload
+        checksum = compute_status_checksum(data_payload)
+        status_payload["checksum"] = checksum
+        return status_payload, checksum
 
     async def get_user(self, user_id: str) -> Optional[WorkspaceUser]:
         user_query = text(
@@ -295,7 +312,7 @@ class UserRepository:
                     "user_id": user_id,
                     "current_step": status.lastStep or "profile",
                     "is_completed": status.completed,
-                    "data": json.dumps({"status": status.model_dump()}),
+                    "data": json.dumps(self._build_status_envelope(status)),
                 },
             )
             row = result.mappings().first()
@@ -332,7 +349,9 @@ class UserRepository:
                 "user_id": user_id,
                 "current_step": status.lastStep or "profile",
                 "is_completed": status.completed,
-                "data": json.dumps({"status": status.model_dump()}),
+                "data": json.dumps(
+                    self._build_status_envelope(status),
+                ),
             },
         )
         row = result.mappings().first()
@@ -424,7 +443,7 @@ class UserRepository:
             }
         )
 
-        payload: Dict[str, Any] = {"status": final_status.model_dump()}
+        payload: Dict[str, Any] = self._build_status_envelope(final_status)
         payload["answerSchemaVersion"] = CURRENT_ONBOARDING_ANSWER_SCHEMA_VERSION
         payload["answer_schema_version"] = CURRENT_ONBOARDING_ANSWER_SCHEMA_VERSION
         if answers:
@@ -492,9 +511,13 @@ class UserRepository:
                 raw_data = json.loads(raw_data)
             except json.JSONDecodeError:
                 raw_data = {}
+        checksum_hint = None
+        if isinstance(raw_data, dict):
+            checksum_hint = raw_data.get("statusChecksum") or raw_data.get("status_checksum")
+
         status_payload = raw_data.get("status") if isinstance(raw_data, dict) else {}
         if isinstance(status_payload, dict):
-            status_payload = self._normalize_status_payload(status_payload)
+            status_payload = self._normalize_status_payload(status_payload, checksum_hint)
         status = StoredOnboardingStatus(**status_payload) if status_payload else StoredOnboardingStatus()
 
         return OnboardingSession(
@@ -522,7 +545,7 @@ class UserRepository:
         }
 
     @staticmethod
-    def _normalize_status_payload(payload: dict) -> dict:
+    def _normalize_status_payload(payload: dict, checksum_hint: Optional[str] = None) -> dict:
         normalized = payload.copy()
         if "completed_steps" in normalized and "completedSteps" not in normalized:
             normalized["completedSteps"] = normalized.pop("completed_steps")
@@ -537,4 +560,24 @@ class UserRepository:
         elif revision is not None:
             revision = None
         normalized["revision"] = revision
+        checksum_candidate = (
+            (checksum_hint or normalized.get("checksum") or "")
+            if isinstance(checksum_hint, str) or isinstance(normalized.get("checksum"), str)
+            else ""
+        )
+        checksum_value = checksum_candidate.strip()
+        if checksum_value:
+            normalized["checksum"] = checksum_value
+        else:
+            normalized["checksum"] = compute_status_checksum(
+                UserRepository._ensure_mapping(normalized.get("data"))
+            )
         return normalized
+
+    def _build_status_envelope(self, status: StoredOnboardingStatus) -> Dict[str, Any]:
+        status_payload, status_checksum = self._serialize_status(status)
+        return {
+            "status": status_payload,
+            "statusChecksum": status_checksum,
+            "status_checksum": status_checksum,
+        }
