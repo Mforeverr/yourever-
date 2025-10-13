@@ -30,7 +30,7 @@ export function OnboardingWatcher() {
     }
 
     if (onboardingStatus.completed && isOnboardingRoute) {
-      router.replace('/select-org')
+      router.replace('/welcome')
     }
   }, [isOnboardingRoute, manifestSteps, onboardingStatus, router, status, user])
 

@@ -34,6 +34,11 @@ const handlePostLoginRedirect = (router: ReturnType<typeof useRouter>, user: Wor
     return
   }
 
+  if (onboardingStatus?.completed && !authStorage.hasSeenWorkspaceWelcome()) {
+    router.replace('/welcome')
+    return
+  }
+
   if (user && user.organizations.length === 1 && user.organizations[0].divisions.length === 1) {
     const org = user.organizations[0]
     const division = org.divisions[0]

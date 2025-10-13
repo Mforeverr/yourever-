@@ -16,7 +16,6 @@ const STEP_IDS: OnboardingStepId[] = [
   'tools',
   'invite',
   'preferences',
-  'workspace-hub',
 ]
 
 const LEGACY_KEYS: Record<OnboardingStepId, string[]> = {
@@ -25,7 +24,6 @@ const LEGACY_KEYS: Record<OnboardingStepId, string[]> = {
   tools: ['tools'],
   invite: ['invite'],
   preferences: ['preferences'],
-  'workspace-hub': ['workspace-hub', 'workspaceHub'],
 }
 
 const createDefaults = (): StepDataMap => ({
@@ -60,9 +58,6 @@ const createDefaults = (): StepDataMap => ({
     weeklySummary: true,
     enableNotifications: true,
     defaultTheme: 'dark',
-  },
-  'workspace-hub': {
-    choice: 'join-existing',
   },
 })
 
@@ -106,17 +101,6 @@ interface FeatureContract<T extends keyof StepDataMap> {
 }
 
 const FEATURE_CONTRACTS: ReadonlyArray<FeatureContract<keyof StepDataMap>> = [
-  {
-    flag: 'onboarding.workspaceHub.templates',
-    stepId: 'workspace-hub',
-    disable: (data, defaults) => {
-      const next = { ...data }
-      if ('template' in next) {
-        delete (next as { template?: string }).template
-      }
-      return { ...defaults, ...next }
-    },
-  },
 ]
 
 const sanitizeStepForFlags = <T extends keyof StepDataMap>(
@@ -370,7 +354,6 @@ export const readOnboardingSnapshot = () => {
       statuses: steps.invite.statuses ? [...steps.invite.statuses] : [],
     },
     preferences: { ...steps.preferences },
-    'workspace-hub': { ...steps['workspace-hub'] },
   } satisfies StepDataMap
 }
 

@@ -10,7 +10,6 @@ export type KnownOnboardingStepId =
   | 'tools'
   | 'invite'
   | 'preferences'
-  | 'workspace-hub'
 
 export type OnboardingStepId = KnownOnboardingStepId | (string & {})
 
@@ -64,12 +63,6 @@ export interface PreferencesStepData {
   defaultTheme: 'dark' | 'light' | 'system'
 }
 
-export interface WorkspaceHubStepData {
-  choice: 'join-existing' | 'create-new'
-  organizationName?: string
-  divisionName?: string
-  template?: string
-}
 
 export interface OnboardingData {
   profile?: ProfileStepData
@@ -77,7 +70,6 @@ export interface OnboardingData {
   tools?: ToolsStepData
   invite?: InviteStepData
   preferences?: PreferencesStepData
-  'workspace-hub'?: WorkspaceHubStepData
 }
 
 export type StepDataMap = {
@@ -86,7 +78,6 @@ export type StepDataMap = {
   tools: ToolsStepData
   invite: InviteStepData
   preferences: PreferencesStepData
-  'workspace-hub': WorkspaceHubStepData
 }
 
 export interface OnboardingManifest {
@@ -134,14 +125,6 @@ export const DEFAULT_ONBOARDING_STEPS: BaseOnboardingStep[] = [
     title: 'Workspace preferences',
     description: 'Choose the preferences that fit how you like to work.',
     path: '/o/preferences',
-    required: true,
-    canSkip: false,
-  },
-  {
-    id: 'workspace-hub',
-    title: 'Workspace hub',
-    description: 'Create or join a workspace to finish onboarding.',
-    path: '/o/workspace-hub',
     required: true,
     canSkip: false,
   },

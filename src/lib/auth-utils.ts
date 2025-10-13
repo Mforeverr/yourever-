@@ -3,6 +3,7 @@ const ORGANIZATION_STORAGE_KEY = 'mock_active_org_id'
 const DIVISION_STORAGE_KEY = 'mock_active_division_id'
 const LAST_ROUTE_STORAGE_KEY = 'mock_last_authed_route'
 const ONBOARDING_STATUS_STORAGE_KEY = 'mock_onboarding_status'
+const WORKSPACE_WELCOME_SEEN_KEY = 'mock_workspace_welcome_seen'
 
 import {
   CURRENT_ONBOARDING_STATUS_VERSION,
@@ -137,6 +138,10 @@ export const authStorage = {
     }
   },
 
+  hasSeenWorkspaceWelcome: (): boolean => readItem(WORKSPACE_WELCOME_SEEN_KEY) === 'true',
+  setWorkspaceWelcomeSeen: () => writeItem(WORKSPACE_WELCOME_SEEN_KEY, 'true'),
+  clearWorkspaceWelcomeSeen: () => removeItem(WORKSPACE_WELCOME_SEEN_KEY),
+
   clearAll: () => {
     const storage = getStorage()
     if (!storage) return
@@ -145,6 +150,7 @@ export const authStorage = {
     storage.removeItem(DIVISION_STORAGE_KEY)
     storage.removeItem(LAST_ROUTE_STORAGE_KEY)
     storage.removeItem(ONBOARDING_STATUS_STORAGE_KEY)
+    storage.removeItem(WORKSPACE_WELCOME_SEEN_KEY)
   }
 }
 

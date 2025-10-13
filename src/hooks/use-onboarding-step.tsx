@@ -700,7 +700,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
   const goToStep = (target?: BaseOnboardingStep) => {
     if (!target) {
       markOnboardingComplete()
-      router.replace('/select-org')
+      router.replace('/welcome')
       return
     }
     router.push(target.path)

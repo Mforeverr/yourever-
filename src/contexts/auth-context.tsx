@@ -18,7 +18,6 @@ import {
   CURRENT_ONBOARDING_STATUS_VERSION,
   coerceOnboardingStatusVersion,
 } from '@/lib/onboarding-version'
-import { isFeatureEnabled } from '@/lib/feature-flags'
 import { createSupabaseAuthGateway, type SupabaseAuthGateway } from '@/modules/auth/supabase-gateway'
 import { clearAuthTokenResolver, setAuthTokenResolver } from '@/lib/api/client'
 import type { WorkspaceUser } from '@/modules/auth/types'
@@ -103,11 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   useEffect(() => {
-    const variantKey = typeof manifest.variant === 'string' ? manifest.variant.toLowerCase() : ''
-    const nextFlags: Record<string, boolean> = {
-      'onboarding.workspaceHub.templates':
-        isFeatureEnabled('onboarding.workspaceHub.templates', false) || variantKey.includes('template'),
-    }
+    const nextFlags: Record<string, boolean> = {}
 
     if (featureFlagsEqual(appliedFeatureFlagsRef.current, nextFlags)) {
       if (!featureFlagsEqual(onboardingFeatureFlags, nextFlags)) {
@@ -119,7 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     appliedFeatureFlagsRef.current = { ...nextFlags }
     setOnboardingFeatureFlags(nextFlags)
     useOnboardingStore.getState().setFeatureFlags(nextFlags)
-  }, [featureFlagsEqual, manifest.variant, onboardingFeatureFlags, user?.id])
+  }, [featureFlagsEqual, onboardingFeatureFlags])
 
   const {
     data: fetchedUser,
@@ -518,6 +513,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         lastStep: allStepIds[allStepIds.length - 1],
       }
     })
+    authStorage.clearWorkspaceWelcomeSeen()
   }, [allStepIds, updateOnboardingStatus])
 
   const isSupabaseLoading =

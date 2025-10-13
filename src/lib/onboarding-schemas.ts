@@ -5,7 +5,6 @@ import type {
   ProfileStepData,
   ToolsStepData,
   WorkProfileStepData,
-  WorkspaceHubStepData,
 } from '@/lib/onboarding'
 
 const urlSchema = z
@@ -87,22 +86,6 @@ export const preferencesStepSchema = z.object({
   defaultTheme: z.enum(['dark', 'light', 'system']),
 }) satisfies z.ZodType<PreferencesStepData>
 
-export const workspaceHubStepSchema = z
-  .object({
-    choice: z.enum(['join-existing', 'create-new']),
-    organizationName: z.string().trim().optional(),
-    divisionName: z.string().trim().optional(),
-    template: z.string().trim().optional(),
-  })
-  .superRefine((value, ctx) => {
-    if (value.choice === 'create-new' && !value.organizationName?.trim()) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Organization name is required',
-        path: ['organizationName'],
-      })
-    }
-  }) satisfies z.ZodType<WorkspaceHubStepData>
 
 export const onboardingStepSchemas = {
   profile: profileStepSchema,
@@ -110,7 +93,6 @@ export const onboardingStepSchemas = {
   tools: toolsStepSchema,
   invite: inviteStepSchema,
   preferences: preferencesStepSchema,
-  'workspace-hub': workspaceHubStepSchema,
 } as const
 
 export type OnboardingSchemaMap = typeof onboardingStepSchemas
