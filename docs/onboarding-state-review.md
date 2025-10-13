@@ -131,3 +131,29 @@ original step definitions, and is queryable through a dedicated API or data expo
 * **Context distribution.** Auth context derives cohort flags from the server-driven manifest and environment overrides, resets exposure on logout, and exposes `isOnboardingFeatureEnabled` for UI gating. 【F:src/contexts/auth-context.tsx†L1-L560】
 
 With these upgrades, the onboarding system not only satisfies the requested scenarios but also gains conflict transparency, automated data distribution, offline resilience, product-ops agility, and richer observability for future iterations.
+
+## 13. Operational playbook
+
+### 13.1 Exporting onboarding answers
+
+Follow this checklist whenever you need to deliver onboarding answers to downstream teams or a warehouse:
+
+1. **Set the export target.** Point `ONBOARDING_ANSWERS_EXPORT_PATH` at the desired directory (local path, mounted volume, or S3 sync folder). The streaming exporter writes one NDJSON file per run using this base path. 【F:scripts/export_onboarding_answers.py†L9-L34】
+2. **Run the CLI.** Execute `python scripts/export_onboarding_answers.py` from the repository root. The script pages through `onboarding_answer_snapshots`, serializes each row with schema/version metadata, and saves a timestamped NDJSON artifact ready for ingestion. 【F:scripts/export_onboarding_answers.py†L1-L39】【F:backend/app/modules/users/exporter.py†L16-L95】
+3. **Verify the drop.** Inspect the generated file (e.g., `jq '.[0]' < exports/onboarding-answers-*.ndjson`) or load it into your warehouse job. Each line already contains grouped and flattened answer blocks plus `answer_schema_version`, so no additional transformation is required. 【F:backend/app/modules/users/aggregation.py†L42-L160】
+4. **Schedule for automation (optional).** Use cron or your job runner to trigger the command nightly. Because the exporter streams results in batches, it scales to thousands of sessions without locking transactional tables. 【F:scripts/export_onboarding_answers.py†L22-L39】
+
+Need a live snapshot? Call `GET /api/admin/onboarding/answers/export` with admin credentials to stream the same NDJSON payload directly into BI tooling. 【F:backend/app/modules/admin/router.py†L94-L119】
+
+### 13.2 Session change log
+
+The following enhancements landed during this build session so stakeholders can trace shipped capabilities:
+
+* **Capture hook & publisher.** Completion now emits versioned answer payloads onto a Postgres-backed queue for asynchronous processing. 【F:backend/app/modules/users/repository.py†L327-L382】【F:backend/app/modules/users/publishers.py†L1-L63】
+* **Aggregation worker.** A dedicated worker normalizes payloads, upserts `onboarding_answer_snapshots`, and maintains derived totals for analytics. 【F:backend/app/modules/users/aggregation.py†L19-L267】
+* **Retrieval surface.** Admin endpoints, schemas, and services expose paginated answers, per-user history, and export streaming, while documentation covers usage. 【F:backend/app/modules/admin/router.py†L1-L119】【F:backend/app/modules/admin/service.py†L1-L39】
+* **Operational safeguards.** Schema versioning, checksum-backed conflict diffs, and replay/backfill tooling protect data quality and support historical imports. 【F:backend/app/modules/users/constants.py†L1-L25】【F:backend/app/modules/users/checksums.py†L1-L20】【F:scripts/backfill_onboarding_answers.py†L1-L54】
+* **Offline-first queue.** The frontend now routes progress updates through a service worker/IndexedDB queue when offline to avoid data loss. 【F:public/onboarding-sync-sw.js†L1-L218】【F:src/lib/offline/onboarding-queue.ts†L1-L206】
+* **Server-driven manifest.** The onboarding manifest is fetched at runtime so experiments roll out without redeploying the client. 【F:backend/app/modules/onboarding/manifest.py†L1-L74】【F:src/hooks/use-onboarding-manifest.ts†L1-L72】
+* **Conflict-aware diffing & exports.** Checksum comparisons inform users about conflicting fields, and NDJSON exports are available via CLI or API. 【F:backend/app/modules/users/service.py†L32-L111】【F:src/hooks/use-onboarding-step.tsx†L224-L420】【F:backend/app/modules/users/exporter.py†L16-L95】
+* **Drop-off analytics & feature flags.** Telemetry events and scoped feature flags enable cohort-specific questions and funnel monitoring. 【F:src/lib/telemetry/onboarding.ts†L1-L188】【F:src/contexts/auth-context.tsx†L1-L560】
