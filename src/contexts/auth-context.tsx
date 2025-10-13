@@ -1,16 +1,16 @@
 'use client'
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Session } from '@supabase/supabase-js'
 import { useQueryClient } from '@tanstack/react-query'
 import { getDevUser, mockUsers } from '@/lib/mock-users'
 import { authStorage, type StoredOnboardingStatus } from '@/lib/auth-utils'
 import { localStorageService, sessionStorageService } from '@/lib/storage'
+import { useOnboardingManifest } from '@/hooks/use-onboarding-manifest'
 import {
   defaultOnboardingStatus,
   getFirstIncompleteStep,
-  ONBOARDING_STEPS,
   type OnboardingStepId,
   isLegacyOnboardingStatus,
 } from '@/lib/onboarding'
@@ -74,6 +74,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isDevMode = process.env.NODE_ENV === 'development'
   const queryClient = useQueryClient()
   const router = useRouter()
+  const { steps: manifestSteps } = useOnboardingManifest()
+
+  const allStepIds = useMemo(
+    () => manifestSteps.map((step) => step.id as OnboardingStepId),
+    [manifestSteps],
+  )
 
   useEffect(() => {
     return () => {
@@ -453,7 +459,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const markOnboardingComplete = useCallback(() => {
     updateOnboardingStatus((current) => {
-      const allStepIds = ONBOARDING_STEPS.map((step) => step.id) as OnboardingStepId[]
+      if (allStepIds.length === 0) {
+        return {
+          ...current,
+          version: CURRENT_ONBOARDING_STATUS_VERSION,
+          completed: true,
+          completedSteps: current.completedSteps,
+          skippedSteps: current.skippedSteps,
+          lastStep: undefined,
+        }
+      }
       const filteredSkipped = current.skippedSteps.filter((id) =>
         allStepIds.includes(id as OnboardingStepId),
       )
@@ -466,7 +481,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         lastStep: allStepIds[allStepIds.length - 1],
       }
     })
-  }, [updateOnboardingStatus])
+  }, [allStepIds, updateOnboardingStatus])
 
   const isSupabaseLoading =
     strategy === 'supabase' && (isCheckingSession || (shouldFetchUser && (userStatus === 'pending' || isFetching)))
@@ -482,14 +497,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const unauthorizedHandler = () => {
       setShouldFetchUser(false)
       const snapshot = onboardingStatusRef.current ?? defaultOnboardingStatus()
-      const nextStep = getFirstIncompleteStep(snapshot) ?? ONBOARDING_STEPS[0]
+      const fallbackStep = manifestSteps[0]
+      const nextStep = getFirstIncompleteStep(snapshot, manifestSteps) ?? fallbackStep
       clearUserState()
       const gateway = supabaseGatewayRef.current
       if (gateway) {
         void gateway.signOut()
       }
       if (typeof window !== 'undefined') {
-        const redirectPath = nextStep.path
+        const redirectPath = nextStep?.path ?? '/select-org'
         const loginUrl = new URL('/login', window.location.origin)
         loginUrl.searchParams.set('redirect', redirectPath)
         router.replace(`${loginUrl.pathname}${loginUrl.search}`)
@@ -500,7 +516,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       clearUnauthorizedHandler()
     }
-  }, [clearUserState, router])
+  }, [clearUserState, manifestSteps, router])
 
   return (
     <AuthContext.Provider

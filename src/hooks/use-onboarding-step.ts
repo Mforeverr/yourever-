@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCurrentUser } from '@/hooks/use-auth'
+import { useOnboardingManifest } from '@/hooks/use-onboarding-manifest'
 import {
-  ONBOARDING_STEPS,
   getFirstIncompleteStep,
   getNextStep,
   getPreviousStep,
   getStepById,
+  getStepIndex,
   type BaseOnboardingStep,
   type OnboardingStepId,
   type StepDataMap,
@@ -35,11 +36,6 @@ import {
 } from '@/lib/telemetry/onboarding'
 import { useOnboardingOfflineQueue } from '@/lib/offline/onboarding-queue'
 
-const allStepIds = ONBOARDING_STEPS.map((step) => step.id)
-
-const isOnboardingStepId = (value: unknown): value is OnboardingStepId =>
-  typeof value === 'string' && allStepIds.includes(value as OnboardingStepId)
-
 type PersistProgressIntent = 'complete-step' | 'skip-step'
 
 type PersistProgressVariables = {
@@ -55,6 +51,7 @@ type ValidationDispatchPayload = {
 
 const buildValidationDispatchPayload = (
   input: OnboardingValidationSummary | null | undefined | unknown,
+  isValidStepId: (value: unknown) => value is OnboardingStepId,
 ): ValidationDispatchPayload | null => {
   if (!input || typeof input !== 'object') {
     return null
@@ -67,7 +64,7 @@ const buildValidationDispatchPayload = (
   for (const rawIssue of issuesSource) {
     if (!rawIssue || typeof rawIssue !== 'object') continue
     const issueLike = rawIssue as { stepId?: unknown; message?: unknown; field?: unknown; code?: unknown }
-    if (!isOnboardingStepId(issueLike.stepId)) continue
+    if (!isValidStepId(issueLike.stepId)) continue
 
     const message = typeof issueLike.message === 'string' ? issueLike.message.trim() : ''
     if (!message) continue
@@ -87,12 +84,13 @@ const buildValidationDispatchPayload = (
   }
 
   const blockingCandidate = (candidate as { blockingStepId?: unknown }).blockingStepId
-  const blockingStepId = isOnboardingStepId(blockingCandidate) ? blockingCandidate : stepIds[0]
+  const blockingStepId = isValidStepId(blockingCandidate) ? blockingCandidate : stepIds[0]
 
   return { blockingStepId, issuesByStep }
 }
 
 export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
+  const { steps: manifestSteps } = useOnboardingManifest()
   const {
     onboardingStatus,
     updateOnboardingStatus,
@@ -125,25 +123,36 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     return Math.max(0, Math.round(now() - startedAt))
   }
 
-  const step = useMemo(() => getStepById(stepId), [stepId])
-  const nextStep = useMemo(() => getNextStep(stepId), [stepId])
-  const previousStep = useMemo(() => getPreviousStep(stepId), [stepId])
-  const currentIndex = useMemo(() => getStepIndex(stepId), [stepId])
+  const step = useMemo(() => getStepById(stepId, manifestSteps), [manifestSteps, stepId])
+  const nextStep = useMemo(() => getNextStep(stepId, manifestSteps), [manifestSteps, stepId])
+  const previousStep = useMemo(
+    () => getPreviousStep(stepId, manifestSteps),
+    [manifestSteps, stepId],
+  )
+  const currentIndex = useMemo(() => getStepIndex(stepId, manifestSteps), [manifestSteps, stepId])
+
+  const stepIdSet = useMemo(() => new Set(manifestSteps.map((s) => s.id as OnboardingStepId)), [manifestSteps])
+
+  const isOnboardingStepId = useCallback(
+    (value: unknown): value is OnboardingStepId =>
+      typeof value === 'string' && stepIdSet.has(value as OnboardingStepId),
+    [stepIdSet],
+  )
 
   const data = stepData
 
   const goToStepId = useCallback(
     (targetId: OnboardingStepId) => {
-      const target = getStepById(targetId)
+      const target = getStepById(targetId, manifestSteps)
       if (!target) return
       router.push(target.path)
     },
-    [router],
+    [manifestSteps, router],
   )
 
   const dispatchValidationSummary = useCallback(
     (summary: unknown) => {
-      const payload = buildValidationDispatchPayload(summary)
+      const payload = buildValidationDispatchPayload(summary, isOnboardingStepId)
       if (!payload) {
         return false
       }
@@ -153,7 +162,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
       })
 
       const blockingStep = payload.blockingStepId
-      const blockingMeta = getStepById(blockingStep)
+      const blockingMeta = getStepById(blockingStep, manifestSteps)
       toast({
         title: 'Review required',
         description: blockingMeta
@@ -168,7 +177,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
 
       return true
     },
-    [goToStepId, setValidationIssues, stepId, toast],
+    [goToStepId, isOnboardingStepId, manifestSteps, setValidationIssues, stepId, toast],
   )
 
   useEffect(() => {
@@ -185,12 +194,12 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     }
 
     const completedSet = new Set(onboardingStatus.completedSteps)
-    const firstIncomplete = getFirstIncompleteStep(onboardingStatus)
+    const firstIncomplete = getFirstIncompleteStep(onboardingStatus, manifestSteps)
 
     if (firstIncomplete && firstIncomplete.id !== stepId && !completedSet.has(stepId)) {
       router.replace(firstIncomplete.path)
     }
-  }, [onboardingStatus, router, status, step, stepId, user])
+  }, [manifestSteps, onboardingStatus, router, status, step, stepId, user])
 
   const { enqueue: enqueueOfflinePersist, isSupported: isOfflineQueueSupported, addListener: addOfflineListener } =
     useOnboardingOfflineQueue()
@@ -503,7 +512,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     if (completedSet.has(targetId) || skippedSet.has(targetId)) {
       return true
     }
-    const targetIndex = getStepIndex(targetId)
+    const targetIndex = getStepIndex(targetId, manifestSteps)
     return targetIndex !== -1 && targetIndex <= currentIndex
   }
 

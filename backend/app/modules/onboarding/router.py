@@ -1,4 +1,4 @@
-"""Onboarding completion endpoints."""
+"""Onboarding endpoints exposed to clients."""
 
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
@@ -7,9 +7,42 @@ from ...dependencies import CurrentPrincipal, require_current_principal
 from ..users.di import get_user_service
 from ..users.service import UserService
 from .errors import OnboardingRevisionConflict, OnboardingValidationError
-from .schemas import OnboardingCompletionPayload, OnboardingCompletionResponse
+from .di import get_onboarding_manifest_service
+from .schemas import (
+    OnboardingCompletionPayload,
+    OnboardingCompletionResponse,
+    OnboardingManifestResponse,
+)
+from .service import OnboardingManifestService
 
 router = APIRouter(prefix="/api/onboarding", tags=["onboarding"])
+
+
+@router.get("/manifest", response_model=OnboardingManifestResponse)
+async def get_onboarding_manifest(
+    service: OnboardingManifestService = Depends(get_onboarding_manifest_service),
+) -> OnboardingManifestResponse:
+    """Expose the server-configured onboarding step manifest."""
+
+    manifest = await service.get_manifest()
+    steps = [
+        {
+            "id": step.id,
+            "title": step.title,
+            "description": step.description,
+            "path": step.path,
+            "required": step.required,
+            "canSkip": step.can_skip,
+        }
+        for step in manifest.steps
+    ]
+
+    return OnboardingManifestResponse(
+        version=manifest.version,
+        variant=manifest.variant,
+        updatedAt=manifest.updated_at,
+        steps=steps,
+    )
 
 
 @router.post("/complete", response_model=OnboardingCompletionResponse)

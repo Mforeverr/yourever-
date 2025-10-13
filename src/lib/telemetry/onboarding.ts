@@ -1,7 +1,7 @@
 'use client'
 
 import type { StoredOnboardingStatus } from '@/lib/auth-utils'
-import { ONBOARDING_STEPS, type OnboardingStepId } from '@/lib/onboarding'
+import { getCachedOnboardingSteps, type OnboardingStepId } from '@/lib/onboarding'
 import { emitTelemetryEvent } from './telemetry'
 
 type OnboardingSaveIntent = 'complete-step' | 'skip-step' | 'version-reset'
@@ -27,12 +27,13 @@ interface OnboardingResumePayload {
   sessionCompletedAt?: string | null
 }
 
-const TOTAL_STEPS = Math.max(ONBOARDING_STEPS.length, 1)
+const getTotalSteps = () => Math.max(getCachedOnboardingSteps().length, 1)
 
 const buildStatusMetrics = (status: StoredOnboardingStatus) => {
   const completedCount = status.completedSteps.length
   const skippedCount = status.skippedSteps.length
-  const completionRatio = Number((completedCount / TOTAL_STEPS).toFixed(3))
+  const totalSteps = getTotalSteps()
+  const completionRatio = Number((completedCount / totalSteps).toFixed(3))
 
   return {
     statusVersion: status.version,
