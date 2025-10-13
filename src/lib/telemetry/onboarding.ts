@@ -15,6 +15,7 @@ interface OnboardingSavePayload {
   errorName?: string
   errorMessage?: string
   errorStatus?: number | null
+  queued?: boolean
 }
 
 interface OnboardingResumePayload {
@@ -61,6 +62,7 @@ export const trackOnboardingSaveSucceeded = ({
   intent,
   durationMs,
   retries,
+  queued,
 }: OnboardingSavePayload) => {
   emitTelemetryEvent({
     name: 'onboarding_save_succeeded',
@@ -71,6 +73,7 @@ export const trackOnboardingSaveSucceeded = ({
       stepId,
       durationMs: durationMs ?? null,
       retries: retries ?? 0,
+      queued: queued ?? false,
     },
   })
 }
@@ -84,6 +87,7 @@ export const trackOnboardingSaveFailed = ({
   errorName,
   errorMessage,
   errorStatus,
+  queued,
 }: OnboardingSavePayload) => {
   emitTelemetryEvent({
     name: 'onboarding_save_failed',
@@ -97,6 +101,7 @@ export const trackOnboardingSaveFailed = ({
       errorName: errorName ?? null,
       errorMessage: errorMessage ?? null,
       errorStatus: errorStatus ?? null,
+      queued: queued ?? false,
     },
   })
 }

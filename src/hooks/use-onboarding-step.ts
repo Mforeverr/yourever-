@@ -33,6 +33,7 @@ import {
   trackOnboardingSaveStarted,
   trackOnboardingSaveSucceeded,
 } from '@/lib/telemetry/onboarding'
+import { useOnboardingOfflineQueue } from '@/lib/offline/onboarding-queue'
 
 const allStepIds = ONBOARDING_STEPS.map((step) => step.id)
 
@@ -113,6 +114,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     retries: 0,
     intent: 'complete-step' as PersistProgressIntent,
     originStepId: stepId as OnboardingStepId,
+    queued: false,
   })
 
   const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
@@ -190,24 +192,77 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     }
   }, [onboardingStatus, router, status, step, stepId, user])
 
-  const persistProgress = useResilientMutation<StoredOnboardingStatus, unknown, PersistProgressVariables>({
-    mutationFn: async ({ status }) => {
+  const { enqueue: enqueueOfflinePersist, isSupported: isOfflineQueueSupported, addListener: addOfflineListener } =
+    useOnboardingOfflineQueue()
+
+  useEffect(() => {
+    if (!isOfflineQueueSupported) {
+      return undefined
+    }
+
+    return addOfflineListener((event) => {
+      if (event.type === 'onboarding.persist.failed') {
+        toast({
+          title: 'Progress could not sync',
+          description: 'Please check your connection and update your onboarding answers again.',
+          variant: 'destructive',
+        })
+      }
+    })
+  }, [addOfflineListener, isOfflineQueueSupported, toast])
+
+  const attemptPersistStatus = useCallback(
+    async (status: StoredOnboardingStatus) => {
       const token = await getAccessToken()
       if (!token) {
         throw new Error('Authentication expired. Please sign in again.')
       }
-      const response = await persistOnboardingStatus(token, status)
-      if (!response?.status) {
-        throw new Error('Failed to sync onboarding progress.')
+
+      const shouldQueueImmediately =
+        isOfflineQueueSupported && typeof navigator !== 'undefined' && navigator.onLine === false
+
+      const enqueueAndReturn = async () => {
+        const enqueued = await enqueueOfflinePersist(token, status, stepId)
+        if (enqueued) {
+          persistAttemptRef.current.queued = true
+          return status
+        }
+        throw new Error('Failed to enqueue onboarding progress for offline sync.')
       }
-      return response.status
+
+      if (shouldQueueImmediately) {
+        return enqueueAndReturn()
+      }
+
+      try {
+        const response = await persistOnboardingStatus(token, status)
+        if (!response?.status) {
+          throw new Error('Failed to sync onboarding progress.')
+        }
+        return response.status
+      } catch (error) {
+        const retryableNetworkFailure =
+          error instanceof ApiError &&
+          (error.status === 0 || error.status === 408 || (error.status >= 500 && error.status < 600))
+
+        if (isOfflineQueueSupported && retryableNetworkFailure) {
+          return enqueueAndReturn()
+        }
+        throw error
+      }
     },
+    [enqueueOfflinePersist, getAccessToken, isOfflineQueueSupported, stepId],
+  )
+
+  const persistProgress = useResilientMutation<StoredOnboardingStatus, unknown, PersistProgressVariables>({
+    mutationFn: async ({ status }) => attemptPersistStatus(status),
     onMutate: (variables) => {
       persistAttemptRef.current = {
         startedAt: now(),
         retries: 0,
         intent: variables.intent,
         originStepId: variables.originStepId,
+        queued: false,
       }
       trackOnboardingSaveStarted({
         status: variables.status,
@@ -228,6 +283,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
         intent: variables.intent,
         durationMs: computeDurationMs(),
         retries: persistAttemptRef.current.retries,
+        queued: persistAttemptRef.current.queued,
       })
       updateOnboardingStatus(() => status)
     },
@@ -241,6 +297,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
         errorName: error instanceof Error ? error.name : undefined,
         errorMessage: error instanceof Error ? error.message : undefined,
         errorStatus: error instanceof ApiError ? error.status : null,
+        queued: persistAttemptRef.current.queued,
       })
       if (error instanceof ApiError && error.status === 409) {
         void resyncFromServer()
