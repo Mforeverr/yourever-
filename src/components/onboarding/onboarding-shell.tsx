@@ -3,7 +3,8 @@
 import { type ReactNode, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { ONBOARDING_STEPS, getStepIndex, type OnboardingStepId } from '@/lib/onboarding'
+import { useOnboardingManifest } from '@/hooks/use-onboarding-manifest'
+import { getStepIndex, type OnboardingStepId } from '@/lib/onboarding'
 import { cn } from '@/lib/utils'
 import { CheckCircle2, Circle, CircleDot } from 'lucide-react'
 
@@ -44,16 +45,19 @@ export function OnboardingShell({
   canNavigateToStep,
   isBackDisabled,
 }: OnboardingShellProps) {
-  const stepIndex = useMemo(() => Math.max(getStepIndex(stepId), 0), [stepId])
-  const totalSteps = ONBOARDING_STEPS.length
-  const progressValue = ((stepIndex + 1) / totalSteps) * 100
+  const { steps: manifestSteps } = useOnboardingManifest()
+  const stepIndex = useMemo(() => Math.max(getStepIndex(stepId, manifestSteps), 0), [manifestSteps, stepId])
+  const totalSteps = manifestSteps.length
+  const safeTotalSteps = Math.max(totalSteps, 1)
+  const clampedIndex = Math.min(stepIndex, safeTotalSteps - 1)
+  const progressValue = ((clampedIndex + 1) / safeTotalSteps) * 100
   const completedSet = useMemo(() => new Set(completedSteps ?? []), [completedSteps])
   const skippedSet = useMemo(() => new Set(skippedSteps ?? []), [skippedSteps])
 
   const stepLabel = useMemo(() => {
-    const step = ONBOARDING_STEPS[stepIndex]
+    const step = manifestSteps[stepIndex]
     return step?.title ?? ''
-  }, [stepIndex])
+  }, [manifestSteps, stepIndex])
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -77,7 +81,7 @@ export function OnboardingShell({
 
         <nav className="mb-8">
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {ONBOARDING_STEPS.map((step) => {
+            {manifestSteps.map((step) => {
               const isCurrent = step.id === stepId
               const isComplete = completedSet.has(step.id)
               const isSkipped = skippedSet.has(step.id)

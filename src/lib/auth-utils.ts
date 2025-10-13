@@ -17,6 +17,7 @@ export interface StoredOnboardingStatus {
   data: Record<string, unknown>
   lastStep?: string
   revision?: string | null
+  checksum?: string | null
 }
 
 const normalizeOnboardingStatus = (
@@ -31,6 +32,7 @@ const normalizeOnboardingStatus = (
     ? status.skippedSteps.map((value) => String(value))
     : []
   const revision = typeof status.revision === 'string' ? status.revision : undefined
+  const checksum = typeof status.checksum === 'string' ? status.checksum : undefined
 
   return {
     version: coerceOnboardingStatusVersion(status.version),
@@ -40,6 +42,7 @@ const normalizeOnboardingStatus = (
     data: typeof status.data === 'object' && status.data !== null ? status.data : {},
     lastStep: typeof status.lastStep === 'string' ? status.lastStep : undefined,
     revision,
+    checksum,
   }
 }
 
@@ -121,6 +124,7 @@ export const authStorage = {
       ...status,
       version: coerceOnboardingStatusVersion(status.version ?? CURRENT_ONBOARDING_STATUS_VERSION),
       revision: typeof status.revision === 'string' ? status.revision : null,
+      checksum: typeof status.checksum === 'string' ? status.checksum : null,
     }
     setOnboardingStatusMap(map)
   },
