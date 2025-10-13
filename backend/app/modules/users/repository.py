@@ -9,13 +9,23 @@ Repository functions for user profile and onboarding session persistence.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...dependencies import CurrentPrincipal
-from .constants import coerce_onboarding_status_version
+from .constants import (
+    CURRENT_ONBOARDING_ANSWER_SCHEMA_VERSION,
+    coerce_onboarding_answer_schema_version,
+    coerce_onboarding_status_version,
+)
+from .publishers import (
+    NullOnboardingAnswerPublisher,
+    OnboardingAnswerMessage,
+    OnboardingAnswerPublisher,
+)
 from .schemas import (
     OnboardingSession,
     StoredOnboardingStatus,
@@ -26,9 +36,19 @@ from .schemas import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 class UserRepository:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        answer_publisher: OnboardingAnswerPublisher | None = None,
+    ) -> None:
         self._session = session
+        self._answer_publisher: OnboardingAnswerPublisher = (
+            answer_publisher or NullOnboardingAnswerPublisher()
+        )
 
     async def get_user(self, user_id: str) -> Optional[WorkspaceUser]:
         user_query = text(
@@ -324,6 +344,63 @@ class UserRepository:
         await self._session.commit()
         return self._to_onboarding_session(row)
 
+    async def _publish_completion(
+        self, row, answers: Optional[Dict[str, Any]]
+    ) -> None:
+        """Forward the finalized onboarding payload to the aggregation queue."""
+
+        if not row:
+            return
+
+        completed_at = row.get("completed_at")
+        if not completed_at:
+            logger.warning(
+                "onboarding.answers.publisher.missing_completed_at",
+                extra={"session_id": row.get("id"), "user_id": row.get("user_id")},
+            )
+            return
+
+        stored_answers: Dict[str, Any] = {}
+        schema_version = CURRENT_ONBOARDING_ANSWER_SCHEMA_VERSION
+        if answers:
+            stored_answers = dict(answers)
+        else:
+            raw_data = row.get("data")
+            if isinstance(raw_data, str):
+                try:
+                    raw_data = json.loads(raw_data)
+                except json.JSONDecodeError:
+                    raw_data = {}
+            if isinstance(raw_data, dict):
+                stored_answers = raw_data.get("answers") or {}
+                schema_version_value = (
+                    raw_data.get("answer_schema_version")
+                    or raw_data.get("answerSchemaVersion")
+                )
+                if schema_version_value is not None:
+                    schema_version = coerce_onboarding_answer_schema_version(
+                        schema_version_value
+                    )
+        if stored_answers and not isinstance(stored_answers, dict):
+            stored_answers = dict(stored_answers)
+
+        message = OnboardingAnswerMessage(
+            user_id=str(row.get("user_id")),
+            session_id=str(row.get("id")),
+            completed_at=completed_at,
+            answers=stored_answers,
+            answer_schema_version=schema_version,
+        )
+
+        try:
+            await self._answer_publisher.publish(message)
+        except Exception:
+            # Publishing failures should not block onboarding completion.
+            logger.exception(
+                "onboarding.answers.publisher.error",
+                extra={"session_id": message.session_id, "user_id": message.user_id},
+            )
+
     async def complete_onboarding(
         self,
         user_id: str,
@@ -348,6 +425,8 @@ class UserRepository:
         )
 
         payload: Dict[str, Any] = {"status": final_status.model_dump()}
+        payload["answerSchemaVersion"] = CURRENT_ONBOARDING_ANSWER_SCHEMA_VERSION
+        payload["answer_schema_version"] = CURRENT_ONBOARDING_ANSWER_SCHEMA_VERSION
         if answers:
             payload["answers"] = answers
 
@@ -379,6 +458,7 @@ class UserRepository:
             return await self.get_or_create_onboarding_session(user_id)
 
         await self._session.commit()
+        await self._publish_completion(row, answers)
         return self._to_onboarding_session(row)
 
     def _merge_divisions(
