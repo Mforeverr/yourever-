@@ -300,7 +300,7 @@ class UserRepository:
             insert_query = text(
                 """
                 INSERT INTO public.onboarding_sessions (user_id, current_step, is_completed, data)
-                VALUES (:user_id, :current_step, :is_completed, :data::jsonb)
+                VALUES (:user_id, :current_step, :is_completed, CAST(:data AS jsonb))
                 ON CONFLICT (user_id) DO NOTHING
                 RETURNING id, user_id, current_step, is_completed, data, started_at, completed_at
                 """
@@ -336,7 +336,7 @@ class UserRepository:
             SET
                 current_step = :current_step,
                 is_completed = :is_completed,
-                data = :data::jsonb,
+                data = CAST(:data AS jsonb),
                 completed_at = CASE WHEN :is_completed THEN NOW() ELSE NULL END
             WHERE user_id = :user_id
             RETURNING id, user_id, current_step, is_completed, data, started_at, completed_at
@@ -455,7 +455,7 @@ class UserRepository:
             SET
                 current_step = :current_step,
                 is_completed = TRUE,
-                data = :data::jsonb,
+                data = CAST(:data AS jsonb),
                 completed_at = NOW()
             WHERE user_id = :user_id
             RETURNING id, user_id, current_step, is_completed, data, started_at, completed_at

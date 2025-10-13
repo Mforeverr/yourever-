@@ -62,6 +62,15 @@ type ConflictDetails = {
   changedFields: string[]
 }
 
+// Simple debounce utility
+const debounce = <T extends (...args: any[]) => void>(func: T, delay: number): T => {
+  let timeoutId: NodeJS.Timeout
+  return ((...args: Parameters<T>) => {
+    clearTimeout(timeoutId)
+    timeoutId = setTimeout(() => func(...args), delay)
+  }) as T
+}
+
 const parseConflictDetails = (input: unknown): ConflictDetails | null => {
   if (!input || typeof input !== 'object') {
     return null
@@ -192,6 +201,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
   const currentIndex = useMemo(() => getStepIndex(stepId, manifestSteps), [manifestSteps, stepId])
 
   const stepIdSet = useMemo(() => new Set(manifestSteps.map((s) => s.id as OnboardingStepId)), [manifestSteps])
+  const allStepIds = useMemo(() => manifestSteps.map((s) => s.id as OnboardingStepId), [manifestSteps])
 
   const isOnboardingStepId = useCallback(
     (value: unknown): value is OnboardingStepId =>
@@ -536,17 +546,29 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     try {
       const session = await fetchOrCreateOnboardingSession(token)
       if (session?.status) {
-        updateOnboardingStatus(() => session.status)
-        useOnboardingStore.getState().hydrateFromStatus(session.status)
+        // Only sync the status if it's not completed, to avoid false completion
+        // due to conflict resolution race conditions
+        if (!session.isCompleted) {
+          updateOnboardingStatus(() => session.status)
+          useOnboardingStore.getState().hydrateFromStatus(session.status)
+        }
       }
     } catch (error) {
       console.error('[onboarding] failed to refresh session after conflict', error)
     }
   }, [getAccessToken, updateOnboardingStatus])
 
-  const updateData = (payload: StepDataMap[T]) => {
+  const updateData = useCallback((payload: StepDataMap[T]) => {
     setStepData(stepId, payload)
-  }
+  }, [stepId, setStepData])
+
+  // Create debounced version for form keystrokes (500ms delay)
+  const debouncedUpdateData = useCallback(
+    debounce((payload: StepDataMap[T]) => {
+      setStepData(stepId, payload)
+    }, 500),
+    [stepId, setStepData]
+  )
 
   const buildNextStatus = (payload: StepDataMap[T], { markCompleted }: { markCompleted?: boolean } = {}) => {
     const base = onboardingStatus ?? defaultOnboardingStatus()
@@ -756,6 +778,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     nextStep,
     previousStep,
     updateData,
+    debouncedUpdateData,
     completeStep,
     skipStep,
     goNext,

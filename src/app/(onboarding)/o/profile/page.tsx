@@ -22,6 +22,7 @@ export default function ProfileOnboardingPage() {
     data,
     completeStep,
     updateData,
+    debouncedUpdateData,
     previousStep,
     goPrevious,
     isSaving,
@@ -34,7 +35,7 @@ export default function ProfileOnboardingPage() {
   const form = useForm<ProfileStepData>({
     resolver: zodResolver(profileStepSchema),
     mode: 'onChange',
-    defaultValues: data,
+    defaultValues: data as ProfileStepData,
   })
   const { generalError } = useOnboardingValidationFeedback('profile', form)
   const {
@@ -49,7 +50,7 @@ export default function ProfileOnboardingPage() {
   useEffect(() => {
     if (!user) return
     if (hasPrefilledRef.current) return
-    if (data.firstName || data.lastName) {
+    if ((data as ProfileStepData).firstName || (data as ProfileStepData).lastName) {
       hasPrefilledRef.current = true
       return
     }
@@ -65,17 +66,17 @@ export default function ProfileOnboardingPage() {
 
   useEffect(() => {
     const subscription = form.watch((values) => {
-      updateData(values as ProfileStepData)
+      debouncedUpdateData(values as ProfileStepData)
     })
     return () => subscription.unsubscribe()
-  }, [form, updateData])
+  }, [form, debouncedUpdateData])
 
   useEffect(() => {
     const currentValues = form.getValues()
     if (deepEqual(currentValues, data)) {
       return
     }
-    form.reset(data)
+    form.reset(data as ProfileStepData)
     void form.trigger()
   }, [data, form])
 

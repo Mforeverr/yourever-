@@ -4,14 +4,8 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageService } from '@/lib/storage'
 import type {
-  InviteStepData,
   OnboardingStepId,
-  ProfileStepData,
   StepDataMap,
-  ToolsStepData,
-  WorkProfileStepData,
-  PreferencesStepData,
-  WorkspaceHubStepData,
 } from '@/lib/onboarding'
 import type { StoredOnboardingStatus } from '@/lib/auth-utils'
 import { CURRENT_ONBOARDING_STATUS_VERSION } from '@/lib/onboarding-version'
@@ -87,6 +81,9 @@ type OnboardingStoreState = {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
+const isValidStepId = (stepId: OnboardingStepId): stepId is keyof StepDataMap =>
+  typeof stepId === 'string' && STEP_IDS.includes(stepId as keyof StepDataMap)
+
 const sanitizeFeatureFlagMap = (value: unknown): Record<string, boolean> => {
   if (!isRecord(value)) {
     return {}
@@ -134,7 +131,7 @@ const sanitizeStepForFlags = <T extends keyof StepDataMap>(
     if (contract.stepId !== stepId) continue
     if (flags[contract.flag]) continue
 
-    next = contract.disable({ ...next }, defaults[stepId])
+    next = contract.disable({ ...next }, defaults[stepId]) as StepDataMap[T]
   }
 
   return next
@@ -158,7 +155,7 @@ const cloneWithDefaults = <T extends keyof StepDataMap>(
     copy[field] = Array.isArray(fieldValue) ? [...fieldValue] : fieldValue
   })
 
-  return copy as StepDataMap[T]
+  return copy as unknown as StepDataMap[T]
 }
 
 const createVersionedDefaults = () => ({
@@ -219,15 +216,17 @@ const rebuildFromPersistedState = (
   }
 
   const featureFlags = sanitizeFeatureFlagMap((persistedState as { featureFlags?: unknown }).featureFlags)
-  const steps = createDefaults()
+  const steps: StepDataMap = createDefaults()
 
   STEP_IDS.forEach((stepId) => {
+    if (!isValidStepId(stepId)) return
+
     const candidate = findLegacyStep(persistedState, stepId)
     if (candidate) {
       const merged = cloneWithDefaults(defaults[stepId], candidate)
-      steps[stepId] = sanitizeStepForFlags(stepId, merged, featureFlags, defaults)
+      ;(steps as any)[stepId] = sanitizeStepForFlags(stepId, merged, featureFlags, defaults)
     } else {
-      steps[stepId] = sanitizeStepForFlags(stepId, defaults[stepId], featureFlags, defaults)
+      ;(steps as any)[stepId] = sanitizeStepForFlags(stepId, defaults[stepId], featureFlags, defaults)
     }
   })
 
@@ -277,11 +276,13 @@ export const useOnboardingStore = create<OnboardingStoreState>()(
           }
 
           const defaults = createDefaults()
-          const nextSteps = { ...state.steps }
+          const nextSteps: StepDataMap = { ...state.steps }
 
           STEP_IDS.forEach((stepId) => {
+            if (!isValidStepId(stepId)) return
+
             const stepData = readStatusStep(status, stepId, defaults)
-            nextSteps[stepId] = sanitizeStepForFlags(stepId, stepData, state.featureFlags, defaults)
+            ;(nextSteps as any)[stepId] = sanitizeStepForFlags(stepId, stepData, state.featureFlags, defaults)
           })
 
           return {
@@ -294,10 +295,12 @@ export const useOnboardingStore = create<OnboardingStoreState>()(
       reset: () => {
         set((state) => {
           const defaults = createDefaults()
-          const steps = createDefaults()
+          const steps: StepDataMap = createDefaults()
 
           STEP_IDS.forEach((stepId) => {
-            steps[stepId] = sanitizeStepForFlags(stepId, defaults[stepId], state.featureFlags, defaults)
+            if (!isValidStepId(stepId)) return
+
+            ;(steps as any)[stepId] = sanitizeStepForFlags(stepId, defaults[stepId], state.featureFlags, defaults)
           })
 
           return {
@@ -311,10 +314,12 @@ export const useOnboardingStore = create<OnboardingStoreState>()(
         const normalized = sanitizeFeatureFlagMap(flags)
         set((state) => {
           const defaults = createDefaults()
-          const steps = { ...state.steps }
+          const steps: StepDataMap = { ...state.steps }
 
           STEP_IDS.forEach((stepId) => {
-            steps[stepId] = sanitizeStepForFlags(stepId, steps[stepId], normalized, defaults)
+            if (!isValidStepId(stepId)) return
+
+            ;(steps as any)[stepId] = sanitizeStepForFlags(stepId, steps[stepId], normalized, defaults)
           })
 
           return {

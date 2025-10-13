@@ -19,19 +19,25 @@ class OnboardingValidationError(Exception):
         super().__init__(self.detail)
 
 
-@dataclass(slots=True)
 class OnboardingRevisionConflict(Exception):
     """Raised when onboarding progress updates submit a stale revision token."""
 
-    current_revision: Optional[str]
-    submitted_revision: Optional[str]
-    current_checksum: Optional[str] = None
-    submitted_checksum: Optional[str] = None
-    changed_fields: Optional[List[str]] = None
-    detail: str = "Onboarding progress is out of date. Please refresh and try again."
-
-    def __post_init__(self) -> None:
-        super().__init__(self.detail)
+    def __init__(
+        self,
+        current_revision: Optional[str],
+        submitted_revision: Optional[str],
+        current_checksum: Optional[str] = None,
+        submitted_checksum: Optional[str] = None,
+        changed_fields: Optional[List[str]] = None,
+        detail: str = "Onboarding progress is out of date. Please refresh and try again.",
+    ) -> None:
+        self.current_revision = current_revision
+        self.submitted_revision = submitted_revision
+        self.current_checksum = current_checksum
+        self.submitted_checksum = submitted_checksum
+        self.changed_fields = changed_fields
+        self.detail = detail
+        super().__init__(detail)
 
     @property
     def context(self) -> Dict[str, Optional[str] | List[str]]:
