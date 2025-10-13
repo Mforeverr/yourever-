@@ -18,6 +18,7 @@ import {
   CURRENT_ONBOARDING_STATUS_VERSION,
   coerceOnboardingStatusVersion,
 } from '@/lib/onboarding-version'
+import { isFeatureEnabled } from '@/lib/feature-flags'
 import { createSupabaseAuthGateway, type SupabaseAuthGateway } from '@/modules/auth/supabase-gateway'
 import { clearAuthTokenResolver, setAuthTokenResolver } from '@/lib/api/client'
 import type { WorkspaceUser } from '@/modules/auth/types'
@@ -48,6 +49,8 @@ interface AuthContextValue {
   onboardingStatus: StoredOnboardingStatus | null
   updateOnboardingStatus: (updater: (current: StoredOnboardingStatus) => StoredOnboardingStatus) => void
   markOnboardingComplete: () => void
+  onboardingFeatureFlags: Record<string, boolean>
+  isOnboardingFeatureEnabled: (flag: string) => boolean
   userStatus: ReturnType<typeof useCurrentUserQuery>['status']
   userError: ReturnType<typeof useCurrentUserQuery>['error']
   refetchUser: () => Promise<void>
@@ -64,28 +67,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [mockLoading, setMockLoading] = useState(true)
   const [isCheckingSession, setIsCheckingSession] = useState(false)
   const [shouldFetchUser, setShouldFetchUser] = useState(false)
+  const [onboardingFeatureFlags, setOnboardingFeatureFlags] = useState<Record<string, boolean>>({})
   const userIdRef = React.useRef<string | null>(null)
   const strategyRef = React.useRef<AuthStrategy>('mock')
   const supabaseSessionRef = React.useRef<Session | null>(null)
   const isMountedRef = React.useRef(true)
   const supabaseGatewayRef = React.useRef<SupabaseAuthGateway | null>(null)
   const onboardingStatusRef = React.useRef<StoredOnboardingStatus | null>(null)
+  const appliedFeatureFlagsRef = React.useRef<Record<string, boolean>>({})
   const legacyResetVersionRef = React.useRef<number | null>(null)
   const isDevMode = process.env.NODE_ENV === 'development'
   const queryClient = useQueryClient()
   const router = useRouter()
-  const { steps: manifestSteps } = useOnboardingManifest()
+  const { manifest, steps: manifestSteps } = useOnboardingManifest()
 
   const allStepIds = useMemo(
     () => manifestSteps.map((step) => step.id as OnboardingStepId),
     [manifestSteps],
   )
 
+  const featureFlagsEqual = useCallback((a: Record<string, boolean>, b: Record<string, boolean>) => {
+    const aKeys = Object.keys(a)
+    const bKeys = Object.keys(b)
+    if (aKeys.length !== bKeys.length) {
+      return false
+    }
+
+    return aKeys.every((key) => a[key] === b[key])
+  }, [])
+
   useEffect(() => {
     return () => {
       isMountedRef.current = false
     }
   }, [])
+
+  useEffect(() => {
+    const variantKey = typeof manifest.variant === 'string' ? manifest.variant.toLowerCase() : ''
+    const nextFlags: Record<string, boolean> = {
+      'onboarding.workspaceHub.templates':
+        isFeatureEnabled('onboarding.workspaceHub.templates', false) || variantKey.includes('template'),
+    }
+
+    if (featureFlagsEqual(appliedFeatureFlagsRef.current, nextFlags)) {
+      if (!featureFlagsEqual(onboardingFeatureFlags, nextFlags)) {
+        setOnboardingFeatureFlags(nextFlags)
+      }
+      return
+    }
+
+    appliedFeatureFlagsRef.current = { ...nextFlags }
+    setOnboardingFeatureFlags(nextFlags)
+    useOnboardingStore.getState().setFeatureFlags(nextFlags)
+  }, [featureFlagsEqual, manifest.variant, onboardingFeatureFlags, user?.id])
 
   const {
     data: fetchedUser,
@@ -229,10 +263,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     sessionStorageService.clearByPrefix('yourever-')
     userIdRef.current = null
     supabaseSessionRef.current = null
+    useOnboardingStore.getState().setFeatureFlags({})
     useOnboardingStore.getState().reset()
     queryClient.removeQueries({ queryKey: CURRENT_USER_QUERY_KEY })
     setMockLoading(false)
     legacyResetVersionRef.current = null
+    setOnboardingFeatureFlags({})
+    appliedFeatureFlagsRef.current = {}
   }, [queryClient])
 
   const applyUser = useCallback(
@@ -487,6 +524,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     strategy === 'supabase' && (isCheckingSession || (shouldFetchUser && (userStatus === 'pending' || isFetching)))
   const isLoading = strategy === 'supabase' ? isSupabaseLoading : mockLoading
 
+  const isOnboardingFeatureEnabled = useCallback(
+    (flag: string) => {
+      if (flag in onboardingFeatureFlags) {
+        return onboardingFeatureFlags[flag]
+      }
+      return useOnboardingStore.getState().isFeatureEnabled(flag)
+    },
+    [onboardingFeatureFlags],
+  )
+
   useEffect(() => {
     if (onboardingStatus) {
       onboardingStatusRef.current = onboardingStatus
@@ -536,6 +583,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         onboardingStatus,
         updateOnboardingStatus,
         markOnboardingComplete,
+        onboardingFeatureFlags,
+        isOnboardingFeatureEnabled,
         userStatus,
         userError,
         refetchUser,

@@ -122,8 +122,12 @@ original step definitions, and is queryable through a dedicated API or data expo
 * **Admin streaming export.** Admins can now call `GET /api/admin/onboarding/answers/export` to receive an NDJSON stream of every grouped answer snapshot, backed by the same repository batches that feed the warehouse writer. Each line matches the `snapshot_to_dict` schema, ready for direct ingestion. 【F:backend/app/modules/admin/router.py†L1-L119】【F:backend/app/modules/admin/service.py†L1-L39】【F:backend/app/modules/users/exporter.py†L1-L95】
 * **Warehouse writer remains schedulable.** The existing CLI continues to drop nightly NDJSON files (configurable via `ONBOARDING_ANSWERS_EXPORT_PATH`), so ops teams can wire the export into S3 or their BI tool of choice without touching transactional tables. 【F:scripts/export_onboarding_answers.py†L1-L39】
 
-## 11. Remaining roadmap
-1. **Drop-off analytics.** Stream telemetry events to a dedicated funnel dashboard (server or product analytics) and correlate retries, conflicts, and validation errors to identify friction hot-spots in real time. 【F:src/lib/telemetry/onboarding.ts†L1-L116】
-2. **Scoped feature flags.** Wrap experimental steps or questions with a feature-flag contract so new fields can be rolled out to specific cohorts without affecting persisted schemas, leveraging the existing version reset path as a safety net. 【F:src/contexts/auth-context.tsx†L1-L520】【F:src/state/onboarding.store.ts†L173-L235】
+## 11. Drop-off analytics (shipped)
+* **Funnel-grade telemetry.** Every step view, retry, validation block, and conflict now emits structured analytics events so product ops can pinpoint friction in real time. The telemetry layer introduces `onboarding_step_viewed`, `onboarding_save_retry`, `onboarding_validation_blocked`, and `onboarding_conflict_detected`, capturing step metadata, retry counts, issue codes, and diff details for downstream dashboards. 【F:src/lib/telemetry/onboarding.ts†L1-L188】
+* **Hook integration.** The onboarding step hook wires the new events into navigation, mutation retries, validation dispatch, and conflict handling so signals reach the funnel without touching page components. 【F:src/hooks/use-onboarding-step.tsx†L1-L720】
+
+## 12. Scoped feature flags (shipped)
+* **Centralized contracts.** The onboarding store now tracks feature-flag exposure, sanitizes gated step payloads, and exposes setter utilities so experimental questions (e.g., workspace templates) never leak into persisted state when disabled. 【F:src/state/onboarding.store.ts†L1-L260】
+* **Context distribution.** Auth context derives cohort flags from the server-driven manifest and environment overrides, resets exposure on logout, and exposes `isOnboardingFeatureEnabled` for UI gating. 【F:src/contexts/auth-context.tsx†L1-L560】
 
 With these upgrades, the onboarding system not only satisfies the requested scenarios but also gains conflict transparency, automated data distribution, offline resilience, product-ops agility, and richer observability for future iterations.

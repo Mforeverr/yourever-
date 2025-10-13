@@ -26,10 +26,13 @@ type OnboardingStoreState = {
   preferences: PreferencesStepData
   workspaceHub: WorkspaceHubStepData
   version: number
+  featureFlags: Record<string, boolean>
   setStepData: <T extends OnboardingStepId>(stepId: T, data: StepDataMap[T]) => void
   updateStepData: <T extends OnboardingStepId>(stepId: T, updater: (prev: StepDataMap[T]) => StepDataMap[T]) => void
   hydrateFromStatus: (status: StoredOnboardingStatus | null) => void
   reset: () => void
+  setFeatureFlags: (flags: Record<string, boolean>) => void
+  isFeatureEnabled: (flag: string) => boolean
 }
 
 const STEP_KEY_MAP: Record<OnboardingStepId, StepKey> = {
@@ -99,6 +102,60 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+const sanitizeFeatureFlagMap = (value: unknown): Record<string, boolean> => {
+  if (!isRecord(value)) {
+    return {}
+  }
+
+  const result: Record<string, boolean> = {}
+  Object.entries(value).forEach(([flag, enabled]) => {
+    if (typeof enabled === 'boolean') {
+      result[flag] = enabled
+    }
+  })
+
+  return result
+}
+
+interface FeatureContract<T extends OnboardingStepId> {
+  flag: string
+  stepId: T
+  disable: (data: StepDataMap[T], defaults: StepDataMap[T]) => StepDataMap[T]
+}
+
+const FEATURE_CONTRACTS: ReadonlyArray<FeatureContract<OnboardingStepId>> = [
+  {
+    flag: 'onboarding.workspaceHub.templates',
+    stepId: 'workspace-hub',
+    disable: (data) => {
+      const next = { ...data }
+      if ('template' in next) {
+        delete (next as { template?: string }).template
+      }
+      return next
+    },
+  },
+]
+
+const sanitizeStepForFlags = <T extends OnboardingStepId>(
+  stepId: T,
+  data: StepDataMap[T],
+  flags: Record<string, boolean>,
+  defaults: StepDefaults,
+): StepDataMap[T] => {
+  let next = data
+
+  for (const contract of FEATURE_CONTRACTS) {
+    if (contract.stepId !== stepId) continue
+    if (flags[contract.flag]) continue
+
+    const defaultValue = defaults[STEP_KEY_MAP[stepId]] as StepDataMap[T]
+    next = contract.disable(next, defaultValue)
+  }
+
+  return next
+}
+
 const cloneWithDefaults = <T extends StepKey>(defaults: StepDefaults[T], candidate: Record<string, unknown>) => {
   const next: Record<string, unknown> = {}
 
@@ -120,6 +177,7 @@ const cloneWithDefaults = <T extends StepKey>(defaults: StepDefaults[T], candida
 const createVersionedDefaults = (): OnboardingStoreState => ({
   ...createDefaults(),
   version: CURRENT_ONBOARDING_STATUS_VERSION,
+  featureFlags: {},
 })
 
 const rebuildFromPersistedState = (persistedState: unknown): OnboardingStoreState => {
@@ -128,6 +186,7 @@ const rebuildFromPersistedState = (persistedState: unknown): OnboardingStoreStat
   }
 
   const defaults = createDefaults()
+  const featureFlags = sanitizeFeatureFlagMap((persistedState as { featureFlags?: unknown }).featureFlags)
   const next: Record<StepKey, StepDataMap[OnboardingStepId]> = {
     profile: { ...defaults.profile },
     workProfile: { ...defaults.workProfile },
@@ -142,13 +201,15 @@ const rebuildFromPersistedState = (persistedState: unknown): OnboardingStoreStat
     const candidate = (persistedState[key] ?? persistedState[stepId]) as Record<string, unknown> | undefined
 
     if (candidate && isRecord(candidate)) {
-      next[key] = cloneWithDefaults(defaults[key], candidate)
+      const merged = cloneWithDefaults(defaults[key], candidate)
+      next[key] = sanitizeStepForFlags(stepId, merged, featureFlags, defaults)
     }
   })
 
   return {
     ...next,
     version: CURRENT_ONBOARDING_STATUS_VERSION,
+    featureFlags,
   }
 }
 
@@ -175,16 +236,24 @@ export const useOnboardingStore = create<OnboardingStoreState>()(
     (set, get) => ({
       ...createDefaults(),
       version: CURRENT_ONBOARDING_STATUS_VERSION,
+      featureFlags: {},
       setStepData: (stepId, data) => {
         const key = STEP_KEY_MAP[stepId]
-        set({ [key]: data } as Partial<OnboardingStoreState>)
+        set((state) => {
+          const defaults = createDefaults()
+          const sanitized = sanitizeStepForFlags(stepId, data, state.featureFlags, defaults)
+          return { [key]: sanitized } as Partial<OnboardingStoreState>
+        })
       },
       updateStepData: (stepId, updater) => {
         const key = STEP_KEY_MAP[stepId]
         set((state) => {
           const current = state[key] as StepDataMap[typeof stepId]
+          const defaults = createDefaults()
+          const updated = updater(current)
+          const sanitized = sanitizeStepForFlags(stepId, updated, state.featureFlags, defaults)
           return {
-            [key]: updater(current),
+            [key]: sanitized,
           } as Partial<OnboardingStoreState>
         })
       },
@@ -194,10 +263,12 @@ export const useOnboardingStore = create<OnboardingStoreState>()(
             return state
           }
 
+          const defaults = createDefaults()
           const next = createDefaults()
           ;(Object.keys(STEP_KEY_MAP) as OnboardingStepId[]).forEach((stepId) => {
             const key = STEP_KEY_MAP[stepId]
-            next[key] = readStatusStep(status, stepId)
+            const stepData = readStatusStep(status, stepId)
+            next[key] = sanitizeStepForFlags(stepId, stepData, state.featureFlags, defaults)
           })
 
           return {
@@ -208,10 +279,40 @@ export const useOnboardingStore = create<OnboardingStoreState>()(
         })
       },
       reset: () => {
-        set({
-          ...createDefaults(),
-          version: CURRENT_ONBOARDING_STATUS_VERSION,
+        set((state) => {
+          const defaults = createDefaults()
+          const next = createDefaults()
+          STEP_IDS.forEach((stepId) => {
+            const key = STEP_KEY_MAP[stepId]
+            next[key] = sanitizeStepForFlags(stepId, next[key], state.featureFlags, defaults)
+          })
+
+          return {
+            ...next,
+            version: CURRENT_ONBOARDING_STATUS_VERSION,
+            featureFlags: state.featureFlags,
+          }
         })
+      },
+      setFeatureFlags: (flags) => {
+        const normalized = sanitizeFeatureFlagMap(flags)
+        set((state) => {
+          const defaults = createDefaults()
+          const next: Partial<OnboardingStoreState> = {
+            featureFlags: normalized,
+          }
+
+          STEP_IDS.forEach((stepId) => {
+            const key = STEP_KEY_MAP[stepId]
+            const current = state[key] as StepDataMap[typeof stepId]
+            next[key] = sanitizeStepForFlags(stepId, current, normalized, defaults)
+          })
+
+          return next
+        })
+      },
+      isFeatureEnabled: (flag) => {
+        return get().featureFlags[flag] ?? false
       },
     }),
     {

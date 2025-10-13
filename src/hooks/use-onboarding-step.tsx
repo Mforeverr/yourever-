@@ -31,9 +31,13 @@ import { toast } from '@/hooks/use-toast'
 import { useResilientMutation } from '@/lib/react-query/resilient-mutation'
 import { ApiError } from '@/lib/api/http'
 import {
+  trackOnboardingConflictDetected,
   trackOnboardingSaveFailed,
+  trackOnboardingSaveRetried,
   trackOnboardingSaveStarted,
   trackOnboardingSaveSucceeded,
+  trackOnboardingStepViewed,
+  trackOnboardingValidationBlocked,
 } from '@/lib/telemetry/onboarding'
 import { useOnboardingOfflineQueue } from '@/lib/offline/onboarding-queue'
 
@@ -145,7 +149,7 @@ const buildValidationDispatchPayload = (
 }
 
 export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
-  const { steps: manifestSteps } = useOnboardingManifest()
+  const { manifest, steps: manifestSteps } = useOnboardingManifest()
   const {
     onboardingStatus,
     updateOnboardingStatus,
@@ -168,6 +172,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     intent: 'complete-step' as PersistProgressIntent,
     originStepId: stepId as OnboardingStepId,
     queued: false,
+    statusSnapshot: (onboardingStatus ?? defaultOnboardingStatus()) as StoredOnboardingStatus,
   })
 
   const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
@@ -311,9 +316,25 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
         goToStepId(blockingStep)
       }
 
+      trackOnboardingValidationBlocked({
+        status: onboardingStatus ?? defaultOnboardingStatus(),
+        currentStepId: stepId,
+        blockingStepId: blockingStep,
+        blockingStepTitle: blockingMeta?.title,
+        issuesByStep: payload.issuesByStep,
+      })
+
       return true
     },
-    [goToStepId, isOnboardingStepId, manifestSteps, setValidationIssues, stepId, toast],
+    [
+      goToStepId,
+      isOnboardingStepId,
+      manifestSteps,
+      onboardingStatus,
+      setValidationIssues,
+      stepId,
+      toast,
+    ],
   )
 
   useEffect(() => {
@@ -408,6 +429,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
         intent: variables.intent,
         originStepId: variables.originStepId,
         queued: false,
+        statusSnapshot: variables.status,
       }
       trackOnboardingSaveStarted({
         status: variables.status,
@@ -420,6 +442,14 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
         ...persistAttemptRef.current,
         retries: failureCount,
       }
+      trackOnboardingSaveRetried({
+        status: persistAttemptRef.current.statusSnapshot,
+        stepId: persistAttemptRef.current.originStepId,
+        intent: persistAttemptRef.current.intent,
+        failureCount,
+        retries: failureCount,
+        queued: persistAttemptRef.current.queued,
+      })
     },
     onSuccess: (status, variables) => {
       trackOnboardingSaveSucceeded({
@@ -430,6 +460,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
         retries: persistAttemptRef.current.retries,
         queued: persistAttemptRef.current.queued,
       })
+      persistAttemptRef.current.statusSnapshot = status
       updateOnboardingStatus(() => status)
     },
     onError: (error, variables) => {
@@ -445,6 +476,17 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
         queued: persistAttemptRef.current.queued,
       })
       if (error instanceof ApiError && error.status === 409) {
+        const conflict = parseConflictDetails(error.body?.conflict)
+        trackOnboardingConflictDetected({
+          status: variables.status,
+          stepId: variables.originStepId,
+          changedFields: conflict?.changedFields,
+          retries: persistAttemptRef.current.retries,
+          currentRevision: conflict?.currentRevision,
+          submittedRevision: conflict?.submittedRevision,
+          currentChecksum: conflict?.currentChecksum,
+          submittedChecksum: conflict?.submittedChecksum,
+        })
         void resyncFromServer()
       }
     },
@@ -583,6 +625,16 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
               description: buildConflictToastDescription(conflict),
               variant: 'default',
             })
+            trackOnboardingConflictDetected({
+              status: syncedStatus,
+              stepId,
+              changedFields: conflict?.changedFields,
+              retries: persistAttemptRef.current.retries,
+              currentRevision: conflict?.currentRevision,
+              submittedRevision: conflict?.submittedRevision,
+              currentChecksum: conflict?.currentChecksum,
+              submittedChecksum: conflict?.submittedChecksum,
+            })
             void resyncFromServer()
             return
           }
@@ -667,6 +719,36 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
   const isCompleted = !!onboardingStatus?.completedSteps.includes(stepId)
   const isSkipped = !!onboardingStatus?.skippedSteps.includes(stepId)
   const isLastStep = !nextStep
+
+  const hasTrackedStepViewRef = useRef(false)
+
+  useEffect(() => {
+    if (hasTrackedStepViewRef.current) return
+    if (!step) return
+
+    hasTrackedStepViewRef.current = true
+
+    trackOnboardingStepViewed({
+      status: onboardingStatus ?? defaultOnboardingStatus(),
+      stepId,
+      stepIndex: currentIndex,
+      totalSteps: manifestSteps.length,
+      required: step.required,
+      canSkip: step.canSkip,
+      isCompleted,
+      isSkipped,
+      manifestVariant: manifest.variant ?? null,
+    })
+  }, [
+    currentIndex,
+    isCompleted,
+    isSkipped,
+    manifest.variant,
+    manifestSteps.length,
+    onboardingStatus,
+    step,
+    stepId,
+  ])
 
   return {
     step,
