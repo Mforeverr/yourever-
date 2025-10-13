@@ -444,7 +444,7 @@ class OnboardingAnswerAggregationWorker:
             while True:
                 try:
                     notify = await asyncio.wait_for(
-                        raw_connection.connection.notifies.get(),
+                        raw_connection.notifies.get(),
                         timeout=self._poll_timeout,
                     )
                 except asyncio.TimeoutError:
