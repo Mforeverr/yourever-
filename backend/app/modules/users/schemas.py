@@ -70,6 +70,7 @@ class StoredOnboardingStatus(BaseModel):
     data: dict = Field(default_factory=dict)
     lastStep: Optional[str] = None
     revision: Optional[str] = None
+    checksum: Optional[str] = None
 
 
 class OnboardingSession(BaseModel):

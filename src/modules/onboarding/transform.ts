@@ -31,6 +31,10 @@ const parseStatus = (raw: Record<string, unknown> | null | undefined): StoredOnb
   const status = raw.status as Partial<StoredOnboardingStatus> | undefined
   if (!status) return fallback
   const version = coerceOnboardingStatusVersion(status.version)
+  const checksumHint = (() => {
+    const candidate = raw.statusChecksum ?? raw.status_checksum
+    return typeof candidate === 'string' ? candidate : undefined
+  })()
   return {
     ...fallback,
     ...status,
@@ -41,6 +45,10 @@ const parseStatus = (raw: Record<string, unknown> | null | undefined): StoredOnb
     completed: status.completed ?? fallback.completed,
     lastStep: status.lastStep ?? fallback.lastStep,
     revision: typeof status.revision === 'string' ? status.revision : fallback.revision,
+    checksum:
+      typeof status.checksum === 'string'
+        ? status.checksum
+        : checksumHint ?? fallback.checksum,
   }
 }
 

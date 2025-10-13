@@ -45,6 +45,15 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
     return _session_factory
 
 
+def get_engine() -> AsyncEngine:
+    """Return the singleton AsyncEngine used across the application."""
+
+    if _engine is None:
+        _ensure_engine()
+    assert _engine is not None
+    return _engine
+
+
 @asynccontextmanager
 async def get_db_session() -> AsyncIterator[AsyncSession]:
     """

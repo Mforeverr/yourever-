@@ -1,14 +1,16 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCurrentUser } from '@/hooks/use-auth'
+import { useOnboardingManifest } from '@/hooks/use-onboarding-manifest'
 import {
-  ONBOARDING_STEPS,
   getFirstIncompleteStep,
   getNextStep,
   getPreviousStep,
   getStepById,
+  getStepIndex,
   type BaseOnboardingStep,
   type OnboardingStepId,
   type StepDataMap,
@@ -29,15 +31,15 @@ import { toast } from '@/hooks/use-toast'
 import { useResilientMutation } from '@/lib/react-query/resilient-mutation'
 import { ApiError } from '@/lib/api/http'
 import {
+  trackOnboardingConflictDetected,
   trackOnboardingSaveFailed,
+  trackOnboardingSaveRetried,
   trackOnboardingSaveStarted,
   trackOnboardingSaveSucceeded,
+  trackOnboardingStepViewed,
+  trackOnboardingValidationBlocked,
 } from '@/lib/telemetry/onboarding'
-
-const allStepIds = ONBOARDING_STEPS.map((step) => step.id)
-
-const isOnboardingStepId = (value: unknown): value is OnboardingStepId =>
-  typeof value === 'string' && allStepIds.includes(value as OnboardingStepId)
+import { useOnboardingOfflineQueue } from '@/lib/offline/onboarding-queue'
 
 type PersistProgressIntent = 'complete-step' | 'skip-step'
 
@@ -52,8 +54,63 @@ type ValidationDispatchPayload = {
   issuesByStep: Record<OnboardingStepId, Array<{ field: string | null; message: string; code?: string | null }>>
 }
 
+type ConflictDetails = {
+  currentRevision?: string
+  submittedRevision?: string
+  currentChecksum?: string
+  submittedChecksum?: string
+  changedFields: string[]
+}
+
+const parseConflictDetails = (input: unknown): ConflictDetails | null => {
+  if (!input || typeof input !== 'object') {
+    return null
+  }
+
+  const source = input as Record<string, unknown>
+
+  const toStringOrUndefined = (value: unknown) => (typeof value === 'string' ? value : undefined)
+  const changedFields = Array.isArray(source.changedFields)
+    ? Array.from(
+        new Set(
+          source.changedFields
+            .map((value) => (typeof value === 'string' ? value.trim() : ''))
+            .filter((value) => value.length > 0),
+        ),
+      )
+    : []
+
+  return {
+    currentRevision: toStringOrUndefined(source.currentRevision),
+    submittedRevision: toStringOrUndefined(source.submittedRevision),
+    currentChecksum: toStringOrUndefined(source.currentChecksum),
+    submittedChecksum: toStringOrUndefined(source.submittedChecksum),
+    changedFields,
+  }
+}
+
+const humanizeSegment = (segment: string): string => {
+  const normalized = segment
+    .replace(/\[(\d+)\]/g, ' $1 ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) {
+    return 'Field'
+  }
+
+  return normalized
+    .split(' ')
+    .filter((token) => token.length > 0)
+    .map((token) => token[0].toUpperCase() + token.slice(1))
+    .join(' ')
+}
+
 const buildValidationDispatchPayload = (
   input: OnboardingValidationSummary | null | undefined | unknown,
+  isValidStepId: (value: unknown) => value is OnboardingStepId,
 ): ValidationDispatchPayload | null => {
   if (!input || typeof input !== 'object') {
     return null
@@ -66,7 +123,7 @@ const buildValidationDispatchPayload = (
   for (const rawIssue of issuesSource) {
     if (!rawIssue || typeof rawIssue !== 'object') continue
     const issueLike = rawIssue as { stepId?: unknown; message?: unknown; field?: unknown; code?: unknown }
-    if (!isOnboardingStepId(issueLike.stepId)) continue
+    if (!isValidStepId(issueLike.stepId)) continue
 
     const message = typeof issueLike.message === 'string' ? issueLike.message.trim() : ''
     if (!message) continue
@@ -86,12 +143,13 @@ const buildValidationDispatchPayload = (
   }
 
   const blockingCandidate = (candidate as { blockingStepId?: unknown }).blockingStepId
-  const blockingStepId = isOnboardingStepId(blockingCandidate) ? blockingCandidate : stepIds[0]
+  const blockingStepId = isValidStepId(blockingCandidate) ? blockingCandidate : stepIds[0]
 
   return { blockingStepId, issuesByStep }
 }
 
 export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
+  const { manifest, steps: manifestSteps } = useOnboardingManifest()
   const {
     onboardingStatus,
     updateOnboardingStatus,
@@ -113,6 +171,8 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     retries: 0,
     intent: 'complete-step' as PersistProgressIntent,
     originStepId: stepId as OnboardingStepId,
+    queued: false,
+    statusSnapshot: (onboardingStatus ?? defaultOnboardingStatus()) as StoredOnboardingStatus,
   })
 
   const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
@@ -123,25 +183,117 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     return Math.max(0, Math.round(now() - startedAt))
   }
 
-  const step = useMemo(() => getStepById(stepId), [stepId])
-  const nextStep = useMemo(() => getNextStep(stepId), [stepId])
-  const previousStep = useMemo(() => getPreviousStep(stepId), [stepId])
-  const currentIndex = useMemo(() => getStepIndex(stepId), [stepId])
+  const step = useMemo(() => getStepById(stepId, manifestSteps), [manifestSteps, stepId])
+  const nextStep = useMemo(() => getNextStep(stepId, manifestSteps), [manifestSteps, stepId])
+  const previousStep = useMemo(
+    () => getPreviousStep(stepId, manifestSteps),
+    [manifestSteps, stepId],
+  )
+  const currentIndex = useMemo(() => getStepIndex(stepId, manifestSteps), [manifestSteps, stepId])
+
+  const stepIdSet = useMemo(() => new Set(manifestSteps.map((s) => s.id as OnboardingStepId)), [manifestSteps])
+
+  const isOnboardingStepId = useCallback(
+    (value: unknown): value is OnboardingStepId =>
+      typeof value === 'string' && stepIdSet.has(value as OnboardingStepId),
+    [stepIdSet],
+  )
+
+  const buildConflictToastDescription = useCallback(
+    (details: ConflictDetails | null): ReactNode => {
+      const changedFields = details?.changedFields ?? []
+
+      const defaultMessage = (
+        <div className="space-y-1">
+          <p>
+            Another session updated your onboarding answers. We refreshed the latest data so you can review before
+            continuing.
+          </p>
+        </div>
+      )
+
+      if (!changedFields.length) {
+        return defaultMessage
+      }
+
+      const groupsMap = new Map<string, { title: string; fields: string[] }>()
+
+      changedFields.forEach((path) => {
+        if (typeof path !== 'string' || !path.trim()) {
+          return
+        }
+        const segments = path.split('.').filter(Boolean)
+        if (!segments.length) {
+          return
+        }
+
+        const [stepSegment, ...fieldSegments] = segments
+        const step = getStepById(stepSegment as OnboardingStepId, manifestSteps)
+        const mapKey = step ? step.id : stepSegment
+        const existing = groupsMap.get(mapKey)
+        const entry =
+          existing ?? {
+            title: step?.title ?? humanizeSegment(stepSegment || 'Step'),
+            fields: [] as string[],
+          }
+
+        if (fieldSegments.length) {
+          const label = fieldSegments.map(humanizeSegment).join(' › ')
+          if (!entry.fields.includes(label)) {
+            entry.fields.push(label)
+          }
+        }
+
+        groupsMap.set(mapKey, entry)
+      })
+
+      const groups = Array.from(groupsMap.entries()).map(([key, entry]) => ({
+        key,
+        title: entry.title,
+        fields: entry.fields.length ? entry.fields : ['Step answers updated elsewhere'],
+      }))
+
+      if (!groups.length) {
+        return defaultMessage
+      }
+
+      return (
+        <div className="space-y-2">
+          <p>Another session updated your onboarding answers. Review the following before continuing:</p>
+          <ul className="list-disc space-y-1 pl-4">
+            {groups.map((group) => (
+              <li key={group.key}>
+                <span className="font-medium">{group.title}</span>
+                {group.fields.length ? (
+                  <ul className="list-disc space-y-1 pl-4">
+                    {group.fields.map((field) => (
+                      <li key={field}>{field}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )
+    },
+    [manifestSteps],
+  )
 
   const data = stepData
 
   const goToStepId = useCallback(
     (targetId: OnboardingStepId) => {
-      const target = getStepById(targetId)
+      const target = getStepById(targetId, manifestSteps)
       if (!target) return
       router.push(target.path)
     },
-    [router],
+    [manifestSteps, router],
   )
 
   const dispatchValidationSummary = useCallback(
     (summary: unknown) => {
-      const payload = buildValidationDispatchPayload(summary)
+      const payload = buildValidationDispatchPayload(summary, isOnboardingStepId)
       if (!payload) {
         return false
       }
@@ -151,7 +303,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
       })
 
       const blockingStep = payload.blockingStepId
-      const blockingMeta = getStepById(blockingStep)
+      const blockingMeta = getStepById(blockingStep, manifestSteps)
       toast({
         title: 'Review required',
         description: blockingMeta
@@ -164,9 +316,25 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
         goToStepId(blockingStep)
       }
 
+      trackOnboardingValidationBlocked({
+        status: onboardingStatus ?? defaultOnboardingStatus(),
+        currentStepId: stepId,
+        blockingStepId: blockingStep,
+        blockingStepTitle: blockingMeta?.title,
+        issuesByStep: payload.issuesByStep,
+      })
+
       return true
     },
-    [goToStepId, setValidationIssues, stepId, toast],
+    [
+      goToStepId,
+      isOnboardingStepId,
+      manifestSteps,
+      onboardingStatus,
+      setValidationIssues,
+      stepId,
+      toast,
+    ],
   )
 
   useEffect(() => {
@@ -183,31 +351,85 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     }
 
     const completedSet = new Set(onboardingStatus.completedSteps)
-    const firstIncomplete = getFirstIncompleteStep(onboardingStatus)
+    const firstIncomplete = getFirstIncompleteStep(onboardingStatus, manifestSteps)
 
     if (firstIncomplete && firstIncomplete.id !== stepId && !completedSet.has(stepId)) {
       router.replace(firstIncomplete.path)
     }
-  }, [onboardingStatus, router, status, step, stepId, user])
+  }, [manifestSteps, onboardingStatus, router, status, step, stepId, user])
 
-  const persistProgress = useResilientMutation<StoredOnboardingStatus, unknown, PersistProgressVariables>({
-    mutationFn: async ({ status }) => {
+  const { enqueue: enqueueOfflinePersist, isSupported: isOfflineQueueSupported, addListener: addOfflineListener } =
+    useOnboardingOfflineQueue()
+
+  useEffect(() => {
+    if (!isOfflineQueueSupported) {
+      return undefined
+    }
+
+    return addOfflineListener((event) => {
+      if (event.type === 'onboarding.persist.failed') {
+        toast({
+          title: 'Progress could not sync',
+          description: 'Please check your connection and update your onboarding answers again.',
+          variant: 'destructive',
+        })
+      }
+    })
+  }, [addOfflineListener, isOfflineQueueSupported, toast])
+
+  const attemptPersistStatus = useCallback(
+    async (status: StoredOnboardingStatus) => {
       const token = await getAccessToken()
       if (!token) {
         throw new Error('Authentication expired. Please sign in again.')
       }
-      const response = await persistOnboardingStatus(token, status)
-      if (!response?.status) {
-        throw new Error('Failed to sync onboarding progress.')
+
+      const shouldQueueImmediately =
+        isOfflineQueueSupported && typeof navigator !== 'undefined' && navigator.onLine === false
+
+      const enqueueAndReturn = async () => {
+        const enqueued = await enqueueOfflinePersist(token, status, stepId)
+        if (enqueued) {
+          persistAttemptRef.current.queued = true
+          return status
+        }
+        throw new Error('Failed to enqueue onboarding progress for offline sync.')
       }
-      return response.status
+
+      if (shouldQueueImmediately) {
+        return enqueueAndReturn()
+      }
+
+      try {
+        const response = await persistOnboardingStatus(token, status)
+        if (!response?.status) {
+          throw new Error('Failed to sync onboarding progress.')
+        }
+        return response.status
+      } catch (error) {
+        const retryableNetworkFailure =
+          error instanceof ApiError &&
+          (error.status === 0 || error.status === 408 || (error.status >= 500 && error.status < 600))
+
+        if (isOfflineQueueSupported && retryableNetworkFailure) {
+          return enqueueAndReturn()
+        }
+        throw error
+      }
     },
+    [enqueueOfflinePersist, getAccessToken, isOfflineQueueSupported, stepId],
+  )
+
+  const persistProgress = useResilientMutation<StoredOnboardingStatus, unknown, PersistProgressVariables>({
+    mutationFn: async ({ status }) => attemptPersistStatus(status),
     onMutate: (variables) => {
       persistAttemptRef.current = {
         startedAt: now(),
         retries: 0,
         intent: variables.intent,
         originStepId: variables.originStepId,
+        queued: false,
+        statusSnapshot: variables.status,
       }
       trackOnboardingSaveStarted({
         status: variables.status,
@@ -220,6 +442,14 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
         ...persistAttemptRef.current,
         retries: failureCount,
       }
+      trackOnboardingSaveRetried({
+        status: persistAttemptRef.current.statusSnapshot,
+        stepId: persistAttemptRef.current.originStepId,
+        intent: persistAttemptRef.current.intent,
+        failureCount,
+        retries: failureCount,
+        queued: persistAttemptRef.current.queued,
+      })
     },
     onSuccess: (status, variables) => {
       trackOnboardingSaveSucceeded({
@@ -228,7 +458,9 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
         intent: variables.intent,
         durationMs: computeDurationMs(),
         retries: persistAttemptRef.current.retries,
+        queued: persistAttemptRef.current.queued,
       })
+      persistAttemptRef.current.statusSnapshot = status
       updateOnboardingStatus(() => status)
     },
     onError: (error, variables) => {
@@ -241,8 +473,20 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
         errorName: error instanceof Error ? error.name : undefined,
         errorMessage: error instanceof Error ? error.message : undefined,
         errorStatus: error instanceof ApiError ? error.status : null,
+        queued: persistAttemptRef.current.queued,
       })
       if (error instanceof ApiError && error.status === 409) {
+        const conflict = parseConflictDetails(error.body?.conflict)
+        trackOnboardingConflictDetected({
+          status: variables.status,
+          stepId: variables.originStepId,
+          changedFields: conflict?.changedFields,
+          retries: persistAttemptRef.current.retries,
+          currentRevision: conflict?.currentRevision,
+          submittedRevision: conflict?.submittedRevision,
+          currentChecksum: conflict?.currentChecksum,
+          submittedChecksum: conflict?.submittedChecksum,
+        })
         void resyncFromServer()
       }
     },
@@ -259,16 +503,27 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
         title: 'Progress synced',
         description: 'All onboarding updates are now saved.',
       }),
-      error: (error) => ({
-        title: error instanceof ApiError && error.status === 409 ? 'Refreshing your answers' : 'Progress not saved',
-        description:
-          error instanceof ApiError && error.status === 409
-            ? 'Another device updated this onboarding session. We pulled the latest answers so you can continue safely.'
-            : error instanceof Error
-              ? `${error.message} We kept your latest answers locally.`
-              : 'Unable to save onboarding progress. We kept your latest answers locally.',
-        variant: error instanceof ApiError && error.status === 409 ? 'default' : 'destructive',
-      }),
+      error: (error) => {
+        if (error instanceof ApiError && error.status === 409) {
+          const conflict = parseConflictDetails(error.body?.conflict)
+          return {
+            title: 'Answers updated elsewhere',
+            description: buildConflictToastDescription(conflict),
+            variant: 'default',
+          }
+        }
+
+        const message =
+          error instanceof Error
+            ? `${error.message} We kept your latest answers locally.`
+            : 'Unable to save onboarding progress. We kept your latest answers locally.'
+
+        return {
+          title: 'Progress not saved',
+          description: message,
+          variant: 'destructive',
+        }
+      },
     },
     maxRetryAttempts: 3,
     baseRetryDelayMs: 1_500,
@@ -364,10 +619,21 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
           markOnboardingComplete()
         } catch (error) {
           if (error instanceof ApiError && error.status === 409) {
+            const conflict = parseConflictDetails(error.body?.conflict)
             toast({
-              title: 'Progress updated elsewhere',
-              description: 'We refreshed your onboarding session. Please review your latest answers before finishing.',
-              variant: 'destructive',
+              title: 'Answers updated elsewhere',
+              description: buildConflictToastDescription(conflict),
+              variant: 'default',
+            })
+            trackOnboardingConflictDetected({
+              status: syncedStatus,
+              stepId,
+              changedFields: conflict?.changedFields,
+              retries: persistAttemptRef.current.retries,
+              currentRevision: conflict?.currentRevision,
+              submittedRevision: conflict?.submittedRevision,
+              currentChecksum: conflict?.currentChecksum,
+              submittedChecksum: conflict?.submittedChecksum,
             })
             void resyncFromServer()
             return
@@ -446,13 +712,43 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     if (completedSet.has(targetId) || skippedSet.has(targetId)) {
       return true
     }
-    const targetIndex = getStepIndex(targetId)
+    const targetIndex = getStepIndex(targetId, manifestSteps)
     return targetIndex !== -1 && targetIndex <= currentIndex
   }
 
   const isCompleted = !!onboardingStatus?.completedSteps.includes(stepId)
   const isSkipped = !!onboardingStatus?.skippedSteps.includes(stepId)
   const isLastStep = !nextStep
+
+  const hasTrackedStepViewRef = useRef(false)
+
+  useEffect(() => {
+    if (hasTrackedStepViewRef.current) return
+    if (!step) return
+
+    hasTrackedStepViewRef.current = true
+
+    trackOnboardingStepViewed({
+      status: onboardingStatus ?? defaultOnboardingStatus(),
+      stepId,
+      stepIndex: currentIndex,
+      totalSteps: manifestSteps.length,
+      required: step.required,
+      canSkip: step.canSkip,
+      isCompleted,
+      isSkipped,
+      manifestVariant: manifest.variant ?? null,
+    })
+  }, [
+    currentIndex,
+    isCompleted,
+    isSkipped,
+    manifest.variant,
+    manifestSteps.length,
+    onboardingStatus,
+    step,
+    stepId,
+  ])
 
   return {
     step,

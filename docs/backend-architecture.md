@@ -20,11 +20,22 @@ backend/
     ├── dependencies/        # DI-friendly adapters (Supabase auth, etc.)
     ├── interfaces/          # Cross-module contracts
     ├── modules/
+    │   ├── admin/           # Back-office analytics (answer retrieval, exports)
     │   ├── health/          # Lightweight readiness probes
     │   ├── huddles/         # Team huddle endpoints (schemas, repository, service, router, di)
-    │   └── projects/        # Projects REST module backed by SQLAlchemy
+    │   ├── onboarding/      # Onboarding validation helpers shared across flows
+    │   ├── projects/        # Projects REST module backed by SQLAlchemy
+    │   └── users/           # Account/session persistence, publishers, aggregation workers
     └── main.py              # FastAPI bootstrap
 ```
+
+### Why everything lives under `modules/`
+
+- **Single registration surface.** `backend/app/modules/__init__.py` exposes a `MODULE_ROUTERS` tuple that the FastAPI app mounts. Keeping routers in `modules/*/router.py` makes the API boundary explicit and avoids scattering endpoint declarations across the codebase.
+- **Encapsulated domain stacks.** Each folder contains its own schemas, services, repositories, publishers, and background workers. That keeps cohesion high while letting other domains interact through well-defined interfaces instead of reaching into internal classes.
+- **Open/Closed growth.** Adding a capability (e.g., admin analytics) means creating a new folder with its router and wiring, then extending `MODULE_ROUTERS`. Existing modules stay untouched, which matches the modular-monolith guidelines in `AGENTS.md`.
+
+When you trace a request, start at `modules/<domain>/router.py`, check any dependencies declared in `di.py`, and follow through to the service/repository layers. Background tasks (publishers, aggregators, exporters) sit beside the domain that owns the data so operational code and HTTP handlers evolve together.
 
 ## Module Anatomy
 Every module under `backend/app/modules` should:
