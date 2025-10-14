@@ -14,12 +14,14 @@ from .huddles.router import router as huddles_router
 from .projects.router import router as projects_router
 from .users.router import router as users_router
 from .onboarding.router import router as onboarding_router
+from .organizations.router import router as organizations_router
 
 MODULE_ROUTERS: tuple[APIRouter, ...] = (
     health_router,
     admin_router,
     huddles_router,
     projects_router,
+    organizations_router,
     onboarding_router,
     users_router,
 )
