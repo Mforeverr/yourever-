@@ -29,6 +29,10 @@ class Settings(BaseModel):
     supabase_jwt_secret: Optional[str] = Field(default=None)
     supabase_jwt_audience: Optional[str] = Field(default=None)
 
+    enable_mock_organization_fallback: bool = Field(
+        default=True, alias="enableMockOrganizationFallback"
+    )
+
     @classmethod
     def from_env(cls) -> "Settings":
         """Load settings from environment variables."""
@@ -43,6 +47,9 @@ class Settings(BaseModel):
             supabase_service_role_key=os.getenv("SUPABASE_SERVICE_ROLE_KEY"),
             supabase_jwt_secret=os.getenv("SUPABASE_JWT_SECRET"),
             supabase_jwt_audience=os.getenv("SUPABASE_JWT_AUDIENCE"),
+            enable_mock_organization_fallback=(
+                os.getenv("YOUREVER_ENABLE_MOCK_ORG_FALLBACK", "true").lower() == "true"
+            ),
         )
 
 
