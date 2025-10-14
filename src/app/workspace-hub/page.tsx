@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { FormEvent, useEffect, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { useProtectedRoute } from '@/hooks/use-protected-route'
 import { useCurrentUser } from '@/hooks/use-auth'
 import {
@@ -16,13 +16,11 @@ import {
   type WorkspaceCreationResult,
 } from '@/hooks/use-organizations'
 import { authStorage } from '@/lib/auth-utils'
-import { OrgCreationForm } from './components/OrgCreationForm'
 import { ExistingOrgsList } from './components/ExistingOrgsList'
 import { InvitationCard } from './components/InvitationCard'
 import { Loader2, Building2, Users, Mail, ArrowLeft, Sparkles } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import {
   TutorialProvider,
   useTutorialManager,
@@ -32,10 +30,12 @@ import { fetchOrganizationOverviews, type OrganizationOverview } from '@/lib/moc
 import type { OrganizationCardData } from './components/OrganizationCard'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
+import { JoinOrganizationDialog } from './components/JoinOrganizationDialog'
+import { CreateOrganizationDialog } from './components/CreateOrganizationDialog'
 
 type Choice = 'join-existing' | 'create-new' | 'accept-invitation'
 
-interface WorkspaceHubForm {
+export interface WorkspaceHubForm {
   choice: Choice
   organizationName?: string
   divisionName?: string
@@ -65,6 +65,8 @@ function WorkspaceHubContent() {
   const [isFetchingOverviews, setIsFetchingOverviews] = useState(false)
   const [divisionSelections, setDivisionSelections] = useState<Record<string, string | null>>({})
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null)
+  const [isJoinDialogOpen, setIsJoinDialogOpen] = useState(false)
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const storedOrgIdRef = useRef<string | null>(null)
   const storedDivisionIdRef = useRef<string | null>(null)
 
@@ -91,7 +93,6 @@ function WorkspaceHubContent() {
   const { data: invitations, isLoading: invitationsLoading } = usePendingInvitations()
 
   const watchJoinOrganizationId = watch('joinOrganizationId')
-  const watchJoinNickname = watch('joinNickname')
   const pendingInvitations = invitations?.filter(inv => inv.status === 'pending') || []
 
   useEffect(() => {
@@ -301,6 +302,7 @@ function WorkspaceHubContent() {
   }
 
   const handleOrgCreationSuccess = (result: WorkspaceCreationResult) => {
+    setIsCreateDialogOpen(false)
     const defaultDivisionId = result.organization.divisions[0]?.id ?? null
     setDivisionSelections((previous) => ({
       ...previous,
@@ -312,6 +314,41 @@ function WorkspaceHubContent() {
       name: result.organization.name,
       divisions: result.organization.divisions,
     })
+  }
+
+  const attemptJoinOrganization = async () => {
+    if (isProcessing || !user) {
+      return false
+    }
+
+    const isValid = await trigger(['joinOrganizationId', 'joinNickname'])
+    if (!isValid) {
+      return false
+    }
+
+    const { joinOrganizationId } = getValues()
+    const trimmedId = joinOrganizationId.trim()
+    const organization = enrichedOrganizations.find((candidate) => candidate.id === trimmedId)
+
+    if (!organization) {
+      toast({
+        title: 'Organization not found',
+        description: 'Double-check the organization ID and try again.',
+        variant: 'destructive',
+      })
+      return false
+    }
+
+    setSelectedOrgId(organization.id)
+    const divisionId = divisionSelections[organization.id] ?? organization.divisions[0]?.id ?? null
+    setIsJoinDialogOpen(false)
+    openOrganization(organization.id, divisionId)
+    return true
+  }
+
+  const handleJoinDialogSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    await attemptJoinOrganization()
   }
 
   const handleOrgSelection = (organizationId: string, divisionId: string | null) => {
@@ -353,71 +390,6 @@ function WorkspaceHubContent() {
         ? 'border-primary/50 bg-primary/10 ring-2 ring-primary/20'
         : 'border-border/60 bg-card hover:border-primary/30 hover:bg-muted/50'
     )
-
-  const handleContinue = async () => {
-    if (isProcessing || !user) return
-
-    if (activeTab === 'join-existing') {
-      const isValid = await trigger(['joinOrganizationId', 'joinNickname'])
-      if (!isValid) {
-        return
-      }
-
-      const { joinOrganizationId } = getValues()
-      const trimmedId = joinOrganizationId.trim()
-      const organization = enrichedOrganizations.find((candidate) => candidate.id === trimmedId)
-
-      if (!organization) {
-        toast({
-          title: 'Organization not found',
-          description: 'Double-check the organization ID and try again.',
-          variant: 'destructive',
-        })
-        return
-      }
-
-      setSelectedOrgId(organization.id)
-      const divisionId = divisionSelections[organization.id] ?? organization.divisions[0]?.id ?? null
-      openOrganization(organization.id, divisionId)
-      return
-    }
-
-    if (!selectedOrgId) return
-
-    const divisionId = divisionSelections[selectedOrgId] ?? null
-    openOrganization(selectedOrgId, divisionId)
-  }
-
-  const canContinue = useMemo(() => {
-    if (isProcessing) return false
-
-    switch (activeTab) {
-      case 'join-existing': {
-        const organizationId = (watchJoinOrganizationId ?? '').trim()
-        const nickname = (watchJoinNickname ?? '').trim()
-        if (!organizationId || !nickname) return false
-        const organization = enrichedOrganizations.find((candidate) => candidate.id === organizationId)
-        if (!organization || organization.divisions.length === 0) return false
-        const divisionId = divisionSelections[organization.id] ?? organization.divisions[0]?.id ?? null
-        return Boolean(divisionId)
-      }
-      case 'create-new':
-        return true
-      case 'accept-invitation':
-        return pendingInvitations.length > 0
-      default:
-        return false
-    }
-  }, [
-    activeTab,
-    divisionSelections,
-    enrichedOrganizations,
-    isProcessing,
-    pendingInvitations.length,
-    selectedOrgId,
-    watchJoinNickname,
-    watchJoinOrganizationId,
-  ])
 
   if (isProtecting) {
     return (
@@ -606,38 +578,38 @@ function WorkspaceHubContent() {
 
               {activeTab === 'join-existing' && (
                 <div className="space-y-6">
-                  <div className="space-y-2">
-                    <h3 className="text-xl font-semibold">Join an Organization</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Enter the organization ID and the name you would like teammates to see when you join.
-                    </p>
-                  </div>
-
-                  <div className="grid gap-6 sm:grid-cols-2">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="space-y-2">
-                      <Label htmlFor="joinOrganizationId">Organization ID</Label>
-                      <Input
-                        id="joinOrganizationId"
-                        autoComplete="off"
-                        placeholder="e.g. org_12345"
-                        {...register('joinOrganizationId', { required: 'Organization ID is required' })}
-                      />
-                      {errors.joinOrganizationId && (
-                        <p className="text-sm text-destructive">{errors.joinOrganizationId.message}</p>
-                      )}
+                      <h3 className="text-xl font-semibold">Join an Organization</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Enter the organization ID and the name you would like teammates to see when you join.
+                      </p>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="joinNickname">Join as</Label>
-                      <Input
-                        id="joinNickname"
-                        autoComplete="nickname"
-                        placeholder="Your display name"
-                        {...register('joinNickname', { required: 'Please provide a nickname' })}
-                      />
-                      {errors.joinNickname && (
-                        <p className="text-sm text-destructive">{errors.joinNickname.message}</p>
-                      )}
-                    </div>
+                    <JoinOrganizationDialog
+                      open={isJoinDialogOpen}
+                      onOpenChange={setIsJoinDialogOpen}
+                      onSubmit={handleJoinDialogSubmit}
+                      register={register}
+                      errors={errors}
+                      trigger={
+                        <Button
+                          size="lg"
+                          className="flex items-center gap-2"
+                          onClick={() => {
+                            if (selectedOrgId) {
+                              setValue('joinOrganizationId', selectedOrgId, {
+                                shouldDirty: false,
+                                shouldTouch: false,
+                                shouldValidate: false,
+                              })
+                            }
+                          }}
+                        >
+                          <Building2 className="h-5 w-5" />
+                          Join via ID
+                        </Button>
+                      }
+                    />
                   </div>
 
                   <div className="space-y-4">
@@ -670,33 +642,21 @@ function WorkspaceHubContent() {
               {activeTab === 'create-new' && (
                 <div className="space-y-6">
                   <h3 className="text-xl font-semibold">Create New Organization</h3>
-                  <OrgCreationForm
+                  <CreateOrganizationDialog
+                    open={isCreateDialogOpen}
+                    onOpenChange={setIsCreateDialogOpen}
                     onSuccess={handleOrgCreationSuccess}
+                    trigger={
+                      <Button size="lg" className="flex items-center gap-2">
+                        <Sparkles className="h-5 w-5" />
+                        Launch creation form
+                      </Button>
+                    }
                   />
                 </div>
               )}
             </div>
 
-            {/* Action Buttons */}
-            {activeTab === 'join-existing' && (
-              <div className="flex justify-center pt-6 border-t">
-                <Button
-                  size="lg"
-                  onClick={() => void handleContinue()}
-                  disabled={!canContinue || isProcessing}
-                  className="bg-black hover:bg-gray-900 text-white px-8 py-3 text-lg font-semibold transition-all duration-300 border-2 border-white/20 hover:border-white/40"
-                >
-                  {isProcessing ? (
-                    <span>Joining organization...</span>
-                  ) : (
-                    <>
-                      Continue to Workspace
-                      <Users className="ml-2 w-5 h-5" />
-                    </>
-                  )}
-                </Button>
-              </div>
-            )}
           </CardContent>
         </Card>
       </div>
