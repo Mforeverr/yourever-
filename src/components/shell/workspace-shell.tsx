@@ -61,7 +61,7 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
   const buildScopedPath = React.useCallback(
     (target: string) => {
       if (!scopedBasePath) {
-        return '/select-org'
+        return '/workspace-hub'
       }
 
       const normalizedTarget = target.startsWith('/') ? target : `/${target}`

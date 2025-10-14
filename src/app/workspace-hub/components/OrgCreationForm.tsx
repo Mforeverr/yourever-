@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Loader2, Check, X } from 'lucide-react'
 import { useCreateOrganization, useCheckSlugAvailability } from '@/hooks/use-organizations'
-import { useAvailableTemplates, type Template } from '@/hooks/use-organizations'
+import { useAvailableTemplates, type Template, type WorkspaceCreationResult } from '@/hooks/use-organizations'
 import { cn } from '@/lib/utils'
 
 const orgCreationSchema = z.object({
@@ -26,7 +26,7 @@ const orgCreationSchema = z.object({
 type OrgCreationFormData = z.infer<typeof orgCreationSchema>
 
 interface OrgCreationFormProps {
-  onSuccess?: (result: any) => void
+  onSuccess?: (result: WorkspaceCreationResult) => void
   onError?: (error: any) => void
 }
 

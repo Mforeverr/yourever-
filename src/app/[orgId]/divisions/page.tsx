@@ -142,7 +142,7 @@ export default function DivisionSelectionPage() {
 
   useEffect(() => {
     if (!isProtecting && user && !organization) {
-      router.replace('/select-org')
+      router.replace('/workspace-hub')
     }
   }, [isProtecting, organization, router, user])
 
@@ -176,7 +176,7 @@ export default function DivisionSelectionPage() {
         <Breadcrumb className="text-left">
           <BreadcrumbList>
             <BreadcrumbItem>
-              <BreadcrumbLink href="/select-org">Organizations</BreadcrumbLink>
+              <BreadcrumbLink href="/workspace-hub">Organizations</BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem>
@@ -198,7 +198,7 @@ export default function DivisionSelectionPage() {
 
         <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
           <Button asChild variant="outline" size="sm">
-            <Link href="/select-org">Back to organizations</Link>
+            <Link href="/workspace-hub">Back to organizations</Link>
           </Button>
           {restrictedCount > 0 && (
             <p className="text-xs text-muted-foreground text-center sm:text-right">

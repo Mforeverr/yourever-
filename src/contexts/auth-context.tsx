@@ -548,7 +548,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         void gateway.signOut()
       }
       if (typeof window !== 'undefined') {
-        const redirectPath = nextStep?.path ?? '/select-org'
+        const redirectPath = nextStep?.path ?? '/workspace-hub'
         const loginUrl = new URL('/login', window.location.origin)
         loginUrl.searchParams.set('redirect', redirectPath)
         router.replace(`${loginUrl.pathname}${loginUrl.search}`)

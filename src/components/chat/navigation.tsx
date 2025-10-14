@@ -20,7 +20,7 @@ export default function ChatNavigation() {
   const bottomPanel = useBottomPanel()
   const scopedHref = React.useCallback(
     (suffix: string) => {
-      if (!currentOrgId || !currentDivisionId) return '/select-org'
+      if (!currentOrgId || !currentDivisionId) return '/workspace-hub'
       return `/${currentOrgId}/${currentDivisionId}${suffix}`
     },
     [currentDivisionId, currentOrgId]

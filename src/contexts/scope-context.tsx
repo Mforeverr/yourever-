@@ -70,6 +70,8 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
       setCurrentOrgId(null)
       setCurrentDivisionId(null)
       setIsReady(true)
+      authStorage.clearActiveOrganizationId()
+      authStorage.clearActiveDivisionId()
       return
     }
 
@@ -89,7 +91,20 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
       organization = user.organizations[0]
       if (organization) {
         authStorage.setActiveOrganizationId(organization.id)
+      } else {
+        authStorage.clearActiveOrganizationId()
       }
+    } else {
+      authStorage.setActiveOrganizationId(organization.id)
+    }
+
+    if (!organization) {
+      authStorage.clearActiveDivisionId()
+      setCurrentOrgId(null)
+      setCurrentDivisionId(null)
+      setIsReady(true)
+      router.replace('/workspace-hub')
+      return
     }
 
     const orgDivisionPreference =
@@ -106,11 +121,6 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     setCurrentDivisionId(activeDivision ? activeDivision.id : null)
     setIsReady(true)
 
-    if (!organization) {
-      router.replace('/select-org')
-      return
-    }
-
     const hasRouteScope = !!routeOrgId
     const shouldRedirect =
       hasRouteScope &&
@@ -122,7 +132,7 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
       if (activeDivision) {
         router.replace(`/${organization.id}/${activeDivision.id}/dashboard`)
       } else {
-        router.replace('/select-org')
+        router.replace('/workspace-hub')
       }
     }
   }, [isLoading, params, router, user])
@@ -168,7 +178,7 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     if (!isReady || !user) return
 
     if (!currentOrgId) {
-      router.replace('/select-org')
+      router.replace('/workspace-hub')
     }
   }, [currentOrgId, isReady, router, user])
 

@@ -280,7 +280,7 @@ function ChannelsContent({ className }: ChannelsContentProps) {
   const buildScopedPath = React.useCallback(
     (suffix: string) => {
       if (!currentOrgId || !currentDivisionId) {
-        return '/select-org'
+        return '/workspace-hub'
       }
       return `/${currentOrgId}/${currentDivisionId}${suffix}`
     },
