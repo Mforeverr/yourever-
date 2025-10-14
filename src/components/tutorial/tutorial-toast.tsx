@@ -235,7 +235,7 @@ export function TutorialToast({
       }}
     >
       {/* Dimming overlay and spotlight */}
-      <div className="fixed inset-0 -z-10 bg-black/70 backdrop-blur-[2px] transition-opacity duration-500" />
+      <div className="fixed inset-0 -z-10 bg-black/70 transition-opacity duration-500" />
       {calculatedPosition.spotlight ? (
         <div
           className="fixed -z-10 pointer-events-none transition-all duration-500 ease-out"
