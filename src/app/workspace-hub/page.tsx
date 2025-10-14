@@ -6,6 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog'
 import { useProtectedRoute } from '@/hooks/use-protected-route'
 import { useCurrentUser } from '@/hooks/use-auth'
 import {
@@ -31,7 +32,7 @@ import type { OrganizationCardData } from './components/OrganizationCard'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { JoinOrganizationDialog } from './components/JoinOrganizationDialog'
-import { CreateOrganizationDialog } from './components/CreateOrganizationDialog'
+import { OrgCreationForm } from './components/OrgCreationForm'
 
 type Choice = 'join-existing' | 'create-new' | 'accept-invitation'
 
@@ -313,6 +314,14 @@ function WorkspaceHubContent() {
       id: result.organization.id,
       name: result.organization.name,
       divisions: result.organization.divisions,
+    })
+  }
+
+  const handleOrgCreationError = (_error: unknown) => {
+    toast({
+      title: 'Failed to create organization',
+      description: 'Something went wrong while setting up the workspace. Please try again.',
+      variant: 'destructive',
     })
   }
 
@@ -603,6 +612,7 @@ function WorkspaceHubContent() {
                                 shouldValidate: false,
                               })
                             }
+                            setIsJoinDialogOpen(true)
                           }}
                         >
                           <Building2 className="h-5 w-5" />
@@ -642,17 +652,34 @@ function WorkspaceHubContent() {
               {activeTab === 'create-new' && (
                 <div className="space-y-6">
                   <h3 className="text-xl font-semibold">Create New Organization</h3>
-                  <CreateOrganizationDialog
-                    open={isCreateDialogOpen}
-                    onOpenChange={setIsCreateDialogOpen}
-                    onSuccess={handleOrgCreationSuccess}
-                    trigger={
-                      <Button size="lg" className="flex items-center gap-2">
+                  <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button
+                        size="lg"
+                        className="flex items-center gap-2"
+                        onClick={() => setIsCreateDialogOpen(true)}
+                      >
                         <Sparkles className="h-5 w-5" />
                         Launch creation form
                       </Button>
-                    }
-                  />
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-3xl p-0">
+                      <Card className="max-h-[85vh] overflow-hidden">
+                        <CardHeader className="space-y-2">
+                          <CardTitle>Create a new organization</CardTitle>
+                          <CardDescription>
+                            Spin up a fresh workspace, invite teammates, and optionally start from a template.
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="max-h-[70vh] overflow-y-auto p-6">
+                          <OrgCreationForm
+                            onSuccess={handleOrgCreationSuccess}
+                            onError={handleOrgCreationError}
+                          />
+                        </CardContent>
+                      </Card>
+                    </DialogContent>
+                  </Dialog>
                 </div>
               )}
             </div>
