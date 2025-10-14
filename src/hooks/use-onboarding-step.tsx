@@ -351,12 +351,12 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
     if (status === 'pending') return
     if (!user || !onboardingStatus) return
     if (!step) {
-      router.replace('/select-org')
+      router.replace('/workspace-hub')
       return
     }
 
     if (onboardingStatus.completed) {
-      router.replace('/select-org')
+      router.replace('/workspace-hub')
       return
     }
 
@@ -709,7 +709,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
   const goNext = () => goToStep(nextStep)
   const goPrevious = () => {
     if (!previousStep) {
-      router.replace('/select-org')
+      router.replace('/workspace-hub')
       return
     }
     updateOnboardingStatus((current) => {

@@ -38,7 +38,7 @@ const handlePostSignupRedirect = (router: ReturnType<typeof useRouter>, user: Wo
   }
 
   // Default redirect to organization selection
-  router.replace('/select-org')
+  router.replace('/workspace-hub')
 }
 
 function SignupPageContent() {
@@ -156,7 +156,7 @@ function SignupPageContent() {
 
         if (success) {
           authToasts.signupSuccess(fallbackUserEmail)
-          router.replace('/select-org')
+          router.replace('/workspace-hub')
         }
       }
     } catch (error) {

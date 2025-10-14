@@ -34,11 +34,7 @@ const computeWorkspaceBasePath = (snapshot: ScopeSnapshot) => {
     return `/${snapshot.currentOrgId}/${snapshot.currentDivisionId}`
   }
 
-  if (snapshot.currentOrgId) {
-    return `/${snapshot.currentOrgId}`
-  }
-
-  return "/"
+  return "/workspace-hub"
 }
 
 export const useScopeStore = create<ScopeStoreState>()(
@@ -46,7 +42,7 @@ export const useScopeStore = create<ScopeStoreState>()(
     persist(
       (set) => ({
         ...initialSnapshot,
-        workspaceBasePath: "/",
+        workspaceBasePath: computeWorkspaceBasePath(initialSnapshot),
         setSnapshot: (snapshot) =>
           set({
             ...snapshot,
@@ -55,7 +51,7 @@ export const useScopeStore = create<ScopeStoreState>()(
       }),
       {
         name: "yourever-scope",
-        version: 1,
+        version: 2,
         storage: createJSONStorage(() => localStorageService.toStorageAdapter()),
         partialize: (state) => ({
           userId: state.userId,

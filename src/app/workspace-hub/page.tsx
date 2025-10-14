@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
@@ -8,7 +8,13 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useProtectedRoute } from '@/hooks/use-protected-route'
 import { useCurrentUser } from '@/hooks/use-auth'
-import { useUserOrganizations, usePendingInvitations } from '@/hooks/use-organizations'
+import {
+  useUserOrganizations,
+  usePendingInvitations,
+  type Organization,
+  type Invitation,
+  type WorkspaceCreationResult,
+} from '@/hooks/use-organizations'
 import { authStorage } from '@/lib/auth-utils'
 import { OrgCreationForm } from './components/OrgCreationForm'
 import { ExistingOrgsList } from './components/ExistingOrgsList'
@@ -17,6 +23,9 @@ import { Loader2, Building2, Users, Mail, ArrowLeft, Sparkles } from 'lucide-rea
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { TutorialProvider, useTutorialManager } from '@/components/tutorial/tutorial-provider'
+import { fetchOrganizationOverviews, type OrganizationOverview } from '@/lib/mock-organizations'
+import type { OrganizationCardData } from './components/OrganizationCard'
+import { useToast } from '@/hooks/use-toast'
 
 type Choice = 'join-existing' | 'create-new' | 'accept-invitation'
 
@@ -27,15 +36,29 @@ interface WorkspaceHubForm {
   template?: string
 }
 
+const rolePriority: Record<string, number> = {
+  owner: 0,
+  admin: 1,
+  member: 2,
+}
+
 function WorkspaceHubContent() {
   const { user } = useCurrentUser()
   const { isLoading: isProtecting } = useProtectedRoute()
   const router = useRouter()
   const { start, isActive, isCompleted } = useTutorialManager('workspace-hub-intro')
+  const { toast } = useToast()
 
   const [activeTab, setActiveTab] = useState<Choice>('join-existing')
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [processingOrgId, setProcessingOrgId] = useState<string | null>(null)
+  const [enrichedOrganizations, setEnrichedOrganizations] = useState<OrganizationCardData[]>([])
+  const [isFetchingOverviews, setIsFetchingOverviews] = useState(false)
+  const [divisionSelections, setDivisionSelections] = useState<Record<string, string | null>>({})
+  const [activeOrgId, setActiveOrgId] = useState<string | null>(null)
+  const storedOrgIdRef = useRef<string | null>(null)
+  const storedDivisionIdRef = useRef<string | null>(null)
 
   const form = useForm<WorkspaceHubForm>({
     defaultValues: {
@@ -52,6 +75,27 @@ function WorkspaceHubContent() {
   const watchChoice = watch('choice')
   const pendingInvitations = invitations?.filter(inv => inv.status === 'pending') || []
 
+  useEffect(() => {
+    storedOrgIdRef.current = authStorage.getActiveOrganizationId()
+    storedDivisionIdRef.current = authStorage.getActiveDivisionId()
+
+    if (storedOrgIdRef.current) {
+      setSelectedOrgId(storedOrgIdRef.current)
+      setActiveOrgId(storedOrgIdRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!selectedOrgId && enrichedOrganizations.length === 1) {
+      const onlyOrganization = enrichedOrganizations[0]
+      setSelectedOrgId(onlyOrganization.id)
+      setDivisionSelections((previous) => ({
+        ...previous,
+        [onlyOrganization.id]: previous[onlyOrganization.id] ?? onlyOrganization.divisions[0]?.id ?? null,
+      }))
+    }
+  }, [enrichedOrganizations, selectedOrgId])
+
   // Auto-select tab based on available data
   useEffect(() => {
     if (pendingInvitations.length > 0 && !activeTab.includes('invitation')) {
@@ -66,70 +110,237 @@ function WorkspaceHubContent() {
     }
   }, [organizations, pendingInvitations, activeTab, setActiveTab, setValue])
 
-  const handleOrgCreationSuccess = (result: any) => {
-    setIsProcessing(true)
-
-    // Set active organization and division
-    authStorage.setActiveOrganizationId(result.organization.id)
-    if (result.organization.divisions.length > 0) {
-      authStorage.setActiveDivisionId(result.organization.divisions[0].id)
+  useEffect(() => {
+    if (!organizations) {
+      setEnrichedOrganizations([])
+      setDivisionSelections({})
+      return
     }
 
-    // Navigate to dashboard
-    setTimeout(() => {
-      if (result.organization.divisions.length > 0) {
-        router.push(`/${result.organization.id}/${result.organization.divisions[0].id}/dashboard`)
-      } else {
-        router.push('/select-org')
+    let isMounted = true
+
+    const sortedOrganizations = [...organizations].sort((a, b) => {
+      const roleWeightA = rolePriority[a.user_role?.toLowerCase() ?? 'member'] ?? 3
+      const roleWeightB = rolePriority[b.user_role?.toLowerCase() ?? 'member'] ?? 3
+
+      if (roleWeightA !== roleWeightB) {
+        return roleWeightA - roleWeightB
       }
-    }, 1000)
-  }
 
-  const handleOrgSelection = (organization: any) => {
-    setSelectedOrgId(organization.id)
-  }
+      return a.name.localeCompare(b.name)
+    })
 
-  const handleInvitationAccept = () => {
-    setIsProcessing(true)
-    // Invitation acceptance is handled by the mutation hook
-    // We'll navigate after successful acceptance
-    setTimeout(() => {
-      router.push('/select-org')
+    const loadOverviews = async () => {
+      setIsFetchingOverviews(true)
+      let overviewByKey: Map<string, OrganizationOverview> = new Map()
+      let overviewByName: Map<string, OrganizationOverview> = new Map()
+
+      try {
+        const identifiers = sortedOrganizations.map((organization) => organization.slug ?? organization.id)
+        if (identifiers.length > 0) {
+          const overviews = await fetchOrganizationOverviews(identifiers)
+          overviewByKey = new Map(overviews.map((overview) => [overview.id, overview]))
+          overviewByName = new Map(overviews.map((overview) => [overview.name, overview]))
+        }
+      } catch (error) {
+        console.warn('Failed to load organization overviews', error)
+      } finally {
+        if (!isMounted) {
+          return
+        }
+
+        const enriched = sortedOrganizations.map<OrganizationCardData>((organization) => {
+          const overview =
+            overviewByKey.get(organization.slug ?? '')
+            ?? overviewByKey.get(organization.id)
+            ?? overviewByName.get(organization.name)
+
+          return {
+            id: organization.id,
+            name: organization.name,
+            role: organization.user_role,
+            divisions: organization.divisions,
+            description: organization.description,
+            tagline: overview?.tagline,
+            industry: overview?.industry,
+            location: overview?.location,
+            timezone: overview?.timezone,
+            memberCount: overview?.memberCount,
+            activeProjects: overview?.activeProjects,
+            lastActive: overview?.lastActive,
+            tags: overview?.tags,
+            accentColor: overview?.accentColor,
+            logoUrl: overview?.logoUrl ?? organization.logo_url,
+          }
+        })
+
+        setEnrichedOrganizations(enriched)
+        setDivisionSelections((previous) => {
+          const next = { ...previous }
+
+          enriched.forEach((organization) => {
+            const storedDivision =
+              storedOrgIdRef.current === organization.id
+                ? storedDivisionIdRef.current
+                : null
+
+            const existingSelection = next[organization.id]
+            const existingIsValid = existingSelection
+              ? organization.divisions.some((division) => division.id === existingSelection)
+              : false
+
+            const storedIsValid = storedDivision
+              ? organization.divisions.some((division) => division.id === storedDivision)
+              : false
+
+            if (existingIsValid) {
+              return
+            }
+
+            if (storedIsValid) {
+              next[organization.id] = storedDivision
+              return
+            }
+
+            next[organization.id] = organization.divisions[0]?.id ?? null
+          })
+
+          return next
+        })
+
+        setIsFetchingOverviews(false)
+      }
+    }
+
+    void loadOverviews()
+
+    return () => {
+      isMounted = false
+    }
+  }, [organizations])
+
+  const openOrganization = (
+    organizationId: string,
+    divisionId: string | null,
+    fallbackOrganization?: Pick<Organization, 'id' | 'name' | 'divisions'>
+  ) => {
+    const organization = enrichedOrganizations.find((candidate) => candidate.id === organizationId)
+    const divisions = organization?.divisions ?? fallbackOrganization?.divisions ?? []
+    const organizationName = organization?.name ?? fallbackOrganization?.name ?? 'organization'
+
+    if (divisions.length === 0) {
+      toast({
+        title: 'Division required',
+        description: `Ask an admin to create a division for ${organizationName} before entering the workspace.`,
+        variant: 'destructive',
+      })
+      setSelectedOrgId(organizationId)
       setIsProcessing(false)
-    }, 1000)
+      setProcessingOrgId(null)
+      return
+    }
+
+    const targetDivision = divisionId
+      ? divisions.find((division) => division.id === divisionId) ?? divisions[0]
+      : divisions[0]
+
+    if (!targetDivision) {
+      toast({
+        title: 'Select a division',
+        description: 'Choose a division to continue into the workspace.',
+      })
+      setSelectedOrgId(organizationId)
+      setIsProcessing(false)
+      setProcessingOrgId(null)
+      return
+    }
+
+    setSelectedOrgId(organizationId)
+    setIsProcessing(true)
+    setProcessingOrgId(organizationId)
+
+    authStorage.setActiveOrganizationId(organizationId)
+    authStorage.setActiveDivisionId(targetDivision.id)
+    setActiveOrgId(organizationId)
+    setDivisionSelections((previous) => ({
+      ...previous,
+      [organizationId]: targetDivision.id,
+    }))
+
+    router.push(`/${organizationId}/${targetDivision.id}/dashboard`)
+  }
+
+  const handleOrgCreationSuccess = (result: WorkspaceCreationResult) => {
+    const defaultDivisionId = result.organization.divisions[0]?.id ?? null
+    setDivisionSelections((previous) => ({
+      ...previous,
+      [result.organization.id]: defaultDivisionId,
+    }))
+
+    openOrganization(result.organization.id, defaultDivisionId, {
+      id: result.organization.id,
+      name: result.organization.name,
+      divisions: result.organization.divisions,
+    })
+  }
+
+  const handleOrgSelection = (organizationId: string, divisionId: string | null) => {
+    setSelectedOrgId(organizationId)
+    if (divisionId) {
+      setDivisionSelections((previous) => ({
+        ...previous,
+        [organizationId]: divisionId,
+      }))
+    }
+    setProcessingOrgId(null)
+    setIsProcessing(false)
+  }
+
+  const handleInvitationAccept = (_invitation: Invitation, organization: Organization) => {
+    const defaultDivisionId = organization.divisions[0]?.id ?? null
+    setDivisionSelections((previous) => ({
+      ...previous,
+      [organization.id]: defaultDivisionId,
+    }))
+    openOrganization(organization.id, defaultDivisionId, organization)
+  }
+
+  const handleDivisionSelect = (organizationId: string, divisionId: string | null) => {
+    setDivisionSelections((previous) => ({
+      ...previous,
+      [organizationId]: divisionId,
+    }))
+    if (selectedOrgId === organizationId) {
+      setSelectedOrgId(organizationId)
+    }
   }
 
   const handleContinue = () => {
-    if (isProcessing || !user) return
+    if (isProcessing || !user || !selectedOrgId) return
 
-    if (watchChoice === 'join-existing' && selectedOrgId) {
-      const targetOrg = organizations?.find(org => org.id === selectedOrgId)
-      if (targetOrg) {
-        authStorage.setActiveOrganizationId(targetOrg.id)
-        if (targetOrg.divisions[0]) {
-          authStorage.setActiveDivisionId(targetOrg.divisions[0].id)
-          router.push(`/${targetOrg.id}/${targetOrg.divisions[0].id}/dashboard`)
-        } else {
-          router.push('/select-org')
-        }
-      }
-    }
+    const divisionId = divisionSelections[selectedOrgId] ?? null
+    openOrganization(selectedOrgId, divisionId)
   }
 
   const canContinue = useMemo(() => {
     if (isProcessing) return false
 
     switch (activeTab) {
-      case 'join-existing':
-        return organizations && organizations.length > 0 && selectedOrgId !== null
+      case 'join-existing': {
+        if (!selectedOrgId) return false
+        const organization = enrichedOrganizations.find((candidate) => candidate.id === selectedOrgId)
+        if (!organization || organization.divisions.length === 0) return false
+        const divisionId = divisionSelections[selectedOrgId] ?? organization.divisions[0]?.id ?? null
+        return Boolean(divisionId)
+      }
       case 'create-new':
-        return true // Form validation handles this
+        return true
       case 'accept-invitation':
         return pendingInvitations.length > 0
       default:
         return false
     }
-  }, [activeTab, organizations, selectedOrgId, pendingInvitations.length, isProcessing])
+  }, [activeTab, divisionSelections, enrichedOrganizations, isProcessing, pendingInvitations.length, selectedOrgId])
 
   if (isProtecting) {
     return (
@@ -144,7 +355,7 @@ function WorkspaceHubContent() {
   }
 
   // Loading state
-  if (orgsLoading || invitationsLoading) {
+  if ((orgsLoading && !organizations) || (invitationsLoading && !invitations) || (isFetchingOverviews && enrichedOrganizations.length === 0)) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center space-y-4">
@@ -319,11 +530,17 @@ function WorkspaceHubContent() {
               {activeTab === 'join-existing' && (
                 <div className="space-y-6">
                   <h3 className="text-xl font-semibold">Your Organizations</h3>
-                  {organizations && organizations.length > 0 ? (
+                  {enrichedOrganizations.length > 0 || orgsLoading || isFetchingOverviews ? (
                     <ExistingOrgsList
-                      organizations={organizations}
+                      organizations={enrichedOrganizations}
+                      isLoading={orgsLoading || isFetchingOverviews}
                       onSelect={handleOrgSelection}
+                      onDivisionSelect={handleDivisionSelect}
+                      onEnter={(orgId, divisionId) => openOrganization(orgId, divisionId)}
                       selectedOrgId={selectedOrgId}
+                      divisionSelections={divisionSelections}
+                      activeOrgId={activeOrgId}
+                      processingOrgId={processingOrgId}
                     />
                   ) : (
                     <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-12 text-center">

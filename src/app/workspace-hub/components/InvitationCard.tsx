@@ -1,19 +1,19 @@
 'use client'
 
-import { useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Mail, Clock, Check, X, ExternalLink, AlertTriangle } from 'lucide-react'
-import { type Invitation } from '@/hooks/use-organizations'
+import { type Invitation, type Organization } from '@/hooks/use-organizations'
 import { useAcceptInvitation } from '@/hooks/use-organizations'
 import { formatDistanceToNow } from 'date-fns'
 import { Loader2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface InvitationCardProps {
   invitation: Invitation
-  onAccept?: (invitation: Invitation) => void
+  onAccept?: (invitation: Invitation, organization: Organization) => void
   compact?: boolean
 }
 
@@ -22,8 +22,8 @@ export function InvitationCard({ invitation, onAccept, compact = false }: Invita
 
   const handleAccept = async () => {
     try {
-      await acceptInvitationMutation.mutateAsync(invitation.id)
-      onAccept?.(invitation)
+      const organization = await acceptInvitationMutation.mutateAsync(invitation.id)
+      onAccept?.(invitation, organization)
     } catch (error) {
       // Error is handled by the mutation hook
     }

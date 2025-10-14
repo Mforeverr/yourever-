@@ -91,8 +91,12 @@ const getTypeIcon = (type: GlobalEntityType, className: string) => {
 }
 
 const resolveWorkspaceHref = (path: string | undefined, basePath: string) => {
+  const normalizedBase = basePath || "/workspace-hub"
+  const trimmedBase = normalizedBase.replace(/\/$/, "") || "/workspace-hub"
+  const isWorkspaceHubBase = trimmedBase === "/workspace-hub"
+
   if (!path) {
-    return basePath || "/"
+    return trimmedBase
   }
 
   if (path.startsWith("http")) {
@@ -104,10 +108,19 @@ const resolveWorkspaceHref = (path: string | undefined, basePath: string) => {
   }
 
   const sanitized = path.replace(/^\//, "")
-  if (!basePath || basePath === "/") {
+
+  if (isWorkspaceHubBase) {
+    if (!sanitized || sanitized === "dashboard") {
+      return "/workspace-hub"
+    }
+    return `/workspace-hub/${sanitized}`
+  }
+
+  if (!trimmedBase || trimmedBase === "/") {
     return `/${sanitized}`
   }
-  return `${basePath.replace(/\/$/, "")}/${sanitized}`
+
+  return `${trimmedBase}/${sanitized}`
 }
 
 const mapSearchResults = (
@@ -299,14 +312,14 @@ function CommandPaletteInternal() {
         },
       },
       {
-        id: "navigate-select-org",
+        id: "navigate-workspace-hub",
         title: "Switch Organization",
         description: "Manage organizations and divisions",
         icon: <Building2 className="w-4 h-4" />,
         keywords: ["organization", "switch"],
         run: () => {
           closePalette()
-          router.push("/select-org")
+          router.push("/workspace-hub")
         },
       },
       {

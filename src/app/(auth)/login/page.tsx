@@ -46,7 +46,7 @@ const handlePostLoginRedirect = (router: ReturnType<typeof useRouter>, user: Wor
     return
   }
 
-  router.replace('/select-org')
+  router.replace('/workspace-hub')
 }
 
 export default function LoginPage() {

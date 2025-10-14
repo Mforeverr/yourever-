@@ -61,7 +61,7 @@ export default function PreferencesOnboardingPage() {
     await completeStep(values)
   })
 
-  const nextLabel = useMemo(() => 'Finish onboarding', [])
+  const nextLabel = useMemo(() => 'Continue to workspace setup', [])
 
   return (
     <OnboardingShell
