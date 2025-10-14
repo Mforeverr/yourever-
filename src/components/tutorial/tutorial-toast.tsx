@@ -234,7 +234,7 @@ export function TutorialToast({
         transform: targetElement ? undefined : 'translate(-50%, -50%)',
       }}
     >
-      {/* Dimming overlay and spotlight */}
+        {/* Dimming overlay and spotlight */}
       {calculatedPosition.spotlight ? (
         <>
           {/* Dark overlay with clear spotlight cutout */}
