@@ -235,28 +235,38 @@ export function TutorialToast({
       }}
     >
       {/* Dimming overlay and spotlight */}
-      <div className="fixed inset-0 -z-10 bg-black/70 backdrop-blur-[2px] transition-opacity duration-500" />
       {calculatedPosition.spotlight ? (
-        <div
-          className="fixed -z-10 pointer-events-none transition-all duration-500 ease-out"
-          style={{
-            top: `${calculatedPosition.spotlight.top}px`,
-            left: `${calculatedPosition.spotlight.left}px`,
-            width: `${calculatedPosition.spotlight.width}px`,
-            height: `${calculatedPosition.spotlight.height}px`,
-            borderRadius: calculatedPosition.spotlight.borderRadius,
-            boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.72)',
-            outline: '2px solid rgba(59, 130, 246, 0.45)',
-            outlineOffset: '0px',
-          }}
-        />
+        <>
+          {/* Dark overlay with clear spotlight cutout */}
+          <div
+            className="fixed -z-10 pointer-events-none transition-all duration-500 ease-out"
+            style={{
+              top: `${calculatedPosition.spotlight.top}px`,
+              left: `${calculatedPosition.spotlight.left}px`,
+              width: `${calculatedPosition.spotlight.width}px`,
+              height: `${calculatedPosition.spotlight.height}px`,
+              borderRadius: calculatedPosition.spotlight.borderRadius,
+              boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.85)',
+            }}
+          />
+          {/* Clear spotlight area with blue outline */}
+          <div
+            className="fixed -z-10 pointer-events-none transition-all duration-500 ease-out"
+            style={{
+              top: `${calculatedPosition.spotlight.top}px`,
+              left: `${calculatedPosition.spotlight.left}px`,
+              width: `${calculatedPosition.spotlight.width}px`,
+              height: `${calculatedPosition.spotlight.height}px`,
+              borderRadius: calculatedPosition.spotlight.borderRadius,
+              background: 'transparent',
+              outline: '3px solid rgba(59, 130, 246, 0.8)',
+              outlineOffset: '2px',
+              filter: 'drop-shadow(0 0 8px rgba(59, 130, 246, 0.6))',
+            }}
+          />
+        </>
       ) : (
-        <div
-          className="fixed inset-0 -z-10 pointer-events-none transition-all duration-500 ease-out"
-          style={{
-            background: 'radial-gradient(circle at center, rgba(255, 255, 255, 0.05) 0%, rgba(0, 0, 0, 0.7) 55%)',
-          }}
-        />
+        <div className="fixed inset-0 -z-10 bg-black/70 transition-opacity duration-500" />
       )}
 
       {/* Enhanced arrow with precise positioning */}
