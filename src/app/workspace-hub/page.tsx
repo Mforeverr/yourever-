@@ -22,6 +22,7 @@ import { InvitationCard } from './components/InvitationCard'
 import { Loader2, Building2, Users, Mail, ArrowLeft, Sparkles } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   TutorialProvider,
   useTutorialManager,
@@ -30,6 +31,7 @@ import {
 import { fetchOrganizationOverviews, type OrganizationOverview } from '@/lib/mock-organizations'
 import type { OrganizationCardData } from './components/OrganizationCard'
 import { useToast } from '@/hooks/use-toast'
+import { cn } from '@/lib/utils'
 
 type Choice = 'join-existing' | 'create-new' | 'accept-invitation'
 
@@ -38,6 +40,8 @@ interface WorkspaceHubForm {
   organizationName?: string
   divisionName?: string
   template?: string
+  joinOrganizationId: string
+  joinNickname: string
 }
 
 const rolePriority: Record<string, number> = {
@@ -66,17 +70,28 @@ function WorkspaceHubContent() {
 
   const form = useForm<WorkspaceHubForm>({
     defaultValues: {
-      choice: 'join-existing'
+      choice: 'join-existing',
+      joinOrganizationId: '',
+      joinNickname: '',
     },
     mode: 'onChange'
   })
-  const { control, watch, setValue } = form
+  const {
+    control,
+    watch,
+    setValue,
+    register,
+    trigger,
+    getValues,
+    formState: { errors },
+  } = form
 
   // API hooks
   const { data: organizations, isLoading: orgsLoading, error: orgsError } = useUserOrganizations()
   const { data: invitations, isLoading: invitationsLoading } = usePendingInvitations()
 
-  const watchChoice = watch('choice')
+  const watchJoinOrganizationId = watch('joinOrganizationId')
+  const watchJoinNickname = watch('joinNickname')
   const pendingInvitations = invitations?.filter(inv => inv.status === 'pending') || []
 
   useEffect(() => {
@@ -99,6 +114,17 @@ function WorkspaceHubContent() {
       }))
     }
   }, [enrichedOrganizations, selectedOrgId])
+
+  useEffect(() => {
+    if (activeTab !== 'join-existing' || !selectedOrgId) {
+      return
+    }
+
+    const currentValue = (watchJoinOrganizationId ?? '').trim()
+    if (currentValue !== selectedOrgId) {
+      setValue('joinOrganizationId', selectedOrgId, { shouldDirty: false, shouldValidate: false })
+    }
+  }, [activeTab, selectedOrgId, setValue, watchJoinOrganizationId])
 
   // Auto-select tab based on available data
   useEffect(() => {
@@ -290,6 +316,7 @@ function WorkspaceHubContent() {
 
   const handleOrgSelection = (organizationId: string, divisionId: string | null) => {
     setSelectedOrgId(organizationId)
+    setValue('joinOrganizationId', organizationId, { shouldDirty: true, shouldTouch: true, shouldValidate: true })
     if (divisionId) {
       setDivisionSelections((previous) => ({
         ...previous,
@@ -319,8 +346,43 @@ function WorkspaceHubContent() {
     }
   }
 
-  const handleContinue = () => {
-    if (isProcessing || !user || !selectedOrgId) return
+  const getOptionClasses = (value: Choice) =>
+    cn(
+      'flex w-full cursor-pointer items-start gap-4 rounded-xl border-2 p-4 shadow-sm transition-all',
+      value === activeTab
+        ? 'border-primary/50 bg-primary/10 ring-2 ring-primary/20'
+        : 'border-border/60 bg-card hover:border-primary/30 hover:bg-muted/50'
+    )
+
+  const handleContinue = async () => {
+    if (isProcessing || !user) return
+
+    if (activeTab === 'join-existing') {
+      const isValid = await trigger(['joinOrganizationId', 'joinNickname'])
+      if (!isValid) {
+        return
+      }
+
+      const { joinOrganizationId } = getValues()
+      const trimmedId = joinOrganizationId.trim()
+      const organization = enrichedOrganizations.find((candidate) => candidate.id === trimmedId)
+
+      if (!organization) {
+        toast({
+          title: 'Organization not found',
+          description: 'Double-check the organization ID and try again.',
+          variant: 'destructive',
+        })
+        return
+      }
+
+      setSelectedOrgId(organization.id)
+      const divisionId = divisionSelections[organization.id] ?? organization.divisions[0]?.id ?? null
+      openOrganization(organization.id, divisionId)
+      return
+    }
+
+    if (!selectedOrgId) return
 
     const divisionId = divisionSelections[selectedOrgId] ?? null
     openOrganization(selectedOrgId, divisionId)
@@ -331,10 +393,12 @@ function WorkspaceHubContent() {
 
     switch (activeTab) {
       case 'join-existing': {
-        if (!selectedOrgId) return false
-        const organization = enrichedOrganizations.find((candidate) => candidate.id === selectedOrgId)
+        const organizationId = (watchJoinOrganizationId ?? '').trim()
+        const nickname = (watchJoinNickname ?? '').trim()
+        if (!organizationId || !nickname) return false
+        const organization = enrichedOrganizations.find((candidate) => candidate.id === organizationId)
         if (!organization || organization.divisions.length === 0) return false
-        const divisionId = divisionSelections[selectedOrgId] ?? organization.divisions[0]?.id ?? null
+        const divisionId = divisionSelections[organization.id] ?? organization.divisions[0]?.id ?? null
         return Boolean(divisionId)
       }
       case 'create-new':
@@ -344,7 +408,16 @@ function WorkspaceHubContent() {
       default:
         return false
     }
-  }, [activeTab, divisionSelections, enrichedOrganizations, isProcessing, pendingInvitations.length, selectedOrgId])
+  }, [
+    activeTab,
+    divisionSelections,
+    enrichedOrganizations,
+    isProcessing,
+    pendingInvitations.length,
+    selectedOrgId,
+    watchJoinNickname,
+    watchJoinOrganizationId,
+  ])
 
   if (isProtecting) {
     return (
@@ -459,7 +532,7 @@ function WorkspaceHubContent() {
                         className="flex cursor-pointer items-start gap-4 rounded-xl border-2 border-blue-600/30 bg-blue-600/10 p-4 shadow-sm transition-all hover:border-blue-600/50 hover:bg-blue-600/20"
                         data-tutorial="accept-invitation-option"
                       >
-                        <RadioGroupItem value="accept-invitation" className="mt-1" />
+                        <RadioGroupItem value="accept-invitation" className="sr-only" />
                         <div className="space-y-2">
                           <p className="font-medium text-foreground flex items-center gap-2">
                             <Mail className="h-5 w-5 text-blue-400" />
@@ -478,10 +551,10 @@ function WorkspaceHubContent() {
                     )}
 
                     <label
-                      className="flex cursor-pointer items-start gap-4 rounded-xl border-2 border-border/60 bg-card p-4 shadow-sm transition-all hover:border-primary/30 hover:bg-muted/50"
+                      className={getOptionClasses('join-existing')}
                       data-tutorial="join-existing-option"
                     >
-                      <RadioGroupItem value="join-existing" className="mt-1" />
+                      <RadioGroupItem value="join-existing" className="sr-only" />
                       <div className="space-y-2">
                         <p className="font-medium text-foreground flex items-center gap-2">
                           <Building2 className="h-5 w-5" />
@@ -494,10 +567,10 @@ function WorkspaceHubContent() {
                     </label>
 
                     <label
-                      className="flex cursor-pointer items-start gap-4 rounded-xl border-2 border-border/60 bg-card p-4 shadow-sm transition-all hover:border-primary/30 hover:bg-muted/50"
+                      className={getOptionClasses('create-new')}
                       data-tutorial="create-new-option"
                     >
-                      <RadioGroupItem value="create-new" className="mt-1" />
+                      <RadioGroupItem value="create-new" className="sr-only" />
                       <div className="space-y-2">
                         <p className="font-medium text-foreground flex items-center gap-2">
                           <Users className="h-5 w-5" />
@@ -533,28 +606,64 @@ function WorkspaceHubContent() {
 
               {activeTab === 'join-existing' && (
                 <div className="space-y-6">
-                  <h3 className="text-xl font-semibold">Your Organizations</h3>
-                  {enrichedOrganizations.length > 0 || orgsLoading || isFetchingOverviews ? (
-                    <ExistingOrgsList
-                      organizations={enrichedOrganizations}
-                      isLoading={orgsLoading || isFetchingOverviews}
-                      onSelect={handleOrgSelection}
-                      onDivisionSelect={handleDivisionSelect}
-                      onEnter={(orgId, divisionId) => openOrganization(orgId, divisionId)}
-                      selectedOrgId={selectedOrgId}
-                      divisionSelections={divisionSelections}
-                      activeOrgId={activeOrgId}
-                      processingOrgId={processingOrgId}
-                    />
-                  ) : (
-                    <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-12 text-center">
-                      <Building2 className="mx-auto h-16 w-16 text-muted-foreground/50" />
-                      <h3 className="mt-6 text-xl font-semibold text-foreground">No organizations yet</h3>
-                      <p className="mt-3 text-muted-foreground">
-                        You can create your first organization using the option above.
-                      </p>
+                  <div className="space-y-2">
+                    <h3 className="text-xl font-semibold">Join an Organization</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Enter the organization ID and the name you would like teammates to see when you join.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-6 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="joinOrganizationId">Organization ID</Label>
+                      <Input
+                        id="joinOrganizationId"
+                        autoComplete="off"
+                        placeholder="e.g. org_12345"
+                        {...register('joinOrganizationId', { required: 'Organization ID is required' })}
+                      />
+                      {errors.joinOrganizationId && (
+                        <p className="text-sm text-destructive">{errors.joinOrganizationId.message}</p>
+                      )}
                     </div>
-                  )}
+                    <div className="space-y-2">
+                      <Label htmlFor="joinNickname">Join as</Label>
+                      <Input
+                        id="joinNickname"
+                        autoComplete="nickname"
+                        placeholder="Your display name"
+                        {...register('joinNickname', { required: 'Please provide a nickname' })}
+                      />
+                      {errors.joinNickname && (
+                        <p className="text-sm text-destructive">{errors.joinNickname.message}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <h4 className="text-lg font-semibold">Your Organizations</h4>
+                    {enrichedOrganizations.length > 0 || orgsLoading || isFetchingOverviews ? (
+                      <ExistingOrgsList
+                        organizations={enrichedOrganizations}
+                        isLoading={orgsLoading || isFetchingOverviews}
+                        onSelect={handleOrgSelection}
+                        onDivisionSelect={handleDivisionSelect}
+                        onEnter={(orgId, divisionId) => openOrganization(orgId, divisionId)}
+                        selectedOrgId={selectedOrgId}
+                        divisionSelections={divisionSelections}
+                        activeOrgId={activeOrgId}
+                        processingOrgId={processingOrgId}
+                      />
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-12 text-center">
+                        <Building2 className="mx-auto h-16 w-16 text-muted-foreground/50" />
+                        <h5 className="mt-6 text-lg font-semibold text-foreground">No organizations yet</h5>
+                        <p className="mt-3 text-sm text-muted-foreground">
+                          You can create your first organization using the option above.
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -573,7 +682,7 @@ function WorkspaceHubContent() {
               <div className="flex justify-center pt-6 border-t">
                 <Button
                   size="lg"
-                  onClick={handleContinue}
+                  onClick={() => void handleContinue()}
                   disabled={!canContinue || isProcessing}
                   className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-3 text-lg font-semibold transition-all duration-300"
                 >
