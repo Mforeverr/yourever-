@@ -575,7 +575,7 @@ function WorkspaceHubContent() {
                   size="lg"
                   onClick={handleContinue}
                   disabled={!canContinue || isProcessing}
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-3 text-lg font-semibold transition-all duration-300"
+                  className="bg-black hover:bg-gray-900 text-white px-8 py-3 text-lg font-semibold transition-all duration-300 border-2 border-white/20 hover:border-white/40"
                 >
                   {isProcessing ? (
                     <span>Joining organization...</span>
