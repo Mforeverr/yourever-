@@ -32,7 +32,9 @@ const TUTORIAL_COMPLETION_KEY = 'yourever-tutorial-completion'
 export function TutorialProvider({ children, tutorials }: TutorialProviderProps) {
   const [currentTutorialId, setCurrentTutorialId] = useState<string | null>(null)
   const [currentStepIndex, setCurrentStepIndex] = useState(0)
+  const [activeSteps, setActiveSteps] = useState<TutorialStep[]>([])
   const [completedTutorials, setCompletedTutorials] = useState<Set<string>>(new Set())
+  const [isCompletionHydrated, setIsCompletionHydrated] = useState(false)
 
   // Load completed tutorials from localStorage
   useEffect(() => {
@@ -44,6 +46,8 @@ export function TutorialProvider({ children, tutorials }: TutorialProviderProps)
       }
     } catch (error) {
       console.warn('Failed to load tutorial completion status:', error)
+    } finally {
+      setIsCompletionHydrated(true)
     }
   }, [])
 
@@ -56,15 +60,29 @@ export function TutorialProvider({ children, tutorials }: TutorialProviderProps)
     }
   }
 
-  const getCurrentTutorial = (): TutorialDefinition | null => {
-    if (!currentTutorialId) return null
-    return tutorials.find(t => t.id === currentTutorialId) || null
+  const getCurrentStep = (): TutorialStep | null => {
+    if (currentStepIndex < 0 || currentStepIndex >= activeSteps.length) {
+      return null
+    }
+    return activeSteps[currentStepIndex]
   }
 
-  const getCurrentStep = (): TutorialStep | null => {
-    const tutorial = getCurrentTutorial()
-    if (!tutorial || currentStepIndex >= tutorial.steps.length) return null
-    return tutorial.steps[currentStepIndex]
+  const resolveTutorialSteps = (steps: TutorialStep[]): TutorialStep[] => {
+    if (typeof window === 'undefined') {
+      return steps
+    }
+
+    return steps.filter(step => {
+      if (!step.targetSelector) {
+        return true
+      }
+
+      const element = document.querySelector(step.targetSelector) as HTMLElement | null
+      if (!element) {
+        console.warn(`Tutorial target not found for selector: "${step.targetSelector}"`)
+      }
+      return Boolean(element)
+    })
   }
 
   const startTutorial = (tutorialId: string) => {
@@ -91,15 +109,21 @@ export function TutorialProvider({ children, tutorials }: TutorialProviderProps)
       }
     }
 
+    const orderedSteps = resolveTutorialSteps(tutorial.steps)
+    if (orderedSteps.length === 0) {
+      console.warn(`Tutorial "${tutorialId}" does not have any available steps`)
+      return
+    }
+
     setCurrentTutorialId(tutorialId)
+    setActiveSteps(orderedSteps)
     setCurrentStepIndex(0)
   }
 
   const nextStep = () => {
-    const tutorial = getCurrentTutorial()
-    if (!tutorial) return
+    if (activeSteps.length === 0) return
 
-    if (currentStepIndex >= tutorial.steps.length - 1) {
+    if (currentStepIndex >= activeSteps.length - 1) {
       // Tutorial completed
       completeTutorial()
     } else {
@@ -118,6 +142,7 @@ export function TutorialProvider({ children, tutorials }: TutorialProviderProps)
   const closeTutorial = () => {
     setCurrentTutorialId(null)
     setCurrentStepIndex(0)
+    setActiveSteps([])
   }
 
   const completeTutorial = () => {
@@ -142,20 +167,37 @@ export function TutorialProvider({ children, tutorials }: TutorialProviderProps)
   }
 
   const goToStep = (stepIndex: number) => {
-    const tutorial = getCurrentTutorial()
-    if (!tutorial) return
-    setCurrentStepIndex(Math.max(0, Math.min(stepIndex, tutorial.steps.length - 1)))
+    if (activeSteps.length === 0) return
+    setCurrentStepIndex(Math.max(0, Math.min(stepIndex, activeSteps.length - 1)))
   }
 
-  // Auto-start tutorials on mount
   useEffect(() => {
-    tutorials.forEach(tutorial => {
-      if (tutorial.triggerOnMount && !completedTutorials.has(tutorial.id)) {
-        // Small delay to ensure DOM is ready
-        setTimeout(() => startTutorial(tutorial.id), 500)
-      }
-    })
-  }, []) // Only run on mount
+    if (currentStepIndex < activeSteps.length) return
+    if (activeSteps.length === 0) {
+      setCurrentTutorialId(null)
+      setCurrentStepIndex(0)
+      return
+    }
+
+    setCurrentStepIndex(activeSteps.length - 1)
+  }, [activeSteps, currentStepIndex])
+
+  // Auto-start tutorials when ready
+  useEffect(() => {
+    if (!isCompletionHydrated || currentTutorialId) return
+
+    const timers = tutorials
+      .filter(tutorial => tutorial.triggerOnMount && !completedTutorials.has(tutorial.id))
+      .map(tutorial =>
+        window.setTimeout(() => {
+          startTutorial(tutorial.id)
+        }, 500)
+      )
+
+    return () => {
+      timers.forEach(timer => window.clearTimeout(timer))
+    }
+  }, [tutorials, completedTutorials, isCompletionHydrated, currentTutorialId])
 
   const currentStep = getCurrentStep()
   const targetElement = useTutorialTarget(currentStep?.targetSelector || null)
@@ -184,7 +226,7 @@ export function TutorialProvider({ children, tutorials }: TutorialProviderProps)
           title={currentStep.title}
           description={currentStep.description}
           step={currentStepIndex}
-          totalSteps={getCurrentTutorial()?.steps.length || 0}
+          totalSteps={activeSteps.length}
           targetElement={targetElement}
           position={currentStep.position}
           skipLabel={currentStep.skipLabel}
@@ -232,35 +274,37 @@ export function useTutorialManager(tutorialId: string) {
 export const WORKSPACE_HUB_TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'welcome-choice',
-    title: 'Choose Your Setup',
-    description: 'First, let\'s decide how you want to get started. You can join an existing team, create a new workspace, or accept an invitation.',
+    title: 'Welcome to Workspace Setup! 👋',
+    description:
+      "Let me guide you through setting up your workspace. You can choose how you want to get started - create your own, join existing, or accept invitations.",
     targetSelector: '[data-tutorial="choice-options"]',
     position: 'bottom',
-    nextLabel: 'Next',
+    nextLabel: 'Next Step',
     showProgress: true,
   },
   {
     id: 'create-option',
     title: 'Create Your Own Workspace',
-    description: 'If you want to be the admin and set everything up yourself, choose this option. You\'ll create a new organization from scratch.',
+    description:
+      "Choose this option if you want to be the admin and set up everything yourself. Perfect for new teams!",
     targetSelector: '[data-tutorial="create-new-option"]',
     position: 'right',
-    nextLabel: 'Next',
+    nextLabel: 'Learn More',
     showProgress: true,
   },
   {
     id: 'join-option',
     title: 'Join an Existing Team',
-    description: 'Already have a team? Choose this option to join an existing organization that you\'re a member of.',
+    description: "Already have a team? Select this to join an organization you're already a member of.",
     targetSelector: '[data-tutorial="join-existing-option"]',
     position: 'left',
-    nextLabel: 'Next',
+    nextLabel: 'See Invitations',
     showProgress: true,
   },
   {
     id: 'invitation-option',
     title: 'Accept an Invitation',
-    description: 'If someone invited you to join their team, you\'ll see those invitations here. Just click to accept!',
+    description: "If someone invited you to their workspace, you'll see those invitations here. Just click to join!",
     targetSelector: '[data-tutorial="accept-invitation-option"]',
     position: 'left',
     nextLabel: 'Got it!',
