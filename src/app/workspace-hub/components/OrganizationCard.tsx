@@ -240,7 +240,7 @@ export function OrganizationCard({
         )}
 
         {org.divisions.length === 0 && (
-          <div className="rounded-md border border-dashed border-orange-200 bg-orange-50/60 px-3 py-2 text-xs text-orange-700">
+          <div className="rounded-md border border-dashed border-orange-600/50 bg-orange-600/10 px-3 py-2 text-xs text-orange-300">
             No divisions available yet. Ask an admin to assign you to a division.
           </div>
         )}

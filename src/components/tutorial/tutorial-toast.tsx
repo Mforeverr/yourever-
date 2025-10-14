@@ -43,7 +43,7 @@ export function TutorialToast({
   showProgress = true,
 }: TutorialToastProps) {
   const toastRef = useRef<HTMLDivElement>(null)
-  const [calculatedPosition, setCalculatedPosition] = useState({ top: 0, left: 0, arrow: 'top' })
+  const [calculatedPosition, setCalculatedPosition] = useState({ top: 0, left: 0, arrow: 'top', spotlightX: 50, spotlightY: 50, spotlightWidth: 20, spotlightHeight: 10, targetAspectRatio: 2 })
   const [isAnimating, setIsAnimating] = useState(false)
 
   // Calculate position relative to target element
@@ -67,41 +67,93 @@ export function TutorialToast({
 
       switch (position) {
         case 'top':
-          top = targetRect.top - toastRect.height - margin - arrowSize
+          top = targetRect.top - toastRect.height - margin - arrowSize - 60 // Extra 60px lower
           left = targetRect.left + (targetRect.width - toastRect.width) / 2
           arrow = 'bottom'
           break
         case 'bottom':
-          top = targetRect.bottom + margin + arrowSize
+          top = targetRect.bottom + margin + arrowSize + 60 // Extra 60px lower
           left = targetRect.left + (targetRect.width - toastRect.width) / 2
           arrow = 'top'
           break
         case 'left':
-          top = targetRect.top + (targetRect.height - toastRect.height) / 2
+          top = targetRect.top + (targetRect.height - toastRect.height) / 2 + 60 // Extra 60px lower
           left = targetRect.left - toastRect.width - margin - arrowSize
           arrow = 'right'
           break
         case 'right':
-          top = targetRect.top + (targetRect.height - toastRect.height) / 2
+          top = targetRect.top + (targetRect.height - toastRect.height) / 2 + 60 // Extra 60px lower
           left = targetRect.right + margin + arrowSize
           arrow = 'left'
           break
       }
 
-      // Keep within viewport bounds
-      left = Math.max(margin, Math.min(left, viewportWidth - toastRect.width - margin))
-      top = Math.max(margin, Math.min(top, viewportHeight - toastRect.height - margin))
+      // Enhanced viewport bounds checking with smart positioning
+      const maxLeft = viewportWidth - toastRect.width - margin
+      const maxTop = viewportHeight - toastRect.height - margin
 
-      // Adjust arrow position if toast is repositioned
-      if (position === 'top' || position === 'bottom') {
-        const targetCenter = targetRect.left + targetRect.width / 2
-        const toastCenter = left + toastRect.width / 2
-        if (Math.abs(targetCenter - toastCenter) > 50) {
-          arrow = position === 'top' ? 'top-center' : 'bottom-center'
+      // Smart horizontal positioning with center preference
+      if (left < margin) {
+        left = margin
+        // Adjust arrow to point to original target
+        if (position === 'top' || position === 'bottom') {
+          const offset = targetRect.left + targetRect.width / 2 - left
+          if (Math.abs(offset) > 50) {
+            arrow = position === 'top' ? 'top-left' : 'bottom-left'
+          }
+        }
+      } else if (left > maxLeft) {
+        left = maxLeft
+        // Adjust arrow to point to original target
+        if (position === 'top' || position === 'bottom') {
+          const offset = targetRect.left + targetRect.width / 2 - left - toastRect.width
+          if (Math.abs(offset) > 50) {
+            arrow = position === 'top' ? 'top-right' : 'bottom-right'
+          }
         }
       }
 
-      setCalculatedPosition({ top, left, arrow })
+      // Smart vertical positioning
+      if (top < margin) {
+        top = margin
+        // Switch to bottom positioning if top doesn't fit
+        if (position === 'top') {
+          top = targetRect.bottom + margin + arrowSize
+          arrow = 'top'
+        }
+      } else if (top > maxTop) {
+        top = maxTop
+        // Switch to top positioning if bottom doesn't fit
+        if (position === 'bottom') {
+          top = targetRect.top - toastRect.height - margin - arrowSize
+          arrow = 'bottom'
+        }
+      }
+
+      // Fine-tune center alignment for perfect symmetry
+      if (position === 'top' || position === 'bottom') {
+        const targetCenter = targetRect.left + targetRect.width / 2
+        const toastCenter = left + toastRect.width / 2
+        const centerOffset = targetCenter - toastCenter
+
+        // Apply small offset for better alignment if needed
+        if (Math.abs(centerOffset) > 10 && Math.abs(centerOffset) < 100) {
+          left += centerOffset * 0.3 // Gentle adjustment
+        }
+      }
+
+      // Calculate precise spotlight coordinates matching target element
+      const spotlightCenterX = targetRect.left + targetRect.width / 2
+      const spotlightCenterY = targetRect.top + targetRect.height / 2
+      const spotlightX = (spotlightCenterX / viewportWidth) * 100
+      const spotlightY = (spotlightCenterY / viewportHeight) * 100
+
+      // Calculate spotlight size to match target element
+      const spotlightWidth = (targetRect.width / viewportWidth) * 100
+      const spotlightHeight = (targetRect.height / viewportHeight) * 100
+      const targetAspectRatio = targetRect.width / targetRect.height
+
+      setCalculatedPosition({ top, left, arrow, spotlightX, spotlightY, spotlightWidth, spotlightHeight, targetAspectRatio })
     }
 
     updatePosition()
@@ -141,44 +193,70 @@ export function TutorialToast({
         left: `${calculatedPosition.left}px`,
       }}
     >
-      {/* Arrow */}
+      {/* Enhanced arrow with precise positioning */}
       <div
         className={cn(
-          "absolute w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent",
-          calculatedPosition.arrow === 'bottom' && "bottom-[-8px] left-1/2 transform -translate-x-1/2 border-b-white border-t-0",
-          calculatedPosition.arrow === 'top' && "top-[-8px] left-1/2 transform -translate-x-1/2 border-t-white border-b-0",
-          calculatedPosition.arrow === 'left' && "left-[-8px] top-1/2 transform -translate-y-1/2 border-l-white border-r-0",
-          calculatedPosition.arrow === 'right' && "right-[-8px] top-1/2 transform -translate-y-1/2 border-r-white border-l-0"
+          "absolute w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent transition-all duration-200",
+          calculatedPosition.arrow === 'bottom' && "bottom-[-8px] left-1/2 transform -translate-x-1/2 border-b-card border-t-0",
+          calculatedPosition.arrow === 'top' && "top-[-8px] left-1/2 transform -translate-x-1/2 border-t-card border-b-0",
+          calculatedPosition.arrow === 'left' && "left-[-8px] top-1/2 transform -translate-y-1/2 border-l-card border-r-0",
+          calculatedPosition.arrow === 'right' && "right-[-8px] top-1/2 transform -translate-y-1/2 border-r-card border-l-0",
+          calculatedPosition.arrow === 'top-left' && "top-[-8px] left-4 border-t-card border-b-0",
+          calculatedPosition.arrow === 'top-right' && "top-[-8px] right-4 border-t-card border-b-0",
+          calculatedPosition.arrow === 'bottom-left' && "bottom-[-8px] left-4 border-b-card border-t-0",
+          calculatedPosition.arrow === 'bottom-right' && "bottom-[-8px] right-4 border-b-card border-t-0"
         )}
       />
 
-      <Card className="relative border-2 border-blue-200 bg-white shadow-2xl">
-        {/* Highlight ring around target element */}
-        {targetElement && (
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={{
-              width: `${targetElement.offsetWidth + 20}px`,
-              height: `${targetElement.offsetHeight + 20}px`,
-              top: `${-10 - (calculatedPosition.arrow.includes('bottom') ? 8 : 0)}px`,
-              left: `${-10}px`,
-              transform: `translate(${-calculatedPosition.left + targetElement.getBoundingClientRect().left - 10}px, ${-calculatedPosition.top + targetElement.getBoundingClientRect().top - 10}px)`,
-              border: '3px solid rgb(59, 130, 246)',
-              borderRadius: '8px',
-              boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.3)',
-              zIndex: -1,
-            }}
-          />
-        )}
+      <Card className="relative border-0 border-transparent bg-transparent shadow-none">
+        {/* Spotlight - works with both target elements and fallback positioning */}
+        <div
+          className="fixed inset-0 pointer-events-none"
+          style={{
+            zIndex: 40,
+            background: targetElement ? `
+              /* Create exact rectangular mask matching target element */
+              linear-gradient(
+                to right,
+                rgba(0, 0, 0, 0.85) 0%,
+                rgba(0, 0, 0, 0.85) ${calculatedPosition.spotlightX - calculatedPosition.spotlightWidth / 2 - 0.2}%,
+                transparent ${calculatedPosition.spotlightX - calculatedPosition.spotlightWidth / 2}%,
+                transparent ${calculatedPosition.spotlightX + calculatedPosition.spotlightWidth / 2}%,
+                rgba(0, 0, 0, 0.85) ${calculatedPosition.spotlightX + calculatedPosition.spotlightWidth / 2 + 0.2}%,
+                rgba(0, 0, 0, 0.85) 100%
+              ),
+              linear-gradient(
+                to bottom,
+                rgba(0, 0, 0, 0.85) 0%,
+                rgba(0, 0, 0, 0.85) ${calculatedPosition.spotlightY - calculatedPosition.spotlightHeight / 2 - 0.2}%,
+                transparent ${calculatedPosition.spotlightY - calculatedPosition.spotlightHeight / 2}%,
+                transparent ${calculatedPosition.spotlightY + calculatedPosition.spotlightHeight / 2}%,
+                rgba(0, 0, 0, 0.85) ${calculatedPosition.spotlightY + calculatedPosition.spotlightHeight / 2 + 0.2}%,
+                rgba(0, 0, 0, 0.85) 100%
+              )
+            ` : `
+              radial-gradient(
+                ellipse at 50% 50%,
+                transparent 0%,
+                transparent 15%,
+                rgba(0, 0, 0, 0.7) 16%,
+                rgba(0, 0, 0, 0.85) 100%
+              )
+            `,
+            backgroundBlendMode: 'normal',
+            transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+            backdropFilter: 'blur(0.5px)'
+          }}
+        />
 
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between">
             <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                <Sparkles className="w-4 h-4 text-blue-600" />
+              <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
+                <Sparkles className="w-4 h-4 text-primary" />
               </div>
               <div className="space-y-1">
-                <CardTitle className="text-lg font-semibold text-blue-900">
+                <CardTitle className="text-lg font-semibold text-foreground">
                   {title}
                 </CardTitle>
                 {showProgress && (
@@ -195,7 +273,7 @@ export function TutorialToast({
               variant="ghost"
               size="sm"
               onClick={onClose}
-              className="h-6 w-6 p-0 hover:bg-blue-50"
+              className="h-6 w-6 p-0 hover:bg-muted"
             >
               <X className="h-4 w-4" />
             </Button>

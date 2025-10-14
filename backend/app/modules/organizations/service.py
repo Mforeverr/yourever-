@@ -30,6 +30,21 @@ class OrganizationService:
 
         try:
             user = await self._user_service.get_current_user(principal)
+            organizations = user.organizations if user else []
+
+            if organizations:
+                return [self._to_summary(organization) for organization in organizations]
+
+            # User has no organizations, check if fallback is enabled
+            if not self._settings.enable_mock_organization_fallback:
+                return []
+
+            logger.info(
+                "organizations.list.fallback_due_to_empty_memberships",
+                extra={"user_id": principal.id, "user_email": principal.email},
+            )
+            return build_fallback_organizations(principal)
+
         except HTTPException:
             # Propagate intentional API responses (e.g. auth failures).
             raise
@@ -46,18 +61,6 @@ class OrganizationService:
                 },
             )
             return build_fallback_organizations(principal)
-
-        if user.organizations:
-            return [self._to_summary(organization) for organization in user.organizations]
-
-        if not self._settings.enable_mock_organization_fallback:
-            return []
-
-        logger.info(
-            "organizations.list.fallback_due_to_empty_memberships",
-            extra={"user_id": principal.id, "user_email": principal.email},
-        )
-        return build_fallback_organizations(principal)
 
     def _to_summary(self, organization: WorkspaceOrganization) -> OrganizationSummary:
         return OrganizationSummary(

@@ -344,7 +344,7 @@ function WorkspaceHubContent() {
 
   if (isProtecting) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-muted text-muted-foreground">
+      <div className="flex min-h-screen flex-col items-center justify-center bg-muted/30 text-muted-foreground">
         <p>Setting up your workspace...</p>
       </div>
     )
@@ -357,10 +357,10 @@ function WorkspaceHubContent() {
   // Loading state
   if ((orgsLoading && !organizations) || (invitationsLoading && !invitations) || (isFetchingOverviews && enrichedOrganizations.length === 0)) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background text-muted-foreground">
         <div className="text-center space-y-4">
           <Loader2 className="h-8 w-8 animate-spin mx-auto" />
-          <p className="text-muted-foreground">Loading workspace options...</p>
+          <p>Loading workspace options...</p>
         </div>
       </div>
     )
@@ -369,7 +369,7 @@ function WorkspaceHubContent() {
   // Error state
   if (orgsError) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center px-6">
+      <div className="flex min-h-screen flex-col items-center justify-center px-6 bg-background">
         <div className="max-w-md w-full">
           <Alert variant="destructive">
             <AlertTitle>Unable to load organizations</AlertTitle>
@@ -383,9 +383,9 @@ function WorkspaceHubContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+    <div className="flex min-h-screen flex-col bg-background">
       {/* Header */}
-      <div className="border-b bg-white/80 backdrop-blur-sm">
+      <div className="border-b bg-background/80 backdrop-blur-sm">
         <div className="max-w-4xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -410,10 +410,10 @@ function WorkspaceHubContent() {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-4xl mx-auto px-6 py-8">
-        <Card className="border-none shadow-xl bg-white/80 backdrop-blur-sm">
+      <div className="max-w-4xl mx-auto flex-1 px-6 py-8">
+        <Card className="border-none shadow-xl bg-card/80 backdrop-blur-sm">
           <CardHeader className="text-center pb-6">
-            <CardTitle className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            <CardTitle className="text-3xl font-bold text-foreground">
               Let's Set Up Your Workspace
             </CardTitle>
             <CardDescription className="text-lg text-muted-foreground">
@@ -431,7 +431,7 @@ function WorkspaceHubContent() {
                     variant="outline"
                     size="sm"
                     onClick={start}
-                    className="flex items-center space-x-2 border-blue-200 text-blue-600 hover:bg-blue-50"
+                    className="flex items-center space-x-2 border-blue-600/30 text-blue-400 hover:bg-blue-600/10"
                   >
                     <Sparkles className="h-4 w-4" />
                     <span>Start Tour</span>
@@ -452,16 +452,16 @@ function WorkspaceHubContent() {
                   >
                     {pendingInvitations.length > 0 && (
                       <label
-                        className="flex cursor-pointer items-start gap-4 rounded-xl border-2 border-blue-200 bg-blue-50/50 p-4 shadow-sm transition-all hover:border-blue-300 hover:bg-blue-100/50"
+                        className="flex cursor-pointer items-start gap-4 rounded-xl border-2 border-blue-600/30 bg-blue-600/10 p-4 shadow-sm transition-all hover:border-blue-600/50 hover:bg-blue-600/20"
                         data-tutorial="accept-invitation-option"
                       >
                         <RadioGroupItem value="accept-invitation" className="mt-1" />
                         <div className="space-y-2">
                           <p className="font-medium text-foreground flex items-center gap-2">
-                            <Mail className="h-5 w-5 text-blue-600" />
+                            <Mail className="h-5 w-5 text-blue-400" />
                             Accept invitation
                             {pendingInvitations.length > 0 && (
-                              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                              <span className="text-xs bg-blue-600/20 text-blue-200 px-2 py-1 rounded-full">
                                 {pendingInvitations.length} pending
                               </span>
                             )}
@@ -545,7 +545,7 @@ function WorkspaceHubContent() {
                   ) : (
                     <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-12 text-center">
                       <Building2 className="mx-auto h-16 w-16 text-muted-foreground/50" />
-                      <h3 className="mt-6 text-xl font-semibold">No organizations yet</h3>
+                      <h3 className="mt-6 text-xl font-semibold text-foreground">No organizations yet</h3>
                       <p className="mt-3 text-muted-foreground">
                         You can create your first organization using the option above.
                       </p>
