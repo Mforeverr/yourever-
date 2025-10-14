@@ -22,7 +22,11 @@ import { InvitationCard } from './components/InvitationCard'
 import { Loader2, Building2, Users, Mail, ArrowLeft, Sparkles } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { TutorialProvider, useTutorialManager } from '@/components/tutorial/tutorial-provider'
+import {
+  TutorialProvider,
+  useTutorialManager,
+  WORKSPACE_HUB_TUTORIAL_STEPS,
+} from '@/components/tutorial/tutorial-provider'
 import { fetchOrganizationOverviews, type OrganizationOverview } from '@/lib/mock-organizations'
 import type { OrganizationCardData } from './components/OrganizationCard'
 import { useToast } from '@/hooks/use-toast'
@@ -595,44 +599,7 @@ function WorkspaceHubContent() {
 const WORKSPACE_HUB_TUTORIALS = [
   {
     id: 'workspace-hub-intro',
-    steps: [
-      {
-        id: 'welcome-choice',
-        title: 'Welcome to Workspace Setup! 👋',
-        description: 'Let me guide you through setting up your workspace. You can choose how you want to get started - create your own, join existing, or accept invitations.',
-        targetSelector: '[data-tutorial="choice-options"]',
-        position: 'bottom' as const,
-        nextLabel: 'Next Step',
-        showProgress: true,
-      },
-      {
-        id: 'create-option',
-        title: 'Create Your Own Workspace',
-        description: 'Choose this option if you want to be the admin and set up everything yourself. Perfect for new teams!',
-        targetSelector: '[data-tutorial="create-new-option"]',
-        position: 'right' as const,
-        nextLabel: 'Learn More',
-        showProgress: true,
-      },
-      {
-        id: 'join-option',
-        title: 'Join an Existing Team',
-        description: 'Already have a team? Select this to join an organization you\'re already a member of.',
-        targetSelector: '[data-tutorial="join-existing-option"]',
-        position: 'left' as const,
-        nextLabel: 'See Invitations',
-        showProgress: true,
-      },
-      {
-        id: 'invitation-option',
-        title: 'Accept Team Invitations',
-        description: 'If someone invited you to their workspace, you\'ll see those invitations here. Just click to join!',
-        targetSelector: '[data-tutorial="accept-invitation-option"]',
-        position: 'left' as const,
-        nextLabel: 'Got it!',
-        showProgress: true,
-      },
-    ],
+    steps: WORKSPACE_HUB_TUTORIAL_STEPS,
     triggerOnMount: true,
   },
 ]
