@@ -1,8 +1,8 @@
 'use client'
 
-import { FormEvent, ReactNode } from 'react'
+import { FormEvent } from 'react'
 import { UseFormRegister, FieldErrors } from 'react-hook-form'
-import { Dialog, DialogTrigger, DialogContent, DialogClose } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogClose } from '@/components/ui/dialog'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -16,7 +16,6 @@ export interface JoinOrganizationDialogProps {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   register: UseFormRegister<WorkspaceHubForm>
   errors: FieldErrors<WorkspaceHubForm>
-  trigger: ReactNode
 }
 
 export function JoinOrganizationDialog({
@@ -25,11 +24,9 @@ export function JoinOrganizationDialog({
   onSubmit,
   register,
   errors,
-  trigger,
 }: JoinOrganizationDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="sm:max-w-md p-0">
         <form onSubmit={onSubmit} className="space-y-6">
           <Card>

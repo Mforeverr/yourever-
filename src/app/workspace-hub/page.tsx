@@ -6,7 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { useProtectedRoute } from '@/hooks/use-protected-route'
 import { useCurrentUser } from '@/hooks/use-auth'
 import {
@@ -325,6 +325,17 @@ function WorkspaceHubContent() {
     })
   }
 
+  const handleJoinDialogOpenChange = (open: boolean) => {
+    if (open && selectedOrgId) {
+      setValue('joinOrganizationId', selectedOrgId, {
+        shouldDirty: false,
+        shouldTouch: false,
+        shouldValidate: false,
+      })
+    }
+    setIsJoinDialogOpen(open)
+  }
+
   const attemptJoinOrganization = async () => {
     if (isProcessing || !user) {
       return false
@@ -594,33 +605,25 @@ function WorkspaceHubContent() {
                         Enter the organization ID and the name you would like teammates to see when you join.
                       </p>
                     </div>
-                    <JoinOrganizationDialog
-                      open={isJoinDialogOpen}
-                      onOpenChange={setIsJoinDialogOpen}
-                      onSubmit={handleJoinDialogSubmit}
-                      register={register}
-                      errors={errors}
-                      trigger={
-                        <Button
-                          size="lg"
-                          className="flex items-center gap-2"
-                          onClick={() => {
-                            if (selectedOrgId) {
-                              setValue('joinOrganizationId', selectedOrgId, {
-                                shouldDirty: false,
-                                shouldTouch: false,
-                                shouldValidate: false,
-                              })
-                            }
-                            setIsJoinDialogOpen(true)
-                          }}
-                        >
-                          <Building2 className="h-5 w-5" />
-                          Join via ID
-                        </Button>
-                      }
-                    />
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        size="lg"
+                        className="flex items-center gap-2"
+                        onClick={() => handleJoinDialogOpenChange(true)}
+                      >
+                        <Building2 className="h-5 w-5" />
+                        Join via ID
+                      </Button>
+                    </div>
                   </div>
+                  <JoinOrganizationDialog
+                    open={isJoinDialogOpen}
+                    onOpenChange={handleJoinDialogOpenChange}
+                    onSubmit={handleJoinDialogSubmit}
+                    register={register}
+                    errors={errors}
+                  />
 
                   <div className="space-y-4">
                     <h4 className="text-lg font-semibold">Your Organizations</h4>
@@ -652,17 +655,18 @@ function WorkspaceHubContent() {
               {activeTab === 'create-new' && (
                 <div className="space-y-6">
                   <h3 className="text-xl font-semibold">Create New Organization</h3>
+                  <div>
+                    <Button
+                      type="button"
+                      size="lg"
+                      className="flex items-center gap-2"
+                      onClick={() => setIsCreateDialogOpen(true)}
+                    >
+                      <Sparkles className="h-5 w-5" />
+                      Launch creation form
+                    </Button>
+                  </div>
                   <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button
-                        size="lg"
-                        className="flex items-center gap-2"
-                        onClick={() => setIsCreateDialogOpen(true)}
-                      >
-                        <Sparkles className="h-5 w-5" />
-                        Launch creation form
-                      </Button>
-                    </DialogTrigger>
                     <DialogContent className="sm:max-w-3xl p-0">
                       <Card className="max-h-[85vh] overflow-hidden">
                         <CardHeader className="space-y-2">
