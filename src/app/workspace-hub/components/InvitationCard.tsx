@@ -67,6 +67,25 @@ export function InvitationCard({ invitation, onAccept, onDecline, compact = fals
 
   const divisionLabel = invitation.division_name ?? 'Any division'
 
+  const normalizedRole = invitation.role?.toLowerCase()
+  const roleLabel =
+    normalizedRole === 'owner'
+      ? 'Owner access'
+      : normalizedRole === 'admin'
+        ? 'Admin access'
+        : normalizedRole === 'member'
+          ? 'Member access'
+          : invitation.role
+
+  const inviterName = invitation.inviter_name || 'A teammate'
+  const organizationName = invitation.org_name || 'this organization'
+  const invitedAgo = formatDistanceToNow(new Date(invitation.created_at), { addSuffix: true })
+  const expiresIn = invitation.expires_at
+    ? formatDistanceToNow(new Date(invitation.expires_at), { addSuffix: true })
+    : null
+
+  const divisionLabel = invitation.division_name ?? 'Any division'
+
   if (compact) {
     return (
       <Card
