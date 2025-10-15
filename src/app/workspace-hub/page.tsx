@@ -58,6 +58,7 @@ function WorkspaceHubContent() {
               <PendingInvitationsCard
                 invitations={invitations.list}
                 onAccept={invitations.onAccept}
+                onDecline={invitations.onDecline}
               />
             )}
 
@@ -129,9 +130,10 @@ function WorkspaceHubHeader({ tutorial }: WorkspaceHubHeaderProps) {
 interface PendingInvitationsCardProps {
   invitations: Invitation[]
   onAccept: (invitation: Invitation, organization: Organization) => void
+  onDecline: (invitation: Invitation) => void
 }
 
-function PendingInvitationsCard({ invitations, onAccept }: PendingInvitationsCardProps) {
+function PendingInvitationsCard({ invitations, onAccept, onDecline }: PendingInvitationsCardProps) {
   return (
     <Card
       data-tutorial="accept-invitation-option"
@@ -165,6 +167,7 @@ function PendingInvitationsCard({ invitations, onAccept }: PendingInvitationsCar
             key={invitation.id}
             invitation={invitation}
             onAccept={onAccept}
+            onDecline={onDecline}
             compact
           />
         ))}

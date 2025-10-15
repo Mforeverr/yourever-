@@ -10,16 +10,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 import uuid
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .schemas import (
+    DivisionResponse,
+    InvitationBatchCreateRequest,
+    InvitationBatchCreateResponse,
+    InvitationCreatePayload,
+    InvitationResponse,
     OrganizationCreate,
     OrganizationResponse,
-    DivisionResponse,
-    InvitationResponse,
     TemplateResponse,
-    SlugAvailability,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,6 +32,30 @@ class OrganizationRepository:
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    @staticmethod
+    def _map_invitation(row: Dict[str, Any]) -> InvitationResponse:
+        """Normalize invitation rows returned from SQL queries."""
+
+        return InvitationResponse(
+            id=str(row["id"]),
+            token=str(row.get("token")) if row.get("token") else None,
+            email=row["email"],
+            org_id=str(row.get("org_id")) if row.get("org_id") else None,
+            division_id=str(row.get("division_id")) if row.get("division_id") else None,
+            role=row.get("role", "member"),
+            message=row.get("message"),
+            status=row.get("status", "pending"),
+            expires_at=row.get("expires_at"),
+            created_at=row.get("created_at", datetime.utcnow()),
+            updated_at=row.get("updated_at"),
+            accepted_at=row.get("accepted_at"),
+            declined_at=row.get("declined_at"),
+            inviter_id=str(row.get("inviter_id")) if row.get("inviter_id") else None,
+            inviter_name=row.get("inviter_name"),
+            org_name=row.get("org_name"),
+            division_name=row.get("division_name"),
+        )
 
     @staticmethod
     def generate_slug(name: str) -> str:
@@ -309,10 +335,12 @@ class OrganizationRepository:
 
     async def get_pending_invitations(self, user_email: str) -> List[InvitationResponse]:
         """Get pending invitations for a user's email."""
+
         query = text(
             """
             SELECT
                 i.id,
+                i.token,
                 i.email,
                 i.org_id,
                 i.division_id,
@@ -321,6 +349,10 @@ class OrganizationRepository:
                 i.status,
                 i.expires_at,
                 i.created_at,
+                i.updated_at,
+                i.accepted_at,
+                i.declined_at,
+                i.inviter_id,
                 o.name AS org_name,
                 d.name AS division_name,
                 u.display_name AS inviter_name
@@ -328,103 +360,245 @@ class OrganizationRepository:
             LEFT JOIN public.organizations o ON i.org_id = o.id
             LEFT JOIN public.divisions d ON i.division_id = d.id
             LEFT JOIN public.users u ON i.inviter_id = u.id
-            WHERE i.email = LOWER(:email)
+            WHERE LOWER(i.email) = LOWER(:email)
                 AND i.status = 'pending'
                 AND (i.expires_at IS NULL OR i.expires_at > NOW())
             ORDER BY i.created_at DESC
             """
         )
-        result = await self._session.execute(query, {"email": user_email.lower()})
+        result = await self._session.execute(query, {"email": user_email})
         rows = result.mappings().all()
 
-        return [
-            InvitationResponse(
-                id=str(row["id"]),
-                email=row["email"],
-                org_name=row["org_name"],
-                division_name=row["division_name"],
-                role=row["role"],
-                message=row["message"],
-                status=row["status"],
-                expires_at=row["expires_at"],
-                created_at=row["created_at"],
-                inviter_name=row["inviter_name"]
-            )
-            for row in rows
-        ]
+        return [self._map_invitation(dict(row)) for row in rows]
 
-    async def accept_invitation(self, token: str, user_id: str) -> Optional[OrganizationResponse]:
+    async def accept_invitation(
+        self,
+        invitation_id: str,
+        user_id: str,
+        user_email: str,
+    ) -> Optional[OrganizationResponse]:
         """Accept an invitation and join the organization."""
+
         try:
             await self._session.begin()
 
-            # Find and validate invitation
             inv_query = text(
                 """
-                SELECT id, email, org_id, division_id, role, expires_at
+                SELECT id, email, org_id, division_id, role
                 FROM public.invitations
-                WHERE token = :token
+                WHERE id = :invitation_id
                     AND status = 'pending'
                     AND (expires_at IS NULL OR expires_at > NOW())
+                    AND LOWER(email) = LOWER(:email)
                 FOR UPDATE
                 """
             )
-            inv_result = await self._session.execute(inv_query, {"token": token})
+            inv_result = await self._session.execute(
+                inv_query,
+                {"invitation_id": invitation_id, "email": user_email},
+            )
             inv_row = inv_result.mappings().first()
 
             if not inv_row:
                 await self._session.rollback()
                 return None
 
-            # Update invitation status
             update_inv_query = text(
                 """
                 UPDATE public.invitations
-                SET status = 'accepted', accepted_at = NOW()
+                SET status = 'accepted', accepted_at = NOW(), updated_at = NOW()
                 WHERE id = :id
                 """
             )
             await self._session.execute(update_inv_query, {"id": inv_row["id"]})
 
-            # Create organization membership
             org_membership_query = text(
                 """
                 INSERT INTO public.org_memberships (org_id, user_id, role, joined_at)
                 VALUES (:org_id, :user_id, :role, NOW())
-                ON CONFLICT (org_id, user_id) DO NOTHING
+                ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role
                 """
             )
-            await self._session.execute(org_membership_query, {
-                "org_id": inv_row["org_id"],
-                "user_id": user_id,
-                "role": inv_row["role"]
-            })
+            await self._session.execute(
+                org_membership_query,
+                {
+                    "org_id": inv_row["org_id"],
+                    "user_id": user_id,
+                    "role": inv_row["role"],
+                },
+            )
 
-            # Create division membership if division specified
             if inv_row["division_id"]:
                 div_membership_query = text(
                     """
                     INSERT INTO public.division_memberships (division_id, user_id, role, joined_at)
                     VALUES (:division_id, :user_id, :role, NOW())
-                    ON CONFLICT (division_id, user_id) DO NOTHING
+                    ON CONFLICT (division_id, user_id) DO UPDATE SET role = EXCLUDED.role
                     """
                 )
-                await self._session.execute(div_membership_query, {
-                    "division_id": inv_row["division_id"],
-                    "user_id": user_id,
-                    "role": inv_row["role"]
-                })
+                await self._session.execute(
+                    div_membership_query,
+                    {
+                        "division_id": inv_row["division_id"],
+                        "user_id": user_id,
+                        "role": inv_row["role"],
+                    },
+                )
 
             await self._session.commit()
 
-            # Return updated organization list
             organizations = await self.get_user_organizations(user_id)
             return next((org for org in organizations if org.id == str(inv_row["org_id"])), None)
 
-        except Exception as e:
+        except Exception as error:
             await self._session.rollback()
-            logger.error(f"Error accepting invitation: {e}")
+            logger.error("Error accepting invitation", exc_info=error)
             raise
+
+    async def decline_invitation(
+        self,
+        invitation_id: str,
+        user_email: str,
+    ) -> Optional[InvitationResponse]:
+        """Decline an invitation, marking it as no longer pending."""
+
+        try:
+            await self._session.begin()
+
+            query = text(
+                """
+                SELECT id, email, org_id, division_id, role, message, status, expires_at,
+                       created_at, updated_at, accepted_at, declined_at, inviter_id
+                FROM public.invitations
+                WHERE id = :invitation_id
+                    AND status = 'pending'
+                    AND LOWER(email) = LOWER(:email)
+                FOR UPDATE
+                """
+            )
+            result = await self._session.execute(
+                query,
+                {"invitation_id": invitation_id, "email": user_email},
+            )
+            row = result.mappings().first()
+
+            if not row:
+                await self._session.rollback()
+                return None
+
+            update_query = text(
+                """
+                UPDATE public.invitations
+                SET status = 'declined', declined_at = NOW(), updated_at = NOW()
+                WHERE id = :invitation_id
+                RETURNING id, token, email, org_id, division_id, role, message, status,
+                          expires_at, created_at, updated_at, accepted_at, declined_at, inviter_id
+                """
+            )
+            updated = await self._session.execute(
+                update_query,
+                {"invitation_id": invitation_id},
+            )
+            updated_row = updated.mappings().first()
+
+            await self._session.commit()
+
+            if not updated_row:
+                return None
+
+            return self._map_invitation(dict(updated_row))
+
+        except Exception as error:
+            await self._session.rollback()
+            logger.error("Error declining invitation", exc_info=error)
+            raise
+
+    async def create_invitations(
+        self,
+        org_id: str,
+        inviter_id: str,
+        batch: InvitationBatchCreateRequest,
+    ) -> InvitationBatchCreateResponse:
+        """Persist a batch of invitations for an organization."""
+
+        if not batch.invitations:
+            return InvitationBatchCreateResponse(invitations=[], skipped=[])
+
+        normalized: Dict[str, InvitationCreatePayload] = {}
+        for invitation in batch.invitations:
+            normalized_email = invitation.email.lower()
+            normalized[normalized_email] = invitation
+
+        existing_query = text(
+            """
+            SELECT email
+            FROM public.invitations
+            WHERE org_id = :org_id
+              AND status = 'pending'
+              AND LOWER(email) = ANY(:emails)
+            """
+        ).bindparams(bindparam("emails", expanding=True))
+        emails_array = list(normalized.keys())
+        result = await self._session.execute(
+            existing_query,
+            {"org_id": org_id, "emails": emails_array},
+        )
+        existing = {row["email"].lower() for row in result}
+
+        to_insert: List[Dict[str, Any]] = []
+        skipped: List[str] = []
+
+        for email, payload in normalized.items():
+            if email in existing:
+                skipped.append(payload.email)
+                continue
+
+            to_insert.append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "token": str(uuid.uuid4()),
+                    "email": email,
+                    "org_id": org_id,
+                    "division_id": payload.division_id,
+                    "role": payload.role,
+                    "message": payload.message,
+                    "inviter_id": inviter_id,
+                    "expires_at": payload.expires_at,
+                }
+            )
+
+        if not to_insert:
+            return InvitationBatchCreateResponse(invitations=[], skipped=skipped)
+
+        insert_query = text(
+            """
+            INSERT INTO public.invitations (
+                id, token, email, org_id, division_id, role, message, status,
+                inviter_id, created_at, updated_at, expires_at
+            ) VALUES (
+                :id, :token, :email, :org_id, :division_id, :role, :message, 'pending',
+                :inviter_id, NOW(), NOW(), :expires_at
+            )
+            RETURNING id, token, email, org_id, division_id, role, message, status,
+                      expires_at, created_at, updated_at, accepted_at, declined_at, inviter_id
+            """
+        )
+
+        inserted: List[InvitationResponse] = []
+        await self._session.begin()
+        try:
+            for record in to_insert:
+                result = await self._session.execute(insert_query, record)
+                inserted_row = result.mappings().first()
+                if inserted_row:
+                    inserted.append(self._map_invitation(dict(inserted_row)))
+            await self._session.commit()
+        except Exception as error:
+            await self._session.rollback()
+            logger.error("Error creating invitations", exc_info=error)
+            raise
+
+        return InvitationBatchCreateResponse(invitations=inserted, skipped=skipped)
 
     async def get_template(self, template_id: str) -> Optional[TemplateResponse]:
         """Get a template by ID."""

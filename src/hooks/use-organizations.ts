@@ -40,7 +40,29 @@ export interface Invitation {
   status: string
   expires_at?: string
   created_at: string
+  updated_at?: string
+  accepted_at?: string
+  declined_at?: string
+  token?: string
+  inviter_id?: string
   inviter_name?: string
+}
+
+export interface InvitationEnvelope {
+  invitations: Invitation[]
+}
+
+export interface InvitationDraft {
+  email: string
+  role?: string
+  division_id?: string | null
+  message?: string
+  expires_at?: string | null
+}
+
+export interface InvitationBatchCreateResponse {
+  invitations: Invitation[]
+  skipped: string[]
 }
 
 export interface Template {
@@ -194,17 +216,13 @@ export const usePendingInvitations = () => {
     queryFn: async () => {
       const token = await getAccessToken()
       if (!token) throw new Error('Authentication required')
-      const response = await apiRequest<Invitation[] | { invitations: Invitation[] }>(
+      const response = await apiRequest<InvitationEnvelope | Invitation[]>(
         'GET',
         '/api/organizations/invitations',
         token,
       )
 
-      if (Array.isArray(response)) {
-        return response
-      }
-
-      return response?.invitations ?? []
+      return Array.isArray(response) ? response : response?.invitations ?? []
     },
     enabled: !!getAccessToken,
     staleTime: 60 * 1000, // 1 minute
@@ -281,6 +299,70 @@ export const useDeclineInvitation = () => {
 
       toast({
         title: 'Error declining invitation',
+        description: message,
+        variant: 'destructive',
+      })
+    },
+  })
+}
+
+interface SendInvitationsParams {
+  orgId: string
+  invitations: InvitationDraft[]
+}
+
+export const useSendInvitations = () => {
+  const { getAccessToken } = useCurrentUser()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ orgId, invitations }: SendInvitationsParams) => {
+      const token = await getAccessToken()
+      if (!token) throw new Error('Authentication required')
+
+      const sanitized = invitations
+        .filter((invitation) => invitation.email?.trim())
+        .map((invitation) => ({
+          email: invitation.email.trim(),
+          role: invitation.role ?? 'member',
+          division_id: invitation.division_id ?? undefined,
+          message: invitation.message?.trim() || undefined,
+          expires_at: invitation.expires_at ?? undefined,
+        }))
+
+      if (sanitized.length === 0) {
+        throw new ApiError('At least one valid email is required', 400, {
+          detail: 'No valid invitations were provided.',
+        })
+      }
+
+      return apiRequest<InvitationBatchCreateResponse>(
+        'POST',
+        `/api/organizations/${orgId}/invitations`,
+        token,
+        { invitations: sanitized },
+      )
+    },
+    onSuccess: (result) => {
+      const invitedCount = result.invitations.length
+      const skippedCount = result.skipped.length
+
+      toast({
+        title: invitedCount === 1 ? 'Invitation sent' : 'Invitations sent',
+        description: skippedCount
+          ? `${invitedCount} sent · ${skippedCount} skipped (already pending)`
+          : `${invitedCount} invitation${invitedCount === 1 ? '' : 's'} on the way!`,
+      })
+
+      queryClient.invalidateQueries({ queryKey: ['organizations'] })
+    },
+    onError: (error) => {
+      const message = error instanceof ApiError
+        ? error.detail
+        : 'Failed to send invitations'
+
+      toast({
+        title: 'Error sending invitations',
         description: message,
         variant: 'destructive',
       })
