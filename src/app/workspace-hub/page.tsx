@@ -37,7 +37,7 @@ import { OrgCreationForm } from './components/OrgCreationForm'
 type Choice = 'join-existing' | 'create-new' | 'accept-invitation'
 
 export interface WorkspaceHubForm {
-  choice: Choice
+  choice: Choice | ''
   organizationName?: string
   divisionName?: string
   template?: string
@@ -58,7 +58,7 @@ function WorkspaceHubContent() {
   const { start, isActive, isCompleted } = useTutorialManager('workspace-hub-intro')
   const { toast } = useToast()
 
-  const [activeTab, setActiveTab] = useState<Choice>('join-existing')
+  const [activeTab, setActiveTab] = useState<Choice | ''>('')
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingOrgId, setProcessingOrgId] = useState<string | null>(null)
@@ -73,7 +73,7 @@ function WorkspaceHubContent() {
 
   const form = useForm<WorkspaceHubForm>({
     defaultValues: {
-      choice: 'join-existing',
+      choice: '',
       joinOrganizationId: '',
       joinNickname: '',
     },
@@ -130,13 +130,10 @@ function WorkspaceHubContent() {
 
   // Auto-select tab based on available data
   useEffect(() => {
-    if (pendingInvitations.length > 0 && !activeTab.includes('invitation')) {
+    if (pendingInvitations.length > 0 && activeTab !== 'accept-invitation') {
       setActiveTab('accept-invitation')
       setValue('choice', 'accept-invitation')
-    } else if (organizations && organizations.length > 0 && activeTab === 'create-new') {
-      setActiveTab('join-existing')
-      setValue('choice', 'join-existing')
-    } else if (organizations && organizations.length === 0 && activeTab === 'join-existing') {
+    } else if (organizations && organizations.length === 0 && activeTab === '') {
       setActiveTab('create-new')
       setValue('choice', 'create-new')
     }
@@ -406,7 +403,7 @@ function WorkspaceHubContent() {
   const getOptionClasses = (value: Choice) =>
     cn(
       'flex w-full cursor-pointer items-start gap-4 rounded-xl border-2 p-4 shadow-sm transition-all',
-      value === activeTab
+      activeTab && value === activeTab
         ? 'border-primary/50 bg-primary/10 ring-2 ring-primary/20'
         : 'border-border/60 bg-card hover:border-primary/30 hover:bg-muted/50'
     )
@@ -507,185 +504,154 @@ function WorkspaceHubContent() {
                   </Button>
                 )}
               </div>
-              <Controller
-                control={control}
-                name="choice"
-                render={({ field }) => (
-                  <RadioGroup
-                    {...field}
-                    value={activeTab}
-                    onValueChange={(value: Choice) => {
-                      setActiveTab(value)
-                      field.onChange(value)
-                    }}
-                  >
-                    {pendingInvitations.length > 0 && (
-                      <label
-                        className="flex cursor-pointer items-start gap-4 rounded-xl border-2 border-blue-600/30 bg-blue-600/10 p-4 shadow-sm transition-all hover:border-blue-600/50 hover:bg-blue-600/20"
-                        data-tutorial="accept-invitation-option"
-                      >
-                        <RadioGroupItem value="accept-invitation" className="sr-only" />
-                        <div className="space-y-2">
-                          <p className="font-medium text-foreground flex items-center gap-2">
-                            <Mail className="h-5 w-5 text-blue-400" />
-                            Accept invitation
-                            {pendingInvitations.length > 0 && (
-                              <span className="text-xs bg-blue-600/20 text-blue-200 px-2 py-1 rounded-full">
-                                {pendingInvitations.length} pending
-                              </span>
-                            )}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            You have pending invitations to join existing teams.
-                          </p>
-                        </div>
-                      </label>
-                    )}
-
-                    <label
-                      className={getOptionClasses('join-existing')}
-                      data-tutorial="join-existing-option"
+              <div className="space-y-3">
+                {pendingInvitations.length > 0 && (
+                  <div className="space-y-4">
+                    <div
+                      className="flex w-full cursor-pointer items-start gap-4 rounded-xl border-2 border-blue-600/30 bg-blue-600/10 p-4 shadow-sm transition-all hover:border-blue-600/50 hover:bg-blue-600/20"
+                      data-tutorial="accept-invitation-option"
                     >
-                      <RadioGroupItem value="join-existing" className="sr-only" />
-                      <div className="space-y-2">
+                      <div className="flex-1 space-y-2">
                         <p className="font-medium text-foreground flex items-center gap-2">
-                          <Building2 className="h-5 w-5" />
-                          Join existing organization
+                          <Mail className="h-5 w-5 text-blue-400" />
+                          Accept invitation
+                          {pendingInvitations.length > 0 && (
+                            <span className="text-xs bg-blue-600/20 text-blue-200 px-2 py-1 rounded-full">
+                              {pendingInvitations.length} pending
+                            </span>
+                          )}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          We'll take you to the organization list so you can start collaborating right away.
+                          You have pending invitations to join existing teams.
                         </p>
                       </div>
-                    </label>
+                    </div>
 
-                    <label
-                      className={getOptionClasses('create-new')}
-                      data-tutorial="create-new-option"
-                    >
-                      <RadioGroupItem value="create-new" className="sr-only" />
-                      <div className="space-y-2">
-                        <p className="font-medium text-foreground flex items-center gap-2">
-                          <Users className="h-5 w-5" />
-                          Create new organization
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          Spin up a fresh workspace, invite teammates, and optionally start from a template.
-                        </p>
+                    <div className="space-y-4">
+                      <h3 className="text-xl font-semibold">Pending Invitations</h3>
+                      <div className="space-y-4">
+                        {pendingInvitations.map((invitation) => (
+                          <InvitationCard
+                            key={invitation.id}
+                            invitation={invitation}
+                            onAccept={handleInvitationAccept}
+                            compact={true}
+                          />
+                        ))}
                       </div>
-                    </label>
-                  </RadioGroup>
+                    </div>
+                  </div>
                 )}
-              />
+
+                <div
+                  className="flex w-full cursor-pointer items-start gap-4 rounded-xl border-2 border-border/60 bg-card p-4 shadow-sm transition-all hover:border-primary/30 hover:bg-muted/50"
+                  data-tutorial="join-existing-option"
+                  onClick={() => handleJoinDialogOpenChange(true)}
+                >
+                  <div className="flex-1 space-y-2">
+                    <p className="font-medium text-foreground flex items-center gap-2">
+                      <Building2 className="h-5 w-5" />
+                      Join existing organization
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      We'll take you to the organization list so you can start collaborating right away.
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  className="flex w-full cursor-pointer items-start gap-4 rounded-xl border-2 border-border/60 bg-card p-4 shadow-sm transition-all hover:border-primary/30 hover:bg-muted/50"
+                  data-tutorial="create-new-option"
+                  onClick={() => setIsCreateDialogOpen(true)}
+                >
+                  <div className="flex-1 space-y-2">
+                    <p className="font-medium text-foreground flex items-center gap-2">
+                      <Users className="h-5 w-5" />
+                      Create new organization
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Spin up a fresh workspace, invite teammates, and optionally start from a template.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Tab Content */}
-            <div className="min-h-[400px]">
-              {activeTab === 'accept-invitation' && pendingInvitations.length > 0 && (
-                <div className="space-y-6">
-                  <h3 className="text-xl font-semibold">Pending Invitations</h3>
-                  <div className="space-y-4">
-                    {pendingInvitations.map((invitation) => (
-                      <InvitationCard
-                        key={invitation.id}
-                        invitation={invitation}
-                        onAccept={handleInvitationAccept}
-                        compact={true}
-                      />
-                    ))}
-                  </div>
+            {/* Join Organization Content */}
+            <div className="space-y-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-2">
+                  <h3 className="text-xl font-semibold">Join an Organization</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Enter the organization ID and the name you would like teammates to see when you join.
+                  </p>
                 </div>
-              )}
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    size="lg"
+                    className="flex items-center gap-2"
+                    onClick={() => handleJoinDialogOpenChange(true)}
+                  >
+                    <Building2 className="h-5 w-5" />
+                    Join via ID
+                  </Button>
+                </div>
+              </div>
+              <JoinOrganizationDialog
+                open={isJoinDialogOpen}
+                onOpenChange={handleJoinDialogOpenChange}
+                onSubmit={handleJoinDialogSubmit}
+                register={register}
+                errors={errors}
+              />
 
-              {activeTab === 'join-existing' && (
-                <div className="space-y-6">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="space-y-2">
-                      <h3 className="text-xl font-semibold">Join an Organization</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Enter the organization ID and the name you would like teammates to see when you join.
-                      </p>
-                    </div>
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        size="lg"
-                        className="flex items-center gap-2"
-                        onClick={() => handleJoinDialogOpenChange(true)}
-                      >
-                        <Building2 className="h-5 w-5" />
-                        Join via ID
-                      </Button>
-                    </div>
-                  </div>
-                  <JoinOrganizationDialog
-                    open={isJoinDialogOpen}
-                    onOpenChange={handleJoinDialogOpenChange}
-                    onSubmit={handleJoinDialogSubmit}
-                    register={register}
-                    errors={errors}
+              <div className="space-y-4">
+                <h4 className="text-lg font-semibold">Your Organizations</h4>
+                {enrichedOrganizations.length > 0 || orgsLoading || isFetchingOverviews ? (
+                  <ExistingOrgsList
+                    organizations={enrichedOrganizations}
+                    isLoading={orgsLoading || isFetchingOverviews}
+                    onSelect={handleOrgSelection}
+                    onDivisionSelect={handleDivisionSelect}
+                    onEnter={(orgId, divisionId) => openOrganization(orgId, divisionId)}
+                    selectedOrgId={selectedOrgId}
+                    divisionSelections={divisionSelections}
+                    activeOrgId={activeOrgId}
+                    processingOrgId={processingOrgId}
                   />
+                ) : (
+                  <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-12 text-center">
+                    <Building2 className="mx-auto h-16 w-16 text-muted-foreground/50" />
+                    <h5 className="mt-6 text-lg font-semibold text-foreground">No organizations yet</h5>
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      You can create your first organization using the option below.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
 
-                  <div className="space-y-4">
-                    <h4 className="text-lg font-semibold">Your Organizations</h4>
-                    {enrichedOrganizations.length > 0 || orgsLoading || isFetchingOverviews ? (
-                      <ExistingOrgsList
-                        organizations={enrichedOrganizations}
-                        isLoading={orgsLoading || isFetchingOverviews}
-                        onSelect={handleOrgSelection}
-                        onDivisionSelect={handleDivisionSelect}
-                        onEnter={(orgId, divisionId) => openOrganization(orgId, divisionId)}
-                        selectedOrgId={selectedOrgId}
-                        divisionSelections={divisionSelections}
-                        activeOrgId={activeOrgId}
-                        processingOrgId={processingOrgId}
+            {/* Create Organization Content */}
+            <div className="space-y-4">
+              <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                <DialogContent className="sm:max-w-3xl p-0">
+                  <Card className="max-h-[85vh] overflow-hidden">
+                    <CardHeader className="space-y-2">
+                      <CardTitle>Create a new organization</CardTitle>
+                      <CardDescription>
+                        Spin up a fresh workspace, invite teammates, and optionally start from a template.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="max-h-[70vh] overflow-y-auto p-6">
+                      <OrgCreationForm
+                        onSuccess={handleOrgCreationSuccess}
+                        onError={handleOrgCreationError}
                       />
-                    ) : (
-                      <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-12 text-center">
-                        <Building2 className="mx-auto h-16 w-16 text-muted-foreground/50" />
-                        <h5 className="mt-6 text-lg font-semibold text-foreground">No organizations yet</h5>
-                        <p className="mt-3 text-sm text-muted-foreground">
-                          You can create your first organization using the option above.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'create-new' && (
-                <div className="space-y-6">
-                  <h3 className="text-xl font-semibold">Create New Organization</h3>
-                  <div>
-                    <Button
-                      type="button"
-                      size="lg"
-                      className="flex items-center gap-2"
-                      onClick={() => setIsCreateDialogOpen(true)}
-                    >
-                      <Sparkles className="h-5 w-5" />
-                      Launch creation form
-                    </Button>
-                  </div>
-                  <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                    <DialogContent className="sm:max-w-3xl p-0">
-                      <Card className="max-h-[85vh] overflow-hidden">
-                        <CardHeader className="space-y-2">
-                          <CardTitle>Create a new organization</CardTitle>
-                          <CardDescription>
-                            Spin up a fresh workspace, invite teammates, and optionally start from a template.
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent className="max-h-[70vh] overflow-y-auto p-6">
-                          <OrgCreationForm
-                            onSuccess={handleOrgCreationSuccess}
-                            onError={handleOrgCreationError}
-                          />
-                        </CardContent>
-                      </Card>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              )}
+                    </CardContent>
+                  </Card>
+                </DialogContent>
+              </Dialog>
             </div>
 
           </CardContent>
