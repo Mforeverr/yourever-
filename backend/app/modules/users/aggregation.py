@@ -16,7 +16,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from .constants import (
     CURRENT_ONBOARDING_ANSWER_SCHEMA_VERSION,
-    CURRENT_ONBOARDING_STATUS_VERSION,
     coerce_onboarding_answer_schema_version,
 )
 

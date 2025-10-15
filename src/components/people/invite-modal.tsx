@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -22,17 +22,26 @@ import {
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { X, Mail, UserPlus } from 'lucide-react'
+import { useSendInvitations, type InvitationDraft } from '@/hooks/use-organizations'
+import { useToast } from '@/hooks/use-toast'
+import { authStorage } from '@/lib/auth-utils'
 
 interface InviteModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  orgId?: string
+  defaultRole?: string
 }
 
-export function InviteModal({ open, onOpenChange }: InviteModalProps) {
+export function InviteModal({ open, onOpenChange, orgId, defaultRole = 'member' }: InviteModalProps) {
   const [emails, setEmails] = useState<string[]>([])
   const [currentEmail, setCurrentEmail] = useState('')
-  const [role, setRole] = useState<string>('member')
+  const [role, setRole] = useState<string>(defaultRole)
   const [message, setMessage] = useState('')
+  const { toast } = useToast()
+  const sendInvitations = useSendInvitations()
+
+  const normalizedOrgId = useMemo(() => orgId ?? authStorage.getActiveOrganizationId() ?? '', [orgId])
 
   const handleAddEmail = () => {
     if (currentEmail && currentEmail.includes('@') && !emails.includes(currentEmail)) {
@@ -52,16 +61,39 @@ export function InviteModal({ open, onOpenChange }: InviteModalProps) {
     }
   }
 
-  const handleInvite = () => {
-    // This would typically send invitations to the backend
-    console.log('Inviting:', { emails, role, message })
-    
-    // Reset form
-    setEmails([])
-    setCurrentEmail('')
-    setRole('member')
-    setMessage('')
-    onOpenChange(false)
+  const buildInvitationBatch = (): InvitationDraft[] => {
+    return emails.map((email) => ({
+      email,
+      role,
+      message: message.trim() ? message : undefined,
+    }))
+  }
+
+  const handleInvite = async () => {
+    if (!normalizedOrgId) {
+      toast({
+        title: 'Select an organization',
+        description: 'Choose a workspace before sending invitations.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    try {
+      await sendInvitations.mutateAsync({
+        orgId: normalizedOrgId,
+        invitations: buildInvitationBatch(),
+      })
+
+      setEmails([])
+      setCurrentEmail('')
+      setRole(defaultRole)
+      setMessage('')
+      onOpenChange(false)
+    } catch (error) {
+      // Error handled centrally by the mutation hook toast
+      console.error('Failed to send invitations', error)
+    }
   }
 
   return (
@@ -94,11 +126,11 @@ export function InviteModal({ open, onOpenChange }: InviteModalProps) {
                   onKeyPress={handleKeyPress}
                 />
               </div>
-              <Button 
-                type="button" 
+              <Button
+                type="button"
                 variant="outline"
                 onClick={handleAddEmail}
-                disabled={!currentEmail || !currentEmail.includes('@')}
+                disabled={!currentEmail || !currentEmail.includes('@') || sendInvitations.isPending}
               >
                 Add
               </Button>
@@ -165,11 +197,11 @@ export function InviteModal({ open, onOpenChange }: InviteModalProps) {
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button 
+          <Button
             onClick={handleInvite}
-            disabled={emails.length === 0}
+            disabled={emails.length === 0 || sendInvitations.isPending}
           >
-            Send {emails.length} {emails.length === 1 ? 'Invitation' : 'Invitations'}
+            {sendInvitations.isPending ? 'Sending…' : `Send ${emails.length} ${emails.length === 1 ? 'Invitation' : 'Invitations'}`}
           </Button>
         </DialogFooter>
       </DialogContent>

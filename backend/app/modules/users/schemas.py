@@ -12,7 +12,6 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ...core.config import Settings
 from .constants import CURRENT_ONBOARDING_STATUS_VERSION
 
 

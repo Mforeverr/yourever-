@@ -147,7 +147,11 @@ const getRoleIcon = (role: Person['role']) => {
   }
 }
 
-export function PeopleInterface() {
+interface PeopleInterfaceProps {
+  orgId?: string
+}
+
+export function PeopleInterface({ orgId }: PeopleInterfaceProps) {
   const [people, setPeople] = useState<Person[]>(mockPeople)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedRole, setSelectedRole] = useState<string>('all')
@@ -345,9 +349,10 @@ export function PeopleInterface() {
       </div>
 
       {/* Modals */}
-      <InviteModal 
-        open={inviteModalOpen} 
+      <InviteModal
+        open={inviteModalOpen}
         onOpenChange={setInviteModalOpen}
+        orgId={orgId}
       />
       
       <DeactivateModal 

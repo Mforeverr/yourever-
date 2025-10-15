@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import get_settings
-from app.db.session import get_session_factory
 
 
 @pytest.fixture(scope="session")

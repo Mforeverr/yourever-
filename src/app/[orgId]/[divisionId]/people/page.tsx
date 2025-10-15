@@ -148,7 +148,7 @@ const getRoleIcon = (role: Person['role']) => {
 }
 
 // Main Component
-export default function PeoplePage() {
+export default function PeoplePage({ params }: { params: { orgId: string; divisionId: string } }) {
   const [people, setPeople] = useState<Person[]>(mockPeople)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedRole, setSelectedRole] = useState<string>('all')
@@ -346,9 +346,10 @@ export default function PeoplePage() {
       </div>
 
       {/* Modals */}
-      <InviteModal 
-        open={inviteModalOpen} 
+      <InviteModal
+        open={inviteModalOpen}
         onOpenChange={setInviteModalOpen}
+        orgId={params.orgId}
       />
       
       <DeactivateModal 

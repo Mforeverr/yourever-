@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Mail, Clock, Check, X, ExternalLink, AlertTriangle, UserPlus } from 'lucide-react'
 import { type Invitation, type Organization } from '@/hooks/use-organizations'
-import { useAcceptInvitation } from '@/hooks/use-organizations'
+import { useAcceptInvitation, useDeclineInvitation } from '@/hooks/use-organizations'
 import { formatDistanceToNow } from 'date-fns'
 import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -15,10 +15,12 @@ interface InvitationCardProps {
   invitation: Invitation
   onAccept?: (invitation: Invitation, organization: Organization) => void
   compact?: boolean
+  onDecline?: (invitation: Invitation) => void
 }
 
-export function InvitationCard({ invitation, onAccept, compact = false }: InvitationCardProps) {
+export function InvitationCard({ invitation, onAccept, onDecline, compact = false }: InvitationCardProps) {
   const acceptInvitationMutation = useAcceptInvitation()
+  const declineInvitationMutation = useDeclineInvitation()
 
   const handleAccept = async () => {
     try {
@@ -29,12 +31,22 @@ export function InvitationCard({ invitation, onAccept, compact = false }: Invita
     }
   }
 
+  const handleDecline = async () => {
+    try {
+      await declineInvitationMutation.mutateAsync(invitation.id)
+      onDecline?.(invitation)
+    } catch (error) {
+      // Error is handled by the mutation hook
+    }
+  }
+
   const isExpired = invitation.expires_at
     ? new Date(invitation.expires_at) < new Date()
     : false
 
   const isPending = invitation.status === 'pending'
-  const isProcessing = acceptInvitationMutation.isPending
+  const isProcessing = acceptInvitationMutation.isPending || declineInvitationMutation.isPending
+  const isDeclining = declineInvitationMutation.isPending
 
   const normalizedRole = invitation.role?.toLowerCase()
   const roleLabel =
@@ -169,8 +181,20 @@ export function InvitationCard({ invitation, onAccept, compact = false }: Invita
                 <Button
                   variant="outline"
                   className="w-full sm:w-auto"
+                  disabled={isProcessing}
+                  onClick={handleDecline}
                 >
-                  Decline
+                  {isDeclining ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Declining…
+                    </>
+                  ) : (
+                    <>
+                      <X className="mr-2 h-4 w-4" />
+                      Decline
+                    </>
+                  )}
                 </Button>
                 <Button
                   onClick={handleAccept}
@@ -296,13 +320,32 @@ export function InvitationCard({ invitation, onAccept, compact = false }: Invita
 
         {/* Actions */}
         {isPending && !isExpired && (
-          <div className="flex space-x-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isProcessing}
+              onClick={handleDecline}
+              className="sm:w-auto"
+            >
+              {isDeclining ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Declining...
+                </>
+              ) : (
+                <>
+                  <X className="mr-2 h-4 w-4" />
+                  Decline
+                </>
+              )}
+            </Button>
             <Button
               onClick={handleAccept}
               disabled={isProcessing}
-              className="flex-1"
+              className="sm:w-auto"
             >
-              {isProcessing ? (
+              {isProcessing && !isDeclining ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Accepting...
@@ -313,9 +356,6 @@ export function InvitationCard({ invitation, onAccept, compact = false }: Invita
                   Accept Invitation
                 </>
               )}
-            </Button>
-            <Button variant="outline" size="sm">
-              Decline
             </Button>
           </div>
         )}

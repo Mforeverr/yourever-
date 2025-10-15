@@ -76,6 +76,7 @@ interface UseWorkspaceHubControllerResult {
     list: Invitation[]
     isLoading: boolean
     onAccept: (invitation: Invitation, organization: Organization) => void
+    onDecline: (invitation: Invitation) => void
   }
   statuses: {
     isInitialLoading: boolean
@@ -395,6 +396,10 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
     [openOrganization],
   )
 
+  const handleInvitationDecline = useCallback((_invitation: Invitation) => {
+    // The mutation hook invalidates pending invitations, so no additional state updates are required here.
+  }, [])
+
   const isInitialLoading = useMemo(() => {
     const noOrgsYet = !organizations
     const noInvitationsYet = !invitations
@@ -449,6 +454,7 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
       list: pendingInvitations,
       isLoading: invitationsLoading,
       onAccept: handleInvitationAccept,
+      onDecline: handleInvitationDecline,
     },
     statuses: {
       isInitialLoading,
