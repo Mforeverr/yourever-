@@ -52,7 +52,7 @@ function WorkspaceHubContent() {
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-10">
         <WorkspaceHubHeader tutorial={tutorial} />
 
-        <main className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+        <main className="grid gap-6 lg:grid-cols-[3fr_1fr]">
           <section className="space-y-6">
             {invitations.list.length > 0 && (
               <PendingInvitationsCard
@@ -181,7 +181,13 @@ function JoinExistingOrganizationsCard({ joinDialog, organizations }: JoinExisti
             Use the list below to open an organization or join with an invite code if it&apos;s not listed.
           </CardDescription>
         </div>
-        <Button type="button" size="sm" className="flex items-center gap-2" onClick={() => joinDialog.onOpenChange(true)}>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="flex items-center gap-2"
+          onClick={() => joinDialog.onOpenChange(true)}
+        >
           <Building2 className="h-4 w-4" />
           Join via ID
         </Button>
@@ -240,7 +246,11 @@ function WorkspaceActionsSidebar({ createDialog, organizations }: WorkspaceActio
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Button className="w-full" size="lg" onClick={createDialog.open}>
+          <Button
+            className="w-full"
+            variant="secondary"
+            onClick={createDialog.open}
+          >
             Create organization
           </Button>
           <p className="text-xs text-muted-foreground">

@@ -149,9 +149,9 @@ export function ExistingOrgsList({
             />
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
           <Select value={selectedIndustry} onValueChange={setSelectedIndustry}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-[140px]">
               <SelectValue placeholder="Industry" />
             </SelectTrigger>
             <SelectContent>
@@ -164,7 +164,7 @@ export function ExistingOrgsList({
             </SelectContent>
           </Select>
           <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-[140px]">
               <SelectValue placeholder="Location" />
             </SelectTrigger>
             <SelectContent>
