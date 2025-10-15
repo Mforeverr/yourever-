@@ -10,16 +10,17 @@ from .repository import OrganizationRepository
 from .service import OrganizationInvitationService, OrganizationService
 
 
-async def get_organization_service(
-    user_service: UserService = Depends(get_user_service),
-) -> OrganizationService:
-    return OrganizationService(user_service=user_service)
-
-
 async def get_organization_repository(
     session: AsyncSession = Depends(db_session_dependency),
 ) -> OrganizationRepository:
     return OrganizationRepository(session=session)
+
+
+async def get_organization_service(
+    user_service: UserService = Depends(get_user_service),
+    repository: OrganizationRepository = Depends(get_organization_repository),
+) -> OrganizationService:
+    return OrganizationService(user_service=user_service, repository=repository)
 
 
 async def get_organization_invitation_service(

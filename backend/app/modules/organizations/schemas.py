@@ -52,12 +52,31 @@ class OrganizationResponse(OrganizationSummary):
 class OrganizationCreate(BaseModel):
     """Payload submitted when creating a new organization."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     name: str
     slug: Optional[str] = None
     description: Optional[str] = None
     division_name: str = Field(alias="divisionName")
     division_key: Optional[str] = Field(default=None, alias="divisionKey")
     template_id: Optional[str] = Field(default=None, alias="templateId")
+    invitations: Optional[List[InvitationCreatePayload]] = None
+
+
+class WorkspaceCreationResponse(BaseModel):
+    """Response envelope returned when creating a workspace."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    organization: OrganizationResponse
+    user_role: str = Field(alias="userRole")
+    template_applied: Optional[str] = Field(default=None, alias="templateApplied")
+    active_invitations: List[InvitationResponse] = Field(
+        default_factory=list, alias="activeInvitations"
+    )
+    skipped_invites: List[str] = Field(
+        default_factory=list, alias="skippedInvites"
+    )
 
 
 class InvitationResponse(BaseModel):

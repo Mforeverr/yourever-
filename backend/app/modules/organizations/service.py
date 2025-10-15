@@ -16,11 +16,14 @@ from .repository import OrganizationRepository
 from .schemas import (
     InvitationBatchCreateRequest,
     InvitationBatchCreateResponse,
+    InvitationCreatePayload,
     InvitationListResponse,
     InvitationResponse,
+    OrganizationCreate,
     OrganizationDivision,
     OrganizationResponse,
     OrganizationSummary,
+    WorkspaceCreationResponse,
 )
 
 
@@ -30,9 +33,85 @@ logger = logging.getLogger(__name__)
 class OrganizationService:
     """Provides organization data scoped to the authenticated principal."""
 
-    def __init__(self, user_service: UserService) -> None:
+    def __init__(
+        self,
+        user_service: UserService,
+        repository: OrganizationRepository,
+    ) -> None:
         self._user_service = user_service
+        self._repository = repository
         self._settings = get_settings()
+
+    async def create(
+        self,
+        principal: CurrentPrincipal,
+        payload: OrganizationCreate,
+    ) -> WorkspaceCreationResponse:
+        """Create an organization and optionally send invitations."""
+
+        user = await self._user_service.get_current_user(principal)
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required",
+            )
+
+        try:
+            organization, primary_division = await self._repository.create_organization(
+                user_id=user.id,
+                create_data=payload,
+            )
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(error),
+            ) from error
+
+        invitations_response = InvitationBatchCreateResponse(
+            invitations=[],
+            skipped=[],
+        )
+
+        if payload.invitations:
+            normalized_invites: list[InvitationCreatePayload] = []
+            for invitation in payload.invitations:
+                normalized_invites.append(
+                    InvitationCreatePayload(
+                        email=invitation.email,
+                        role=invitation.role or "member",
+                        division_id=invitation.division_id or primary_division.id,
+                        message=invitation.message,
+                        expires_at=invitation.expires_at,
+                    )
+                )
+
+            batch_request = InvitationBatchCreateRequest(
+                invitations=normalized_invites,
+            )
+
+            try:
+                invitations_response = await self._repository.create_invitations(
+                    org_id=organization.id,
+                    inviter_id=user.id,
+                    batch=batch_request,
+                )
+            except Exception as error:  # pragma: no cover - defensive logging
+                logger.error(
+                    "organizations.create.invitation_failure",
+                    exc_info=error,
+                    extra={
+                        "org_id": organization.id,
+                        "user_id": user.id,
+                    },
+                )
+
+        return WorkspaceCreationResponse(
+            organization=organization,
+            user_role="owner",
+            template_applied=payload.template_id,
+            active_invitations=invitations_response.invitations,
+            skipped_invites=invitations_response.skipped,
+        )
 
     async def list_for_principal(self, principal: CurrentPrincipal) -> List[OrganizationSummary]:
         """Return organizations available to the authenticated principal."""

@@ -1,14 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ChangeEvent, type KeyboardEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Loader2, Check, X } from 'lucide-react'
 import { useCreateOrganization, useCheckSlugAvailability } from '@/hooks/use-organizations'
 import { useAvailableTemplates, type Template, type WorkspaceCreationResult } from '@/hooks/use-organizations'
@@ -37,6 +38,84 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
     is_available: boolean
     suggestions: string[]
   } | null>(null)
+  const [invitees, setInvitees] = useState<string[]>([])
+  const [inviteInput, setInviteInput] = useState('')
+  const [inviteError, setInviteError] = useState<string | null>(null)
+  const emailSchema = z.string().trim().email('Enter a valid email address')
+
+  const parseEmail = (value: string) => {
+    const trimmed = value.trim()
+    if (!trimmed) {
+      return { success: false, email: null, error: null }
+    }
+
+    const parsed = emailSchema.safeParse(trimmed)
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]?.message ?? 'Enter a valid email address'
+      return { success: false, email: null, error: issue }
+    }
+
+    return { success: true, email: parsed.data.toLowerCase(), error: null }
+  }
+
+  const commitInvite = (value: string) => {
+    const { success, email, error } = parseEmail(value)
+    if (!success || !email) {
+      if (error) {
+        setInviteError(error)
+      }
+      return
+    }
+
+    setInviteError(null)
+    setInviteInput('')
+    setInvitees((previous) => {
+      if (previous.includes(email)) {
+        setInviteError('This email is already added')
+        return previous
+      }
+      return [...previous, email]
+    })
+  }
+
+  const removeInvite = (email: string) => {
+    setInvitees((previous) => previous.filter((value) => value !== email))
+  }
+
+  const handleInviteInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    if (inviteError) {
+      setInviteError(null)
+    }
+    setInviteInput(event.target.value)
+  }
+
+  const handleInviteInputBlur = () => {
+    if (inviteInput.trim()) {
+      commitInvite(inviteInput)
+    }
+  }
+
+  const handleInviteInputKeyDown = (
+    event: KeyboardEvent<HTMLInputElement>,
+  ) => {
+    const separators = ['Enter', 'Tab', ',', ';']
+    const trimmed = inviteInput.trim()
+
+    if (event.key === 'Backspace' && !inviteInput && invitees.length > 0) {
+      event.preventDefault()
+      setInvitees((previous) => previous.slice(0, previous.length - 1))
+      return
+    }
+
+    if (separators.includes(event.key) || event.key === ' ') {
+      if (!trimmed) {
+        return
+      }
+
+      event.preventDefault()
+      commitInvite(inviteInput)
+    }
+  }
 
   const form = useForm<OrgCreationFormData>({
     resolver: zodResolver(orgCreationSchema),
@@ -52,7 +131,6 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
   })
 
   const {
-    control,
     handleSubmit,
     watch,
     setValue,
@@ -103,11 +181,42 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
   }, [watchedSlug, checkSlugMutation])
 
   const onSubmit = async (data: OrgCreationFormData) => {
+    const normalizedInvites = [...invitees]
+    const pendingInput = inviteInput.trim()
+
+    if (pendingInput) {
+      const { success, email, error } = parseEmail(pendingInput)
+      if (!success || !email) {
+        if (error) {
+          setInviteError(error)
+        }
+        return
+      }
+
+      if (normalizedInvites.includes(email)) {
+        setInviteError('This email is already added')
+        return
+      }
+
+      normalizedInvites.push(email)
+      setInvitees(normalizedInvites)
+      setInviteInput('')
+      setInviteError(null)
+    }
+
     try {
       const result = await createOrgMutation.mutateAsync({
         ...data,
         template_id: selectedTemplate || undefined,
+        invitations:
+          normalizedInvites.length > 0
+            ? normalizedInvites.map((email) => ({ email }))
+            : undefined,
       })
+
+      setInvitees([])
+      setInviteInput('')
+      setInviteError(null)
       onSuccess?.(result)
     } catch (error) {
       onError?.(error)
@@ -207,6 +316,56 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
             <p className="text-xs text-destructive">{errors.division_name.message}</p>
           )}
         </div>
+      </div>
+
+      {/* Invitations */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label htmlFor="invite-input">Invite your team (optional)</Label>
+          {invitees.length > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {invitees.length} {invitees.length === 1 ? 'person' : 'people'} added
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Add emails separated by enter, comma, or space. We'll send invitations as soon as the workspace is ready.
+        </p>
+        <div
+          className={cn(
+            'flex min-h-[48px] flex-wrap items-center gap-2 rounded-md border bg-muted/30 p-2 transition-colors',
+            inviteError ? 'border-destructive' : 'border-dashed border-muted-foreground/40',
+          )}
+        >
+          {invitees.map((email) => (
+            <Badge
+              key={email}
+              variant="secondary"
+              className="flex items-center gap-1 bg-primary/10 text-primary"
+            >
+              ({email})
+              <button
+                type="button"
+                onClick={() => removeInvite(email)}
+                className="inline-flex h-4 w-4 items-center justify-center rounded-full text-primary/70 transition hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40"
+                aria-label={`Remove ${email}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))}
+          <Input
+            id="invite-input"
+            value={inviteInput}
+            onChange={handleInviteInputChange}
+            onKeyDown={handleInviteInputKeyDown}
+            onBlur={handleInviteInputBlur}
+            disabled={isSubmitting}
+            placeholder="teammate@example.com"
+            className="h-6 flex-1 border-0 bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
+          />
+        </div>
+        {inviteError && <p className="text-xs text-destructive">{inviteError}</p>}
       </div>
 
       {/* Template Selection */}

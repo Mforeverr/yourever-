@@ -1,6 +1,6 @@
 """Organizations REST endpoints."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 
 from ...dependencies import CurrentPrincipal, require_current_principal
 from .di import get_organization_invitation_service, get_organization_service
@@ -9,12 +9,29 @@ from .schemas import (
     InvitationBatchCreateResponse,
     InvitationListResponse,
     InvitationResponse,
+    OrganizationCreate,
     OrganizationResponse,
     OrganizationSummary,
+    WorkspaceCreationResponse,
 )
 from .service import OrganizationInvitationService, OrganizationService
 
 router = APIRouter(prefix="/api/organizations", tags=["organizations"])
+
+
+@router.post(
+    "",
+    response_model=WorkspaceCreationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_organization(
+    payload: OrganizationCreate,
+    principal: CurrentPrincipal = Depends(require_current_principal),
+    service: OrganizationService = Depends(get_organization_service),
+) -> WorkspaceCreationResponse:
+    """Create a new organization and optionally send invitations."""
+
+    return await service.create(principal, payload)
 
 
 @router.get("", response_model=list[OrganizationSummary])

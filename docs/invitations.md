@@ -23,6 +23,7 @@ The `OrganizationInvitationService` orchestrates validation (ownership/role chec
 
 | Method | Path | Description |
 | --- | --- | --- |
+| `POST` | `/api/organizations` | Create an organization and optionally queue invitation emails. |
 | `GET` | `/api/organizations/invitations` | List pending invitations for the authenticated principal. |
 | `POST` | `/api/organizations/{orgId}/invitations` | Batch-create invitations (admins/owners only). |
 | `POST` | `/api/organizations/invitations/{invitationId}/accept` | Accept a pending invite and join the organization. |
@@ -42,8 +43,11 @@ The service uses the existing `UserService` to resolve the principal and enforce
 
 ## UI Workflow
 
-1. Admin opens the People modal (`InviteModal`) and sends one or more invitations.
-2. Recipients see invitations in the Workspace Hub via `PendingInvitationsCard` and can accept/decline inline.
-3. Accepting joins the correct organization/division and navigates to the workspace; declining prunes the banner.
+1. During organization creation, founders can type teammate emails into the "Invite your team" field. The API attaches those addresses to the creation request and emits invitations pointing at the new primary division.
+2. Admins can still open the People modal (`InviteModal`) to send additional invitations after setup.
+3. Recipients see invitations in the Workspace Hub via `PendingInvitationsCard` and can accept/decline inline.
+4. Accepting joins the correct organization/division and navigates to the workspace; declining prunes the banner.
+
+The `POST /api/organizations` payload accepts an optional `invitations` array. Each element matches the existing `InvitationCreatePayload` schema. When the list is provided, the service deduplicates emails, defaults roles to `member`, targets the freshly created primary division, and returns both the invitations sent and any duplicates skipped in the creation response.
 
 To extend the system (e.g., adding expiration rules), build on the repository/service contracts to stay aligned with the modular architecture.

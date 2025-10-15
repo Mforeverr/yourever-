@@ -84,6 +84,7 @@ export interface OrganizationCreateData {
   division_name: string
   division_key?: string
   template_id?: string
+  invitations?: InvitationDraft[]
 }
 
 export interface SlugAvailability {
@@ -94,9 +95,10 @@ export interface SlugAvailability {
 
 export interface WorkspaceCreationResult {
   organization: Organization
-  user_role: string
-  template_applied?: string
-  active_invitations: Invitation[]
+  userRole: string
+  templateApplied?: string | null
+  activeInvitations: Invitation[]
+  skippedInvites: string[]
 }
 
 // API Functions
@@ -166,12 +168,41 @@ export const useCreateOrganization = () => {
     mutationFn: async (data: OrganizationCreateData) => {
       const token = await getAccessToken()
       if (!token) throw new Error('Authentication required')
-      return apiRequest<WorkspaceCreationResult>('POST', '/api/organizations', token, data)
+
+      const normalizedInvitations = data.invitations
+        ?.filter((invitation) => invitation.email?.trim())
+        .map((invitation) => ({
+          email: invitation.email.trim().toLowerCase(),
+          role: invitation.role ?? 'member',
+          division_id: invitation.division_id ?? undefined,
+          message: invitation.message?.trim() || undefined,
+          expires_at: invitation.expires_at ?? undefined,
+        }))
+
+      const payload = {
+        ...data,
+        invitations: normalizedInvitations && normalizedInvitations.length > 0
+          ? normalizedInvitations
+          : undefined,
+      }
+
+      return apiRequest<WorkspaceCreationResult>('POST', '/api/organizations', token, payload)
     },
     onSuccess: (result) => {
+      const invitedCount = result.activeInvitations?.length ?? 0
+      const skippedCount = result.skippedInvites?.length ?? 0
+
+      const inviteSummary = invitedCount || skippedCount
+        ? `${invitedCount} invited${
+            skippedCount ? ` · ${skippedCount} skipped` : ''
+          }`
+        : null
+
       toast({
         title: 'Organization created!',
-        description: `Welcome to ${result.organization.name}`,
+        description: inviteSummary
+          ? `Welcome to ${result.organization.name} · ${inviteSummary}`
+          : `Welcome to ${result.organization.name}`,
       })
 
       // Invalidate and refetch organizations
