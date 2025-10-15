@@ -52,7 +52,7 @@ function WorkspaceHubContent() {
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-10">
         <WorkspaceHubHeader tutorial={tutorial} />
 
-        <main className="grid gap-6 lg:grid-cols-[3fr_1fr]">
+        <main data-tutorial="choice-options" className="grid gap-6 lg:grid-cols-[3fr_1fr]">
           <section className="space-y-6">
             {invitations.list.length > 0 && (
               <PendingInvitationsCard
@@ -98,7 +98,10 @@ interface WorkspaceHubHeaderProps {
 }
 
 function WorkspaceHubHeader({ tutorial }: WorkspaceHubHeaderProps) {
-  const shouldShowTourButton = !tutorial.isCompleted && !tutorial.isActive
+  // TODO: TESTING MODIFICATION - Always show tour button for testing purposes
+  // This bypasses the normal completion check to allow repeated tutorial testing
+  // In production, revert to: const shouldShowTourButton = !tutorial.isCompleted && !tutorial.isActive
+  const shouldShowTourButton = true
 
   return (
     <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -116,7 +119,7 @@ function WorkspaceHubHeader({ tutorial }: WorkspaceHubHeaderProps) {
           className="flex w-fit items-center gap-2 border-blue-600/30 text-blue-400 hover:bg-blue-600/10"
         >
           <Sparkles className="h-4 w-4" />
-          <span>Start tour</span>
+          <span>{tutorial.isActive ? 'Restart tour' : 'Start tour'}</span>
         </Button>
       )}
     </header>

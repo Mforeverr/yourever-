@@ -1,0 +1,23 @@
+{
+  "watch": [
+    "server.ts",
+    "src/**/*"
+  ],
+  "ext": "ts,tsx,js,jsx",
+  "ignore": [
+    ".next/**/*",
+    "node_modules/**/*",
+    "*.log",
+    ".env*",
+    "dist/**/*",
+    "build/**/*",
+    ".git/**/*",
+    "*.tgz",
+    "*.tar.gz"
+  ],
+  "exec": "npx tsx server.ts",
+  "delay": "1000",
+  "env": {
+    "NODE_ENV": "development"
+  }
+}

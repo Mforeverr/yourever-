@@ -19,12 +19,11 @@ services:
     env_file:
       - .env
     volumes:
-      # Mount source code for hot reload
+      # Mount source code for hot reload (excluding .next to prevent restart loops)
       - ./src:/app/src
       - ./server.ts:/app/server.ts
       - ./prisma:/app/prisma
       - ./public:/app/public
-      - ./.next:/app/.next
     depends_on:
       - backend
     networks:

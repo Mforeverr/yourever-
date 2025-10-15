@@ -92,10 +92,22 @@ export function TutorialProvider({ children, tutorials }: TutorialProviderProps)
       return
     }
 
-    // Check if tutorial is already completed
-    if (completedTutorials.has(tutorialId)) {
-      console.log(`Tutorial "${tutorialId}" has already been completed`)
-      return
+    // TODO: TESTING MODIFICATION - Bypass completion check for repeated testing
+    // This allows restarting completed tutorials for development/testing purposes
+    // In production, uncomment the completion check below:
+    // if (completedTutorials.has(tutorialId)) {
+    //   console.log(`Tutorial "${tutorialId}" has already been completed`)
+    //   return
+    // }
+    const isAlreadyCompleted = completedTutorials.has(tutorialId)
+
+    // Clear completion status if restarting a completed tutorial
+    if (isAlreadyCompleted) {
+      const newCompleted = new Set(completedTutorials)
+      newCompleted.delete(tutorialId)
+      setCompletedTutorials(newCompleted)
+      saveCompletedTutorials(newCompleted)
+      console.log(`Tutorial "${tutorialId}" completion status cleared for testing`)
     }
 
     // Check prerequisites
@@ -278,7 +290,7 @@ export const WORKSPACE_HUB_TUTORIAL_STEPS: TutorialStep[] = [
     description:
       "Let me guide you through setting up your workspace. You can choose how you want to get started - create your own, join existing, or accept invitations.",
     targetSelector: '[data-tutorial="choice-options"]',
-    position: 'bottom',
+    position: 'left',
     nextLabel: 'Next Step',
     showProgress: true,
   },
@@ -288,7 +300,7 @@ export const WORKSPACE_HUB_TUTORIAL_STEPS: TutorialStep[] = [
     description:
       "Choose this option if you want to be the admin and set up everything yourself. Perfect for new teams!",
     targetSelector: '[data-tutorial="create-new-option"]',
-    position: 'right',
+    position: 'left',
     nextLabel: 'Learn More',
     showProgress: true,
   },
