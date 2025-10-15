@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Users } from 'lucide-react'
-import type { WorkspaceHubForm } from '../page'
+import type { WorkspaceHubForm } from '../hooks/useWorkspaceHubController'
 
 export interface JoinOrganizationDialogProps {
   open: boolean

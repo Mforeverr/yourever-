@@ -1,620 +1,355 @@
 'use client'
 
-import { FormEvent, useEffect, useRef, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import type { ReactNode } from 'react'
+
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
-import { useProtectedRoute } from '@/hooks/use-protected-route'
-import { useCurrentUser } from '@/hooks/use-auth'
-import {
-  useUserOrganizations,
-  usePendingInvitations,
-  type Organization,
-  type Invitation,
-  type WorkspaceCreationResult,
-} from '@/hooks/use-organizations'
-import { authStorage } from '@/lib/auth-utils'
 import { ExistingOrgsList } from './components/ExistingOrgsList'
 import { InvitationCard } from './components/InvitationCard'
-import { Loader2, Building2, Users, Mail, Sparkles } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { Button } from '@/components/ui/button'
-import {
-  TutorialProvider,
-  useTutorialManager,
-  WORKSPACE_HUB_TUTORIAL_STEPS,
-} from '@/components/tutorial/tutorial-provider'
-import { fetchOrganizationOverviews, type OrganizationOverview } from '@/lib/mock-organizations'
-import type { OrganizationCardData } from './components/OrganizationCard'
-import { useToast } from '@/hooks/use-toast'
 import { JoinOrganizationDialog } from './components/JoinOrganizationDialog'
 import { OrgCreationForm } from './components/OrgCreationForm'
-
-export interface WorkspaceHubForm {
-  organizationName?: string
-  divisionName?: string
-  template?: string
-  joinOrganizationId: string
-  joinNickname: string
-}
-
-const rolePriority: Record<string, number> = {
-  owner: 0,
-  admin: 1,
-  member: 2,
-}
+import { TutorialProvider } from '@/components/tutorial/tutorial-provider'
+import {
+  WORKSPACE_HUB_TUTORIALS,
+  useWorkspaceHubController,
+  type WorkspaceHubForm,
+} from './hooks/useWorkspaceHubController'
+import { Loader2, Building2, Users, Mail, Sparkles } from 'lucide-react'
+import type { Invitation, Organization } from '@/hooks/use-organizations'
 
 function WorkspaceHubContent() {
-  const { user } = useCurrentUser()
-  const { isLoading: isProtecting } = useProtectedRoute()
-  const router = useRouter()
-  const { start, isActive, isCompleted } = useTutorialManager('workspace-hub-intro')
-  const { toast } = useToast()
-
-  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null)
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [processingOrgId, setProcessingOrgId] = useState<string | null>(null)
-  const [enrichedOrganizations, setEnrichedOrganizations] = useState<OrganizationCardData[]>([])
-  const [isFetchingOverviews, setIsFetchingOverviews] = useState(false)
-  const [divisionSelections, setDivisionSelections] = useState<Record<string, string | null>>({})
-  const [activeOrgId, setActiveOrgId] = useState<string | null>(null)
-  const [isJoinDialogOpen, setIsJoinDialogOpen] = useState(false)
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-  const storedOrgIdRef = useRef<string | null>(null)
-  const storedDivisionIdRef = useRef<string | null>(null)
-
-  const form = useForm<WorkspaceHubForm>({
-    defaultValues: {
-      joinOrganizationId: '',
-      joinNickname: '',
-    },
-    mode: 'onChange'
-  })
   const {
-    watch,
-    setValue,
-    register,
-    trigger,
-    getValues,
-    formState: { errors },
-  } = form
-
-  // API hooks
-  const { data: organizations, isLoading: orgsLoading, error: orgsError } = useUserOrganizations()
-  const { data: invitations, isLoading: invitationsLoading } = usePendingInvitations()
-
-  const watchJoinOrganizationId = watch('joinOrganizationId')
-  const pendingInvitations = invitations?.filter(inv => inv.status === 'pending') || []
-
-  useEffect(() => {
-    storedOrgIdRef.current = authStorage.getActiveOrganizationId()
-    storedDivisionIdRef.current = authStorage.getActiveDivisionId()
-
-    if (storedOrgIdRef.current) {
-      setSelectedOrgId(storedOrgIdRef.current)
-      setActiveOrgId(storedOrgIdRef.current)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!selectedOrgId && enrichedOrganizations.length === 1) {
-      const onlyOrganization = enrichedOrganizations[0]
-      setSelectedOrgId(onlyOrganization.id)
-      setDivisionSelections((previous) => ({
-        ...previous,
-        [onlyOrganization.id]: previous[onlyOrganization.id] ?? onlyOrganization.divisions[0]?.id ?? null,
-      }))
-    }
-  }, [enrichedOrganizations, selectedOrgId])
-
-  useEffect(() => {
-    if (!selectedOrgId) {
-      return
-    }
-
-    const currentValue = (watchJoinOrganizationId ?? '').trim()
-    if (currentValue !== selectedOrgId) {
-      setValue('joinOrganizationId', selectedOrgId, { shouldDirty: false, shouldValidate: false })
-    }
-  }, [selectedOrgId, setValue, watchJoinOrganizationId])
-
-  useEffect(() => {
-    if (!organizations) {
-      setEnrichedOrganizations([])
-      setDivisionSelections({})
-      return
-    }
-
-    let isMounted = true
-
-    const sortedOrganizations = [...organizations].sort((a, b) => {
-      const roleWeightA = rolePriority[a.user_role?.toLowerCase() ?? 'member'] ?? 3
-      const roleWeightB = rolePriority[b.user_role?.toLowerCase() ?? 'member'] ?? 3
-
-      if (roleWeightA !== roleWeightB) {
-        return roleWeightA - roleWeightB
-      }
-
-      return a.name.localeCompare(b.name)
-    })
-
-    const loadOverviews = async () => {
-      setIsFetchingOverviews(true)
-      let overviewByKey: Map<string, OrganizationOverview> = new Map()
-      let overviewByName: Map<string, OrganizationOverview> = new Map()
-
-      try {
-        const identifiers = sortedOrganizations.map((organization) => organization.slug ?? organization.id)
-        if (identifiers.length > 0) {
-          const overviews = await fetchOrganizationOverviews(identifiers)
-          overviewByKey = new Map(overviews.map((overview) => [overview.id, overview]))
-          overviewByName = new Map(overviews.map((overview) => [overview.name, overview]))
-        }
-      } catch (error) {
-        console.warn('Failed to load organization overviews', error)
-      } finally {
-        if (!isMounted) {
-          return
-        }
-
-        const enriched = sortedOrganizations.map<OrganizationCardData>((organization) => {
-          const overview =
-            overviewByKey.get(organization.slug ?? '')
-            ?? overviewByKey.get(organization.id)
-            ?? overviewByName.get(organization.name)
-
-          return {
-            id: organization.id,
-            name: organization.name,
-            role: organization.user_role,
-            divisions: organization.divisions,
-            description: organization.description,
-            tagline: overview?.tagline,
-            industry: overview?.industry,
-            location: overview?.location,
-            timezone: overview?.timezone,
-            memberCount: overview?.memberCount,
-            activeProjects: overview?.activeProjects,
-            lastActive: overview?.lastActive,
-            tags: overview?.tags,
-            accentColor: overview?.accentColor,
-            logoUrl: overview?.logoUrl ?? organization.logo_url,
-          }
-        })
-
-        setEnrichedOrganizations(enriched)
-        setDivisionSelections((previous) => {
-          const next = { ...previous }
-
-          enriched.forEach((organization) => {
-            const storedDivision =
-              storedOrgIdRef.current === organization.id
-                ? storedDivisionIdRef.current
-                : null
-
-            const existingSelection = next[organization.id]
-            const existingIsValid = existingSelection
-              ? organization.divisions.some((division) => division.id === existingSelection)
-              : false
-
-            const storedIsValid = storedDivision
-              ? organization.divisions.some((division) => division.id === storedDivision)
-              : false
-
-            if (existingIsValid) {
-              return
-            }
-
-            if (storedIsValid) {
-              next[organization.id] = storedDivision
-              return
-            }
-
-            next[organization.id] = organization.divisions[0]?.id ?? null
-          })
-
-          return next
-        })
-
-        setIsFetchingOverviews(false)
-      }
-    }
-
-    void loadOverviews()
-
-    return () => {
-      isMounted = false
-    }
-  }, [organizations])
-
-  const openOrganization = (
-    organizationId: string,
-    divisionId: string | null,
-    fallbackOrganization?: Pick<Organization, 'id' | 'name' | 'divisions'>
-  ) => {
-    const organization = enrichedOrganizations.find((candidate) => candidate.id === organizationId)
-    const divisions = organization?.divisions ?? fallbackOrganization?.divisions ?? []
-    const organizationName = organization?.name ?? fallbackOrganization?.name ?? 'organization'
-
-    if (divisions.length === 0) {
-      toast({
-        title: 'Division required',
-        description: `Ask an admin to create a division for ${organizationName} before entering the workspace.`,
-        variant: 'destructive',
-      })
-      setSelectedOrgId(organizationId)
-      setIsProcessing(false)
-      setProcessingOrgId(null)
-      return
-    }
-
-    const targetDivision = divisionId
-      ? divisions.find((division) => division.id === divisionId) ?? divisions[0]
-      : divisions[0]
-
-    if (!targetDivision) {
-      toast({
-        title: 'Select a division',
-        description: 'Choose a division to continue into the workspace.',
-      })
-      setSelectedOrgId(organizationId)
-      setIsProcessing(false)
-      setProcessingOrgId(null)
-      return
-    }
-
-    setSelectedOrgId(organizationId)
-    setIsProcessing(true)
-    setProcessingOrgId(organizationId)
-
-    authStorage.setActiveOrganizationId(organizationId)
-    authStorage.setActiveDivisionId(targetDivision.id)
-    setActiveOrgId(organizationId)
-    setDivisionSelections((previous) => ({
-      ...previous,
-      [organizationId]: targetDivision.id,
-    }))
-
-    router.push(`/${organizationId}/${targetDivision.id}/dashboard`)
-  }
-
-  const handleOrgCreationSuccess = (result: WorkspaceCreationResult) => {
-    setIsCreateDialogOpen(false)
-    const defaultDivisionId = result.organization.divisions[0]?.id ?? null
-    setDivisionSelections((previous) => ({
-      ...previous,
-      [result.organization.id]: defaultDivisionId,
-    }))
-
-    openOrganization(result.organization.id, defaultDivisionId, {
-      id: result.organization.id,
-      name: result.organization.name,
-      divisions: result.organization.divisions,
-    })
-  }
-
-  const handleOrgCreationError = (_error: unknown) => {
-    toast({
-      title: 'Failed to create organization',
-      description: 'Something went wrong while setting up the workspace. Please try again.',
-      variant: 'destructive',
-    })
-  }
-
-  const handleJoinDialogOpenChange = (open: boolean) => {
-    if (open && selectedOrgId) {
-      setValue('joinOrganizationId', selectedOrgId, {
-        shouldDirty: false,
-        shouldTouch: false,
-        shouldValidate: false,
-      })
-    }
-    setIsJoinDialogOpen(open)
-  }
-
-  const attemptJoinOrganization = async () => {
-    if (isProcessing || !user) {
-      return false
-    }
-
-    const isValid = await trigger(['joinOrganizationId', 'joinNickname'])
-    if (!isValid) {
-      return false
-    }
-
-    const { joinOrganizationId } = getValues()
-    const trimmedId = joinOrganizationId.trim()
-    const organization = enrichedOrganizations.find((candidate) => candidate.id === trimmedId)
-
-    if (!organization) {
-      toast({
-        title: 'Organization not found',
-        description: 'Double-check the organization ID and try again.',
-        variant: 'destructive',
-      })
-      return false
-    }
-
-    setSelectedOrgId(organization.id)
-    const divisionId = divisionSelections[organization.id] ?? organization.divisions[0]?.id ?? null
-    setIsJoinDialogOpen(false)
-    openOrganization(organization.id, divisionId)
-    return true
-  }
-
-  const handleJoinDialogSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    await attemptJoinOrganization()
-  }
-
-  const handleOrgSelection = (organizationId: string, divisionId: string | null) => {
-    setSelectedOrgId(organizationId)
-    setValue('joinOrganizationId', organizationId, { shouldDirty: true, shouldTouch: true, shouldValidate: true })
-    if (divisionId) {
-      setDivisionSelections((previous) => ({
-        ...previous,
-        [organizationId]: divisionId,
-      }))
-    }
-    setProcessingOrgId(null)
-    setIsProcessing(false)
-  }
-
-  const handleInvitationAccept = (_invitation: Invitation, organization: Organization) => {
-    const defaultDivisionId = organization.divisions[0]?.id ?? null
-    setDivisionSelections((previous) => ({
-      ...previous,
-      [organization.id]: defaultDivisionId,
-    }))
-    openOrganization(organization.id, defaultDivisionId, organization)
-  }
-
-  const handleDivisionSelect = (organizationId: string, divisionId: string | null) => {
-    setDivisionSelections((previous) => ({
-      ...previous,
-      [organizationId]: divisionId,
-    }))
-    if (selectedOrgId === organizationId) {
-      setSelectedOrgId(organizationId)
-    }
-  }
+    user,
+    isProtecting,
+    tutorial,
+    organizations,
+    joinDialog,
+    createDialog,
+    invitations,
+    statuses,
+  } = useWorkspaceHubController()
 
   if (isProtecting) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-muted/30 text-muted-foreground">
-        <p>Setting up your workspace...</p>
-      </div>
-    )
+    return <FullScreenState message="Setting up your workspace..." variant="muted" />
   }
 
   if (!user) {
     return null
   }
 
-  // Loading state
-  if ((orgsLoading && !organizations) || (invitationsLoading && !invitations) || (isFetchingOverviews && enrichedOrganizations.length === 0)) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-background text-muted-foreground">
-        <div className="text-center space-y-4">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto" />
-          <p>Loading workspace options...</p>
-        </div>
-      </div>
-    )
+  if (statuses.isInitialLoading) {
+    return <LoadingState />
   }
 
-  // Error state
-  if (orgsError) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center px-6 bg-background">
-        <div className="max-w-md w-full">
-          <Alert variant="destructive">
-            <AlertTitle>Unable to load organizations</AlertTitle>
-            <AlertDescription>
-              {orgsError instanceof Error ? orgsError.message : 'Please try refreshing the page.'}
-            </AlertDescription>
-          </Alert>
-        </div>
-      </div>
-    )
+  if (statuses.organizationsError) {
+    return <ErrorState error={statuses.organizationsError} />
   }
 
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-10">
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div className="space-y-2">
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">Workspace Hub</h1>
-            <p className="text-sm text-muted-foreground">
-              Review your invitations, jump into an existing organization, or spin up something new.
-            </p>
-          </div>
-          {!isCompleted && !isActive && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={start}
-              className="flex w-fit items-center gap-2 border-blue-600/30 text-blue-400 hover:bg-blue-600/10"
-            >
-              <Sparkles className="h-4 w-4" />
-              <span>Start tour</span>
-            </Button>
-          )}
-        </header>
+        <WorkspaceHubHeader tutorial={tutorial} />
 
         <main className="grid gap-6 lg:grid-cols-[2fr_1fr]">
           <section className="space-y-6">
-            {pendingInvitations.length > 0 && (
-              <Card data-tutorial="accept-invitation-option" className="border-blue-600/40 bg-blue-600/10">
-                <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex items-start gap-3">
-                    <div className="rounded-full bg-blue-600/20 p-2 text-blue-200">
-                      <Mail className="h-5 w-5" />
-                    </div>
-                    <div className="space-y-1">
-                      <CardTitle className="flex items-center gap-2 text-xl">
-                        Pending invitations
-                        <span className="text-xs bg-blue-600/20 px-2 py-1 font-normal text-blue-200">
-                          {pendingInvitations.length} pending
-                        </span>
-                      </CardTitle>
-                      <CardDescription className="text-blue-100/80">
-                        Accept an invitation to jump straight into the workspace your teammate picked for you.
-                      </CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {pendingInvitations.map((invitation) => (
-                    <InvitationCard
-                      key={invitation.id}
-                      invitation={invitation}
-                      onAccept={handleInvitationAccept}
-                      compact
-                    />
-                  ))}
-                </CardContent>
-              </Card>
+            {invitations.list.length > 0 && (
+              <PendingInvitationsCard
+                invitations={invitations.list}
+                onAccept={invitations.onAccept}
+              />
             )}
 
-            <Card data-tutorial="join-existing-option">
-              <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="space-y-2">
-                  <CardTitle className="text-xl">Join an organization you already belong to</CardTitle>
-                  <CardDescription>
-                    Use the list below to open an organization or join with an invite code if it&apos;s not listed.
-                  </CardDescription>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="flex items-center gap-2"
-                  onClick={() => handleJoinDialogOpenChange(true)}
-                >
-                  <Building2 className="h-4 w-4" />
-                  Join via ID
-                </Button>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <JoinOrganizationDialog
-                  open={isJoinDialogOpen}
-                  onOpenChange={handleJoinDialogOpenChange}
-                  onSubmit={handleJoinDialogSubmit}
-                  register={register}
-                  errors={errors}
-                />
-
-                {enrichedOrganizations.length > 0 || orgsLoading || isFetchingOverviews ? (
-                  <ExistingOrgsList
-                    organizations={enrichedOrganizations}
-                    isLoading={orgsLoading || isFetchingOverviews}
-                    onSelect={handleOrgSelection}
-                    onDivisionSelect={handleDivisionSelect}
-                    onEnter={(orgId, divisionId) => openOrganization(orgId, divisionId)}
-                    selectedOrgId={selectedOrgId}
-                    divisionSelections={divisionSelections}
-                    activeOrgId={activeOrgId}
-                    processingOrgId={processingOrgId}
-                  />
-                ) : (
-                  <div className="rounded-xl border border-dashed border-border/60 bg-muted/10 p-12 text-center">
-                    <Building2 className="mx-auto h-16 w-16 text-muted-foreground/50" />
-                    <h3 className="mt-6 text-lg font-semibold text-foreground">No organizations yet</h3>
-                    <p className="mt-3 text-sm text-muted-foreground">
-                      You can create your first organization from the quick actions on the right.
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <JoinExistingOrganizationsCard
+              joinDialog={joinDialog}
+              organizations={organizations}
+            />
           </section>
 
-          <aside className="space-y-6">
-            <Card data-tutorial="create-new-option">
-              <CardHeader className="space-y-2">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Users className="h-5 w-5" />
-                  Create a new organization
-                </CardTitle>
-                <CardDescription>
-                  Launch a fresh workspace, invite teammates, and start from a template if you like.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Button className="w-full" size="lg" onClick={() => setIsCreateDialogOpen(true)}>
-                  Create organization
-                </Button>
-                <p className="text-xs text-muted-foreground">
-                  We&apos;ll walk you through naming the organization, choosing a division, and inviting your team.
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="space-y-2">
-                <CardTitle className="text-lg">Active organization</CardTitle>
-                <CardDescription>
-                  We remember where you left off so you can hop back in with one click.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {activeOrgId ? (
-                  <Button
-                    className="w-full"
-                    variant="secondary"
-                    disabled={isProcessing && processingOrgId === activeOrgId}
-                    onClick={() => {
-                      const divisionId = divisionSelections[activeOrgId] ?? null
-                      openOrganization(activeOrgId, divisionId)
-                    }}
-                  >
-                    Return to last workspace
-                  </Button>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    Select any organization to set it as your default workspace.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          </aside>
+          <WorkspaceActionsSidebar
+            createDialog={createDialog}
+            organizations={organizations}
+          />
         </main>
 
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogContent className="sm:max-w-3xl p-0">
-            <Card className="max-h-[85vh] overflow-hidden">
-              <CardHeader className="space-y-2">
-                <CardTitle>Create a new organization</CardTitle>
-                <CardDescription>
-                  Spin up a fresh workspace, invite teammates, and optionally start from a template.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="max-h-[70vh] overflow-y-auto p-6">
-                <OrgCreationForm onSuccess={handleOrgCreationSuccess} onError={handleOrgCreationError} />
-              </CardContent>
-            </Card>
-          </DialogContent>
-        </Dialog>
+        <CreateOrganizationDialog createDialog={createDialog} />
       </div>
     </div>
   )
 }
 
-// Tutorial definitions for the workspace hub
-const WORKSPACE_HUB_TUTORIALS = [
-  {
-    id: 'workspace-hub-intro',
-    steps: WORKSPACE_HUB_TUTORIAL_STEPS,
-    triggerOnMount: true,
-  },
-]
-
-// Main export with tutorial provider
 export default function WorkspaceHubPage() {
   return (
     <TutorialProvider tutorials={WORKSPACE_HUB_TUTORIALS}>
       <WorkspaceHubContent />
     </TutorialProvider>
+  )
+}
+
+// -------------------------------------------------------------------------------------
+// Section components
+// -------------------------------------------------------------------------------------
+
+type WorkspaceHubState = ReturnType<typeof useWorkspaceHubController>
+
+interface WorkspaceHubHeaderProps {
+  tutorial: WorkspaceHubState['tutorial']
+}
+
+function WorkspaceHubHeader({ tutorial }: WorkspaceHubHeaderProps) {
+  const shouldShowTourButton = !tutorial.isCompleted && !tutorial.isActive
+
+  return (
+    <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="space-y-2">
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">Workspace Hub</h1>
+        <p className="text-sm text-muted-foreground">
+          Review your invitations, jump into an existing organization, or spin up something new.
+        </p>
+      </div>
+      {shouldShowTourButton && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={tutorial.start}
+          className="flex w-fit items-center gap-2 border-blue-600/30 text-blue-400 hover:bg-blue-600/10"
+        >
+          <Sparkles className="h-4 w-4" />
+          <span>Start tour</span>
+        </Button>
+      )}
+    </header>
+  )
+}
+
+interface PendingInvitationsCardProps {
+  invitations: Invitation[]
+  onAccept: (invitation: Invitation, organization: Organization) => void
+}
+
+function PendingInvitationsCard({ invitations, onAccept }: PendingInvitationsCardProps) {
+  return (
+    <Card data-tutorial="accept-invitation-option" className="border-blue-600/40 bg-blue-600/10">
+      <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="rounded-full bg-blue-600/20 p-2 text-blue-200">
+            <Mail className="h-5 w-5" />
+          </div>
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2 text-xl">
+              Pending invitations
+              <span className="text-xs bg-blue-600/20 px-2 py-1 font-normal text-blue-200">
+                {invitations.length} pending
+              </span>
+            </CardTitle>
+            <CardDescription className="text-blue-100/80">
+              Accept an invitation to jump straight into the workspace your teammate picked for you.
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {invitations.map((invitation) => (
+          <InvitationCard
+            key={invitation.id}
+            invitation={invitation}
+            onAccept={onAccept}
+            compact
+          />
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
+
+interface JoinExistingOrganizationsCardProps {
+  joinDialog: WorkspaceHubState['joinDialog']
+  organizations: WorkspaceHubState['organizations']
+}
+
+function JoinExistingOrganizationsCard({ joinDialog, organizations }: JoinExistingOrganizationsCardProps) {
+  const showExistingOrgs =
+    organizations.list.length > 0 || organizations.isLoadingOrganizations || organizations.isOverviewLoading
+
+  return (
+    <Card data-tutorial="join-existing-option">
+      <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-2">
+          <CardTitle className="text-xl">Join an organization you already belong to</CardTitle>
+          <CardDescription>
+            Use the list below to open an organization or join with an invite code if it&apos;s not listed.
+          </CardDescription>
+        </div>
+        <Button type="button" size="sm" className="flex items-center gap-2" onClick={() => joinDialog.onOpenChange(true)}>
+          <Building2 className="h-4 w-4" />
+          Join via ID
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <JoinOrganizationDialog
+          open={joinDialog.isOpen}
+          onOpenChange={joinDialog.onOpenChange}
+          onSubmit={joinDialog.onSubmit}
+          register={joinDialog.register}
+          errors={joinDialog.errors}
+        />
+
+        {showExistingOrgs ? (
+          <ExistingOrgsList
+            organizations={organizations.list}
+            isLoading={organizations.isLoadingOrganizations || organizations.isOverviewLoading}
+            onSelect={organizations.onSelect}
+            onDivisionSelect={organizations.onDivisionSelect}
+            onEnter={organizations.openOrganization}
+            selectedOrgId={organizations.selectedId}
+            divisionSelections={organizations.divisionSelections}
+            activeOrgId={organizations.activeId}
+            processingOrgId={organizations.processingId}
+          />
+        ) : (
+          <EmptyOrganizationsState>
+            <Building2 className="mx-auto h-16 w-16 text-muted-foreground/50" />
+            <h3 className="mt-6 text-lg font-semibold text-foreground">No organizations yet</h3>
+            <p className="mt-3 text-sm text-muted-foreground">
+              You can create your first organization from the quick actions on the right.
+            </p>
+          </EmptyOrganizationsState>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+interface WorkspaceActionsSidebarProps {
+  createDialog: WorkspaceHubState['createDialog']
+  organizations: WorkspaceHubState['organizations']
+}
+
+function WorkspaceActionsSidebar({ createDialog, organizations }: WorkspaceActionsSidebarProps) {
+  return (
+    <aside className="space-y-6">
+      <Card data-tutorial="create-new-option">
+        <CardHeader className="space-y-2">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Users className="h-5 w-5" />
+            Create a new organization
+          </CardTitle>
+          <CardDescription>
+            Launch a fresh workspace, invite teammates, and start from a template if you like.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Button className="w-full" size="lg" onClick={createDialog.open}>
+            Create organization
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            We&apos;ll walk you through naming the organization, choosing a division, and inviting your team.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="space-y-2">
+          <CardTitle className="text-lg">Active organization</CardTitle>
+          <CardDescription>
+            We remember where you left off so you can hop back in with one click.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {organizations.activeId ? (
+            <Button
+              className="w-full"
+              variant="secondary"
+              disabled={organizations.isProcessing && organizations.processingId === organizations.activeId}
+              onClick={() => {
+                const activeId = organizations.activeId
+                if (!activeId) return
+                const divisionId = organizations.divisionSelections[activeId] ?? null
+                organizations.openOrganization(activeId, divisionId)
+              }}
+            >
+              Return to last workspace
+            </Button>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Select any organization to set it as your default workspace.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+    </aside>
+  )
+}
+
+interface CreateOrganizationDialogProps {
+  createDialog: WorkspaceHubState['createDialog']
+}
+
+function CreateOrganizationDialog({ createDialog }: CreateOrganizationDialogProps) {
+  return (
+    <Dialog open={createDialog.isOpen} onOpenChange={createDialog.onOpenChange}>
+      <DialogContent className="sm:max-w-3xl p-0">
+        <Card className="max-h-[85vh] overflow-hidden">
+          <CardHeader className="space-y-2">
+            <CardTitle>Create a new organization</CardTitle>
+            <CardDescription>
+              Spin up a fresh workspace, invite teammates, and optionally start from a template.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="max-h-[70vh] overflow-y-auto p-6">
+            <OrgCreationForm onSuccess={createDialog.onSuccess} onError={createDialog.onError} />
+          </CardContent>
+        </Card>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// -------------------------------------------------------------------------------------
+// State helpers
+// -------------------------------------------------------------------------------------
+
+function FullScreenState({ message, variant }: { message: string; variant: 'muted' | 'default' }) {
+  const backgroundClass = variant === 'muted' ? 'bg-muted/30 text-muted-foreground' : 'bg-background text-muted-foreground'
+
+  return (
+    <div className={`flex min-h-screen flex-col items-center justify-center ${backgroundClass}`}>
+      <p>{message}</p>
+    </div>
+  )
+}
+
+function LoadingState() {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background text-muted-foreground">
+      <div className="space-y-4 text-center">
+        <Loader2 className="mx-auto h-8 w-8 animate-spin" />
+        <p>Loading workspace options...</p>
+      </div>
+    </div>
+  )
+}
+
+function ErrorState({ error }: { error: unknown }) {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6">
+      <div className="w-full max-w-md">
+        <Alert variant="destructive">
+          <AlertTitle>Unable to load organizations</AlertTitle>
+          <AlertDescription>
+            {error instanceof Error ? error.message : 'Please try refreshing the page.'}
+          </AlertDescription>
+        </Alert>
+      </div>
+    </div>
+  )
+}
+
+function EmptyOrganizationsState({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-xl border border-dashed border-border/60 bg-muted/10 p-12 text-center">
+      {children}
+    </div>
   )
 }
