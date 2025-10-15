@@ -435,6 +435,7 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
       {/* Submit Button */}
       <Button
         type="button"
+        variant="secondary"
         onClick={handleSubmit(onSubmit)}
         disabled={!isValid || isSubmitting || slugStatus?.is_available === false}
         className="w-full"
