@@ -17,7 +17,7 @@ import {
 import { authStorage } from '@/lib/auth-utils'
 import { ExistingOrgsList } from './components/ExistingOrgsList'
 import { InvitationCard } from './components/InvitationCard'
-import { Loader2, Building2, Users, Mail, ArrowLeft, Sparkles } from 'lucide-react'
+import { Loader2, Building2, Users, Mail, Sparkles } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import {
@@ -421,125 +421,90 @@ function WorkspaceHubContent() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      {/* Header */}
-      <div className="border-b bg-background/80 backdrop-blur-sm">
-        <div className="max-w-4xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => router.push('/welcome')}
-                className="flex items-center space-x-2"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                <span>Back</span>
-              </Button>
-              <div>
-                <h1 className="text-2xl font-bold text-foreground">Workspace Setup</h1>
-                <p className="text-sm text-muted-foreground">
-                  Choose how you want to get started with your team
-                </p>
-              </div>
-            </div>
+    <div className="min-h-screen bg-background">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-10">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">Workspace Hub</h1>
+            <p className="text-sm text-muted-foreground">
+              Review your invitations, jump into an existing organization, or spin up something new.
+            </p>
           </div>
-        </div>
-      </div>
+          {!isCompleted && !isActive && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={start}
+              className="flex w-fit items-center gap-2 border-blue-600/30 text-blue-400 hover:bg-blue-600/10"
+            >
+              <Sparkles className="h-4 w-4" />
+              <span>Start tour</span>
+            </Button>
+          )}
+        </header>
 
-      {/* Main Content */}
-      <div className="max-w-4xl mx-auto flex-1 px-6 py-8">
-        <Card className="border-none shadow-xl bg-card/80 backdrop-blur-sm">
-          <CardHeader className="pb-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-2 text-center sm:text-left">
-                <CardTitle className="text-3xl font-bold text-foreground">Workspace Hub</CardTitle>
-                <CardDescription className="text-lg text-muted-foreground">
-                  Manage invitations, join existing organizations, or create something new.
-                </CardDescription>
-              </div>
-              {!isCompleted && !isActive && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={start}
-                  className="mx-auto flex items-center space-x-2 border-blue-600/30 text-blue-400 hover:bg-blue-600/10 sm:mx-0"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  <span>Start Tour</span>
-                </Button>
-              )}
-            </div>
-          </CardHeader>
-
-          <CardContent className="space-y-10">
+        <main className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+          <section className="space-y-6">
             {pendingInvitations.length > 0 && (
-              <div
-                className="rounded-xl border border-blue-600/40 bg-blue-600/10 p-6 shadow-sm"
-                data-tutorial="accept-invitation-option"
-              >
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <Card data-tutorial="accept-invitation-option" className="border-blue-600/40 bg-blue-600/10">
+                <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex items-start gap-3">
                     <div className="rounded-full bg-blue-600/20 p-2 text-blue-200">
                       <Mail className="h-5 w-5" />
                     </div>
                     <div className="space-y-1">
-                      <h3 className="text-xl font-semibold text-foreground flex items-center gap-2">
+                      <CardTitle className="flex items-center gap-2 text-xl">
                         Pending invitations
-                        <span className="text-xs bg-blue-600/20 text-blue-200 px-2 py-1 rounded-full">
+                        <span className="text-xs bg-blue-600/20 px-2 py-1 font-normal text-blue-200">
                           {pendingInvitations.length} pending
                         </span>
-                      </h3>
-                      <p className="text-sm text-blue-100/80">
-                        You have pending invitations to join existing teams. Accept one to jump straight into a workspace.
-                      </p>
+                      </CardTitle>
+                      <CardDescription className="text-blue-100/80">
+                        Accept an invitation to jump straight into the workspace your teammate picked for you.
+                      </CardDescription>
                     </div>
                   </div>
-                </div>
-                <div className="mt-6 space-y-4">
+                </CardHeader>
+                <CardContent className="space-y-4">
                   {pendingInvitations.map((invitation) => (
                     <InvitationCard
                       key={invitation.id}
                       invitation={invitation}
                       onAccept={handleInvitationAccept}
-                      compact={true}
+                      compact
                     />
                   ))}
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             )}
 
-            {/* Join Organization Content */}
-            <div className="space-y-6" data-tutorial="join-existing-option">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <Card data-tutorial="join-existing-option">
+              <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-2">
-                  <h3 className="text-xl font-semibold">Join an Organization</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Enter the organization ID and the name you would like teammates to see when you join.
-                  </p>
+                  <CardTitle className="text-xl">Join an organization you already belong to</CardTitle>
+                  <CardDescription>
+                    Use the list below to open an organization or join with an invite code if it&apos;s not listed.
+                  </CardDescription>
                 </div>
-                <div className="flex justify-end">
-                  <Button
-                    type="button"
-                    size="lg"
-                    className="flex items-center gap-2"
-                    onClick={() => handleJoinDialogOpenChange(true)}
-                  >
-                    <Building2 className="h-5 w-5" />
-                    Join via ID
-                  </Button>
-                </div>
-              </div>
-              <JoinOrganizationDialog
-                open={isJoinDialogOpen}
-                onOpenChange={handleJoinDialogOpenChange}
-                onSubmit={handleJoinDialogSubmit}
-                register={register}
-                errors={errors}
-              />
+                <Button
+                  type="button"
+                  size="sm"
+                  className="flex items-center gap-2"
+                  onClick={() => handleJoinDialogOpenChange(true)}
+                >
+                  <Building2 className="h-4 w-4" />
+                  Join via ID
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <JoinOrganizationDialog
+                  open={isJoinDialogOpen}
+                  onOpenChange={handleJoinDialogOpenChange}
+                  onSubmit={handleJoinDialogSubmit}
+                  register={register}
+                  errors={errors}
+                />
 
-              <div className="space-y-4">
-                <h4 className="text-lg font-semibold">Your Organizations</h4>
                 {enrichedOrganizations.length > 0 || orgsLoading || isFetchingOverviews ? (
                   <ExistingOrgsList
                     organizations={enrichedOrganizations}
@@ -553,56 +518,84 @@ function WorkspaceHubContent() {
                     processingOrgId={processingOrgId}
                   />
                 ) : (
-                  <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-12 text-center">
+                  <div className="rounded-xl border border-dashed border-border/60 bg-muted/10 p-12 text-center">
                     <Building2 className="mx-auto h-16 w-16 text-muted-foreground/50" />
-                    <h5 className="mt-6 text-lg font-semibold text-foreground">No organizations yet</h5>
+                    <h3 className="mt-6 text-lg font-semibold text-foreground">No organizations yet</h3>
                     <p className="mt-3 text-sm text-muted-foreground">
-                      You can create your first organization using the option below.
+                      You can create your first organization from the quick actions on the right.
                     </p>
                   </div>
                 )}
-              </div>
-            </div>
+              </CardContent>
+            </Card>
+          </section>
 
-            {/* Create Organization Content */}
-            <div className="rounded-xl border border-border/60 bg-card/80 p-6" data-tutorial="create-new-option">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="space-y-2">
-                  <h3 className="text-xl font-semibold flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    Create a new organization
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    Spin up a fresh workspace, invite teammates, and optionally start from a template.
-                  </p>
-                </div>
-                <Button size="lg" onClick={() => setIsCreateDialogOpen(true)}>
+          <aside className="space-y-6">
+            <Card data-tutorial="create-new-option">
+              <CardHeader className="space-y-2">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Users className="h-5 w-5" />
+                  Create a new organization
+                </CardTitle>
+                <CardDescription>
+                  Launch a fresh workspace, invite teammates, and start from a template if you like.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button className="w-full" size="lg" onClick={() => setIsCreateDialogOpen(true)}>
                   Create organization
                 </Button>
-              </div>
-            </div>
+                <p className="text-xs text-muted-foreground">
+                  We&apos;ll walk you through naming the organization, choosing a division, and inviting your team.
+                </p>
+              </CardContent>
+            </Card>
 
-            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-              <DialogContent className="sm:max-w-3xl p-0">
-                <Card className="max-h-[85vh] overflow-hidden">
-                  <CardHeader className="space-y-2">
-                    <CardTitle>Create a new organization</CardTitle>
-                    <CardDescription>
-                      Spin up a fresh workspace, invite teammates, and optionally start from a template.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="max-h-[70vh] overflow-y-auto p-6">
-                    <OrgCreationForm
-                      onSuccess={handleOrgCreationSuccess}
-                      onError={handleOrgCreationError}
-                    />
-                  </CardContent>
-                </Card>
-              </DialogContent>
-            </Dialog>
+            <Card>
+              <CardHeader className="space-y-2">
+                <CardTitle className="text-lg">Active organization</CardTitle>
+                <CardDescription>
+                  We remember where you left off so you can hop back in with one click.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {activeOrgId ? (
+                  <Button
+                    className="w-full"
+                    variant="secondary"
+                    disabled={isProcessing && processingOrgId === activeOrgId}
+                    onClick={() => {
+                      const divisionId = divisionSelections[activeOrgId] ?? null
+                      openOrganization(activeOrgId, divisionId)
+                    }}
+                  >
+                    Return to last workspace
+                  </Button>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Select any organization to set it as your default workspace.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </aside>
+        </main>
 
-          </CardContent>
-        </Card>
+        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+          <DialogContent className="sm:max-w-3xl p-0">
+            <Card className="max-h-[85vh] overflow-hidden">
+              <CardHeader className="space-y-2">
+                <CardTitle>Create a new organization</CardTitle>
+                <CardDescription>
+                  Spin up a fresh workspace, invite teammates, and optionally start from a template.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="max-h-[70vh] overflow-y-auto p-6">
+                <OrgCreationForm onSuccess={handleOrgCreationSuccess} onError={handleOrgCreationError} />
+              </CardContent>
+            </Card>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   )
