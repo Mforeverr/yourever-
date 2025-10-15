@@ -27,6 +27,8 @@ interface ExistingOrgsListProps {
   processingOrgId?: string | null
 }
 
+// This component expects the consuming page to supply real organization data via props;
+// no mock or hardcoded organizations are defined within the list itself.
 export function ExistingOrgsList({
   organizations,
   isLoading = false,
