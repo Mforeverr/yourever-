@@ -133,26 +133,33 @@ interface PendingInvitationsCardProps {
 
 function PendingInvitationsCard({ invitations, onAccept }: PendingInvitationsCardProps) {
   return (
-    <Card data-tutorial="accept-invitation-option" className="border-blue-600/40 bg-blue-600/10">
-      <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-3">
-          <div className="rounded-full bg-blue-600/20 p-2 text-blue-200">
-            <Mail className="h-5 w-5" />
+    <Card
+      data-tutorial="accept-invitation-option"
+      className="relative overflow-hidden border border-blue-500/40 bg-blue-950/30 text-blue-100 backdrop-blur"
+    >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-sky-500"
+      />
+      <CardHeader className="flex flex-col gap-4 p-6 pb-0 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-4">
+          <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 p-3 text-blue-200">
+            <Mail className="h-6 w-6" />
           </div>
-          <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2 text-xl">
-              Pending invitations
-              <span className="text-xs bg-blue-600/20 px-2 py-1 font-normal text-blue-200">
+          <div className="space-y-2">
+            <CardTitle className="flex items-center gap-2 text-2xl font-semibold text-blue-50">
+              Pending workspace invitations
+              <span className="rounded-full border border-blue-400/40 bg-blue-500/20 px-2 py-0.5 text-xs font-normal">
                 {invitations.length} pending
               </span>
             </CardTitle>
-            <CardDescription className="text-blue-100/80">
-              Accept an invitation to jump straight into the workspace your teammate picked for you.
+            <CardDescription className="max-w-xl text-sm text-blue-100/80">
+              Review invitations from teammates. Accept to enter instantly or decline to keep your workspace list tidy.
             </CardDescription>
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 p-6">
         {invitations.map((invitation) => (
           <InvitationCard
             key={invitation.id}

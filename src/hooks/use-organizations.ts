@@ -31,6 +31,8 @@ export interface Division {
 export interface Invitation {
   id: string
   email: string
+  org_id?: string
+  division_id?: string
   org_name?: string
   division_name?: string
   role: string
@@ -192,7 +194,17 @@ export const usePendingInvitations = () => {
     queryFn: async () => {
       const token = await getAccessToken()
       if (!token) throw new Error('Authentication required')
-      return apiRequest<Invitation[]>('GET', '/api/organizations/invitations', token)
+      const response = await apiRequest<Invitation[] | { invitations: Invitation[] }>(
+        'GET',
+        '/api/organizations/invitations',
+        token,
+      )
+
+      if (Array.isArray(response)) {
+        return response
+      }
+
+      return response?.invitations ?? []
     },
     enabled: !!getAccessToken,
     staleTime: 60 * 1000, // 1 minute
@@ -204,10 +216,14 @@ export const useAcceptInvitation = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (token: string) => {
+    mutationFn: async (invitationId: string) => {
       const accessToken = await getAccessToken()
       if (!accessToken) throw new Error('Authentication required')
-      return apiRequest<Organization>('POST', '/api/organizations/join', accessToken, { token })
+      return apiRequest<Organization>(
+        'POST',
+        `/api/organizations/invitations/${invitationId}/accept`,
+        accessToken,
+      )
     },
     onSuccess: (organization) => {
       toast({
@@ -227,6 +243,44 @@ export const useAcceptInvitation = () => {
 
       toast({
         title: 'Error accepting invitation',
+        description: message,
+        variant: 'destructive',
+      })
+    },
+  })
+}
+
+export const useDeclineInvitation = () => {
+  const { getAccessToken } = useCurrentUser()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (invitationId: string) => {
+      const accessToken = await getAccessToken()
+      if (!accessToken) throw new Error('Authentication required')
+      return apiRequest<Invitation>(
+        'POST',
+        `/api/organizations/invitations/${invitationId}/decline`,
+        accessToken,
+      )
+    },
+    onSuccess: (invitation) => {
+      toast({
+        title: 'Invitation declined',
+        description: invitation?.org_name
+          ? `We'll let ${invitation.org_name} know you passed.`
+          : 'The invitation has been declined.',
+      })
+
+      queryClient.invalidateQueries({ queryKey: ['invitations'] })
+    },
+    onError: (error) => {
+      const message = error instanceof ApiError
+        ? error.detail
+        : 'Failed to decline invitation'
+
+      toast({
+        title: 'Error declining invitation',
         description: message,
         variant: 'destructive',
       })

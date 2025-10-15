@@ -3,10 +3,10 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Mail, Clock, Check, X, ExternalLink, AlertTriangle } from 'lucide-react'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Mail, Clock, Check, X, ExternalLink, AlertTriangle, UserPlus } from 'lucide-react'
 import { type Invitation, type Organization } from '@/hooks/use-organizations'
-import { useAcceptInvitation } from '@/hooks/use-organizations'
+import { useAcceptInvitation, useDeclineInvitation } from '@/hooks/use-organizations'
 import { formatDistanceToNow } from 'date-fns'
 import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -15,10 +15,12 @@ interface InvitationCardProps {
   invitation: Invitation
   onAccept?: (invitation: Invitation, organization: Organization) => void
   compact?: boolean
+  onDecline?: (invitation: Invitation) => void
 }
 
-export function InvitationCard({ invitation, onAccept, compact = false }: InvitationCardProps) {
+export function InvitationCard({ invitation, onAccept, onDecline, compact = false }: InvitationCardProps) {
   const acceptInvitationMutation = useAcceptInvitation()
+  const declineInvitationMutation = useDeclineInvitation()
 
   const handleAccept = async () => {
     try {
@@ -29,54 +31,210 @@ export function InvitationCard({ invitation, onAccept, compact = false }: Invita
     }
   }
 
+  const handleDecline = async () => {
+    try {
+      await declineInvitationMutation.mutateAsync(invitation.id)
+      onDecline?.(invitation)
+    } catch (error) {
+      // Error is handled by the mutation hook
+    }
+  }
+
   const isExpired = invitation.expires_at
     ? new Date(invitation.expires_at) < new Date()
     : false
 
   const isPending = invitation.status === 'pending'
-  const isProcessing = acceptInvitationMutation.isPending
+  const isProcessing = acceptInvitationMutation.isPending || declineInvitationMutation.isPending
+  const isDeclining = declineInvitationMutation.isPending
+
+  const normalizedRole = invitation.role?.toLowerCase()
+  const roleLabel =
+    normalizedRole === 'owner'
+      ? 'Owner access'
+      : normalizedRole === 'admin'
+        ? 'Admin access'
+        : normalizedRole === 'member'
+          ? 'Member access'
+          : invitation.role
+
+  const inviterName = invitation.inviter_name || 'A teammate'
+  const organizationName = invitation.org_name || 'this organization'
+  const invitedAgo = formatDistanceToNow(new Date(invitation.created_at), { addSuffix: true })
+  const expiresIn = invitation.expires_at
+    ? formatDistanceToNow(new Date(invitation.expires_at), { addSuffix: true })
+    : null
+
+  const divisionLabel = invitation.division_name ?? 'Any division'
 
   if (compact) {
     return (
-      <Card className={cn(
-        "border-l-4 transition-all",
-        isExpired ? "border-l-orange-500 opacity-75" : "border-l-blue-500"
-      )}>
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-full",
-                isExpired ? "bg-orange-100" : "bg-blue-100"
-              )}>
+      <Card
+        className={cn(
+          'group relative overflow-hidden border border-border/50 bg-muted/40 backdrop-blur transition-all',
+          isExpired
+            ? 'border-orange-500/40 opacity-75'
+            : 'hover:border-primary/50 hover:shadow-lg'
+        )}
+      >
+        <div
+          aria-hidden
+          className={cn(
+            'pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r',
+            isExpired
+              ? 'from-orange-500/80 via-amber-500/80 to-orange-500/80'
+              : 'from-blue-500/70 via-indigo-500/70 to-sky-500/70'
+          )}
+        />
+        <CardContent className="space-y-5 p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div
+                className={cn(
+                  'flex h-12 w-12 items-center justify-center rounded-xl border bg-background/80',
+                  isExpired
+                    ? 'border-orange-500/40 text-orange-300'
+                    : 'border-primary/40 text-primary'
+                )}
+              >
                 {isExpired ? (
-                  <AlertTriangle className="h-4 w-4 text-orange-600" />
+                  <AlertTriangle className="h-6 w-6" />
                 ) : (
-                  <Mail className="h-4 w-4 text-blue-600" />
+                  <UserPlus className="h-6 w-6" />
                 )}
               </div>
               <div className="space-y-1">
-                <p className="text-sm font-medium">
-                  Invitation to {invitation.org_name}
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
+                  {isExpired ? 'Expired invitation' : 'Workspace invitation'}
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  as {invitation.role} • {formatDistanceToNow(new Date(invitation.created_at), { addSuffix: true })}
+                <h3 className="text-lg font-semibold text-foreground">
+                  {invitation.org_name ?? 'Pending workspace'}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {inviterName} is inviting you to "{organizationName}".
                 </p>
               </div>
             </div>
-            {isPending && !isExpired && (
-              <Button
-                size="sm"
-                onClick={handleAccept}
-                disabled={isProcessing}
-              >
-                {isProcessing ? 'Accepting...' : 'Accept'}
-              </Button>
-            )}
-            {isExpired && (
-              <Badge variant="outline" className="text-orange-600">
-                Expired
-              </Badge>
+            <Badge variant="secondary" className="self-start uppercase tracking-wide">
+              {roleLabel}
+            </Badge>
+          </div>
+
+          <div className="grid gap-3 text-sm sm:grid-cols-3">
+            <div className="rounded-lg border border-border/60 bg-background/40 p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Invited by
+              </p>
+              <div className="mt-2 flex items-center gap-2 text-foreground">
+                <Avatar className="h-6 w-6">
+                  <AvatarFallback className="text-xs">
+                    {invitation.inviter_name?.charAt(0) || '?'}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="truncate text-sm">{inviterName}</span>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-border/60 bg-background/40 p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Division
+              </p>
+              <p className="mt-2 flex items-center gap-2 text-sm text-foreground">
+                <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                <span className="truncate">{divisionLabel}</span>
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-border/60 bg-background/40 p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Invitation timeline
+              </p>
+              <div className="mt-2 space-y-1 text-sm">
+                <p className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <span>Sent {invitedAgo}</span>
+                </p>
+                {expiresIn && (
+                  <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Clock className="h-3 w-3" />
+                    <span>{isExpired ? `Expired ${expiresIn}` : `Expires ${expiresIn}`}</span>
+                  </p>
+                )}
+                {!expiresIn && <p className="text-xs text-muted-foreground">No expiration</p>}
+              </div>
+            </div>
+          </div>
+
+          {invitation.message && (
+            <div className="rounded-lg border border-border/60 bg-muted/40 p-3 text-sm italic text-muted-foreground">
+              “{invitation.message}”
+            </div>
+          )}
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Mail className="h-3 w-3" />
+              <span className="truncate">Invitation sent to {invitation.email}</span>
+            </div>
+            {isPending && !isExpired ? (
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-auto"
+                  disabled={isProcessing}
+                  onClick={handleDecline}
+                >
+                  {isDeclining ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Declining…
+                    </>
+                  ) : (
+                    <>
+                      <X className="mr-2 h-4 w-4" />
+                      Decline
+                    </>
+                  )}
+                </Button>
+                <Button
+                  onClick={handleAccept}
+                  disabled={isProcessing}
+                  className="w-full sm:w-auto"
+                >
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Accepting…
+                    </>
+                  ) : (
+                    <>
+                      <Check className="mr-2 h-4 w-4" />
+                      Accept invitation
+                    </>
+                  )}
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                {invitation.status === 'accepted' && (
+                  <>
+                    <Check className="h-4 w-4 text-green-500" />
+                    <span>Already accepted</span>
+                  </>
+                )}
+                {invitation.status === 'declined' && (
+                  <>
+                    <X className="h-4 w-4 text-red-500" />
+                    <span>Declined</span>
+                  </>
+                )}
+                {isExpired && (
+                  <>
+                    <AlertTriangle className="h-4 w-4 text-orange-500" />
+                    <span>This invitation has expired</span>
+                  </>
+                )}
+              </div>
             )}
           </div>
         </CardContent>
@@ -162,13 +320,32 @@ export function InvitationCard({ invitation, onAccept, compact = false }: Invita
 
         {/* Actions */}
         {isPending && !isExpired && (
-          <div className="flex space-x-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isProcessing}
+              onClick={handleDecline}
+              className="sm:w-auto"
+            >
+              {isDeclining ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Declining...
+                </>
+              ) : (
+                <>
+                  <X className="mr-2 h-4 w-4" />
+                  Decline
+                </>
+              )}
+            </Button>
             <Button
               onClick={handleAccept}
               disabled={isProcessing}
-              className="flex-1"
+              className="sm:w-auto"
             >
-              {isProcessing ? (
+              {isProcessing && !isDeclining ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Accepting...
@@ -179,9 +356,6 @@ export function InvitationCard({ invitation, onAccept, compact = false }: Invita
                   Accept Invitation
                 </>
               )}
-            </Button>
-            <Button variant="outline" size="sm">
-              Decline
             </Button>
           </div>
         )}
