@@ -259,7 +259,7 @@ export function TutorialToast({
               height: `${calculatedPosition.spotlight.height}px`,
               borderRadius: calculatedPosition.spotlight.borderRadius,
               background: 'transparent',
-              outline: '3px solid rgba(59, 130, 246, 0.8)',
+              outline: '3px solid rgba(59, 130, 246, 0)',
               outlineOffset: '2px',
               filter: 'drop-shadow(0 0 8px rgba(59, 130, 246, 0.6))',
             }}
