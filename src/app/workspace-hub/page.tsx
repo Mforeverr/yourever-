@@ -1,11 +1,9 @@
 'use client'
 
 import { FormEvent, useEffect, useRef, useState } from 'react'
-import { Controller, useForm } from 'react-hook-form'
+import { useForm } from 'react-hook-form'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Label } from '@/components/ui/label'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { useProtectedRoute } from '@/hooks/use-protected-route'
 import { useCurrentUser } from '@/hooks/use-auth'
@@ -30,14 +28,10 @@ import {
 import { fetchOrganizationOverviews, type OrganizationOverview } from '@/lib/mock-organizations'
 import type { OrganizationCardData } from './components/OrganizationCard'
 import { useToast } from '@/hooks/use-toast'
-import { cn } from '@/lib/utils'
 import { JoinOrganizationDialog } from './components/JoinOrganizationDialog'
 import { OrgCreationForm } from './components/OrgCreationForm'
 
-type Choice = 'join-existing' | 'create-new' | 'accept-invitation'
-
 export interface WorkspaceHubForm {
-  choice: Choice | ''
   organizationName?: string
   divisionName?: string
   template?: string
@@ -58,7 +52,6 @@ function WorkspaceHubContent() {
   const { start, isActive, isCompleted } = useTutorialManager('workspace-hub-intro')
   const { toast } = useToast()
 
-  const [activeTab, setActiveTab] = useState<Choice | ''>('')
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingOrgId, setProcessingOrgId] = useState<string | null>(null)
@@ -73,14 +66,12 @@ function WorkspaceHubContent() {
 
   const form = useForm<WorkspaceHubForm>({
     defaultValues: {
-      choice: '',
       joinOrganizationId: '',
       joinNickname: '',
     },
     mode: 'onChange'
   })
   const {
-    control,
     watch,
     setValue,
     register,
@@ -118,7 +109,7 @@ function WorkspaceHubContent() {
   }, [enrichedOrganizations, selectedOrgId])
 
   useEffect(() => {
-    if (activeTab !== 'join-existing' || !selectedOrgId) {
+    if (!selectedOrgId) {
       return
     }
 
@@ -126,18 +117,7 @@ function WorkspaceHubContent() {
     if (currentValue !== selectedOrgId) {
       setValue('joinOrganizationId', selectedOrgId, { shouldDirty: false, shouldValidate: false })
     }
-  }, [activeTab, selectedOrgId, setValue, watchJoinOrganizationId])
-
-  // Auto-select tab based on available data
-  useEffect(() => {
-    if (pendingInvitations.length > 0 && activeTab !== 'accept-invitation') {
-      setActiveTab('accept-invitation')
-      setValue('choice', 'accept-invitation')
-    } else if (organizations && organizations.length === 0 && activeTab === '') {
-      setActiveTab('create-new')
-      setValue('choice', 'create-new')
-    }
-  }, [organizations, pendingInvitations, activeTab, setActiveTab, setValue])
+  }, [selectedOrgId, setValue, watchJoinOrganizationId])
 
   useEffect(() => {
     if (!organizations) {
@@ -400,14 +380,6 @@ function WorkspaceHubContent() {
     }
   }
 
-  const getOptionClasses = (value: Choice) =>
-    cn(
-      'flex w-full cursor-pointer items-start gap-4 rounded-xl border-2 p-4 shadow-sm transition-all',
-      activeTab && value === activeTab
-        ? 'border-primary/50 bg-primary/10 ring-2 ring-primary/20'
-        : 'border-border/60 bg-card hover:border-primary/30 hover:bg-muted/50'
-    )
-
   if (isProtecting) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-muted/30 text-muted-foreground">
@@ -478,107 +450,67 @@ function WorkspaceHubContent() {
       {/* Main Content */}
       <div className="max-w-4xl mx-auto flex-1 px-6 py-8">
         <Card className="border-none shadow-xl bg-card/80 backdrop-blur-sm">
-          <CardHeader className="text-center pb-6">
-            <CardTitle className="text-3xl font-bold text-foreground">
-              Let's Set Up Your Workspace
-            </CardTitle>
-            <CardDescription className="text-lg text-muted-foreground">
-              Pick the option that works best for you. You can always change this later.
-            </CardDescription>
+          <CardHeader className="pb-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-2 text-center sm:text-left">
+                <CardTitle className="text-3xl font-bold text-foreground">Workspace Hub</CardTitle>
+                <CardDescription className="text-lg text-muted-foreground">
+                  Manage invitations, join existing organizations, or create something new.
+                </CardDescription>
+              </div>
+              {!isCompleted && !isActive && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={start}
+                  className="mx-auto flex items-center space-x-2 border-blue-600/30 text-blue-400 hover:bg-blue-600/10 sm:mx-0"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  <span>Start Tour</span>
+                </Button>
+              )}
+            </div>
           </CardHeader>
 
-          <CardContent className="space-y-8">
-            {/* Choice Radio Buttons */}
-            <div className="space-y-4" data-tutorial="choice-options">
-              <div className="flex items-center justify-between">
-                <Label className="text-lg font-medium text-foreground">How would you like to get started?</Label>
-                {!isCompleted && !isActive && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={start}
-                    className="flex items-center space-x-2 border-blue-600/30 text-blue-400 hover:bg-blue-600/10"
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    <span>Start Tour</span>
-                  </Button>
-                )}
-              </div>
-              <div className="space-y-3">
-                {pendingInvitations.length > 0 && (
-                  <div className="space-y-4">
-                    <div
-                      className="flex w-full cursor-pointer items-start gap-4 rounded-xl border-2 border-blue-600/30 bg-blue-600/10 p-4 shadow-sm transition-all hover:border-blue-600/50 hover:bg-blue-600/20"
-                      data-tutorial="accept-invitation-option"
-                    >
-                      <div className="flex-1 space-y-2">
-                        <p className="font-medium text-foreground flex items-center gap-2">
-                          <Mail className="h-5 w-5 text-blue-400" />
-                          Accept invitation
-                          {pendingInvitations.length > 0 && (
-                            <span className="text-xs bg-blue-600/20 text-blue-200 px-2 py-1 rounded-full">
-                              {pendingInvitations.length} pending
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          You have pending invitations to join existing teams.
-                        </p>
-                      </div>
+          <CardContent className="space-y-10">
+            {pendingInvitations.length > 0 && (
+              <div
+                className="rounded-xl border border-blue-600/40 bg-blue-600/10 p-6 shadow-sm"
+                data-tutorial="accept-invitation-option"
+              >
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-full bg-blue-600/20 p-2 text-blue-200">
+                      <Mail className="h-5 w-5" />
                     </div>
-
-                    <div className="space-y-4">
-                      <h3 className="text-xl font-semibold">Pending Invitations</h3>
-                      <div className="space-y-4">
-                        {pendingInvitations.map((invitation) => (
-                          <InvitationCard
-                            key={invitation.id}
-                            invitation={invitation}
-                            onAccept={handleInvitationAccept}
-                            compact={true}
-                          />
-                        ))}
-                      </div>
+                    <div className="space-y-1">
+                      <h3 className="text-xl font-semibold text-foreground flex items-center gap-2">
+                        Pending invitations
+                        <span className="text-xs bg-blue-600/20 text-blue-200 px-2 py-1 rounded-full">
+                          {pendingInvitations.length} pending
+                        </span>
+                      </h3>
+                      <p className="text-sm text-blue-100/80">
+                        You have pending invitations to join existing teams. Accept one to jump straight into a workspace.
+                      </p>
                     </div>
                   </div>
-                )}
-
-                <div
-                  className="flex w-full cursor-pointer items-start gap-4 rounded-xl border-2 border-border/60 bg-card p-4 shadow-sm transition-all hover:border-primary/30 hover:bg-muted/50"
-                  data-tutorial="join-existing-option"
-                  onClick={() => handleJoinDialogOpenChange(true)}
-                >
-                  <div className="flex-1 space-y-2">
-                    <p className="font-medium text-foreground flex items-center gap-2">
-                      <Building2 className="h-5 w-5" />
-                      Join existing organization
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      We'll take you to the organization list so you can start collaborating right away.
-                    </p>
-                  </div>
                 </div>
-
-                <div
-                  className="flex w-full cursor-pointer items-start gap-4 rounded-xl border-2 border-border/60 bg-card p-4 shadow-sm transition-all hover:border-primary/30 hover:bg-muted/50"
-                  data-tutorial="create-new-option"
-                  onClick={() => setIsCreateDialogOpen(true)}
-                >
-                  <div className="flex-1 space-y-2">
-                    <p className="font-medium text-foreground flex items-center gap-2">
-                      <Users className="h-5 w-5" />
-                      Create new organization
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Spin up a fresh workspace, invite teammates, and optionally start from a template.
-                    </p>
-                  </div>
+                <div className="mt-6 space-y-4">
+                  {pendingInvitations.map((invitation) => (
+                    <InvitationCard
+                      key={invitation.id}
+                      invitation={invitation}
+                      onAccept={handleInvitationAccept}
+                      compact={true}
+                    />
+                  ))}
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Join Organization Content */}
-            <div className="space-y-6">
+            <div className="space-y-6" data-tutorial="join-existing-option">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-2">
                   <h3 className="text-xl font-semibold">Join an Organization</h3>
@@ -633,26 +565,41 @@ function WorkspaceHubContent() {
             </div>
 
             {/* Create Organization Content */}
-            <div className="space-y-4">
-              <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                <DialogContent className="sm:max-w-3xl p-0">
-                  <Card className="max-h-[85vh] overflow-hidden">
-                    <CardHeader className="space-y-2">
-                      <CardTitle>Create a new organization</CardTitle>
-                      <CardDescription>
-                        Spin up a fresh workspace, invite teammates, and optionally start from a template.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="max-h-[70vh] overflow-y-auto p-6">
-                      <OrgCreationForm
-                        onSuccess={handleOrgCreationSuccess}
-                        onError={handleOrgCreationError}
-                      />
-                    </CardContent>
-                  </Card>
-                </DialogContent>
-              </Dialog>
+            <div className="rounded-xl border border-border/60 bg-card/80 p-6" data-tutorial="create-new-option">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-2">
+                  <h3 className="text-xl font-semibold flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    Create a new organization
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    Spin up a fresh workspace, invite teammates, and optionally start from a template.
+                  </p>
+                </div>
+                <Button size="lg" onClick={() => setIsCreateDialogOpen(true)}>
+                  Create organization
+                </Button>
+              </div>
             </div>
+
+            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+              <DialogContent className="sm:max-w-3xl p-0">
+                <Card className="max-h-[85vh] overflow-hidden">
+                  <CardHeader className="space-y-2">
+                    <CardTitle>Create a new organization</CardTitle>
+                    <CardDescription>
+                      Spin up a fresh workspace, invite teammates, and optionally start from a template.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="max-h-[70vh] overflow-y-auto p-6">
+                    <OrgCreationForm
+                      onSuccess={handleOrgCreationSuccess}
+                      onError={handleOrgCreationError}
+                    />
+                  </CardContent>
+                </Card>
+              </DialogContent>
+            </Dialog>
 
           </CardContent>
         </Card>
