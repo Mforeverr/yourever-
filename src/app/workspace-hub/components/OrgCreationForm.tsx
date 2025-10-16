@@ -17,10 +17,14 @@ import {
   type SlugAvailability,
 } from '@/hooks/use-organizations'
 import { cn } from '@/lib/utils'
+import { MAX_SLUG_LENGTH, normalizeSlug } from '@/lib/slug'
 
 const orgCreationSchema = z.object({
   name: z.string().min(1, 'Organization name is required').max(100, 'Name too long'),
-  slug: z.string().optional(),
+  slug: z
+    .string()
+    .max(MAX_SLUG_LENGTH, `Slug must be ${MAX_SLUG_LENGTH} characters or fewer`)
+    .optional(),
   description: z.string().optional(),
   division_name: z.string().min(1, 'Division name is required').max(100, 'Name too long'),
   division_key: z.string().optional(),
@@ -41,6 +45,7 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
   const [inviteError, setInviteError] = useState<string | null>(null)
   const emailSchema = z.string().trim().email('Enter a valid email address')
   const slugCheckInFlightRef = useRef<string | null>(null)
+  const slugCheckDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const parseEmail = (value: string) => {
     const trimmed = value.trim()
@@ -137,64 +142,87 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
     formState: { errors, isValid, isSubmitting },
   } = form
 
+  const slugField = form.register('slug', {
+    setValueAs: (value) => normalizeSlug(typeof value === 'string' ? value : ''),
+  })
+
   const watchedName = watch('name')
   const watchedSlug = watch('slug')
 
   const createOrgMutation = useCreateOrganization()
-  const checkSlugMutation = useCheckSlugAvailability()
+  const { mutate: triggerSlugCheck } = useCheckSlugAvailability()
   // Auto-generate slug from name
   useEffect(() => {
-    if (watchedName && !watchedSlug) {
-      const generatedSlug = watchedName
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .trim('-')
-      setValue('slug', generatedSlug)
+    if (!watchedName || watchedSlug) {
+      return
     }
+
+    const generatedSlug = normalizeSlug(watchedName)
+    setValue('slug', generatedSlug, { shouldValidate: true })
   }, [watchedName, watchedSlug, setValue])
 
   // Check slug availability
   useEffect(() => {
-    if (watchedSlug && watchedSlug.length >= 2) {
+    if (slugCheckDebounceRef.current) {
+      clearTimeout(slugCheckDebounceRef.current)
+      slugCheckDebounceRef.current = null
+    }
+
+    const normalizedSlug = watchedSlug?.trim() ?? ''
+
+    if (normalizedSlug.length < 2) {
       setSlugStatus(null)
-      slugCheckInFlightRef.current = watchedSlug
+      slugCheckInFlightRef.current = null
+      setIsCheckingSlug(false)
+      return
+    }
+
+    if (slugCheckInFlightRef.current === normalizedSlug) {
+      return
+    }
+
+    slugCheckDebounceRef.current = setTimeout(() => {
+      slugCheckInFlightRef.current = normalizedSlug
       setIsCheckingSlug(true)
-      checkSlugMutation.mutate(watchedSlug, {
+      setSlugStatus(null)
+
+      triggerSlugCheck(normalizedSlug, {
         onSuccess: (result) => {
-          if (slugCheckInFlightRef.current !== watchedSlug) {
+          if (slugCheckInFlightRef.current !== normalizedSlug) {
             return
           }
 
           const currentValue = getValues('slug')
-          if (currentValue !== watchedSlug) {
+          if (currentValue !== normalizedSlug) {
             return
           }
 
           setSlugStatus(result)
-          if (result.slug && result.slug !== watchedSlug) {
+          if (result.slug && result.slug !== normalizedSlug) {
             setValue('slug', result.slug)
           }
         },
         onError: () => {
-          if (slugCheckInFlightRef.current === watchedSlug) {
+          if (slugCheckInFlightRef.current === normalizedSlug) {
             setSlugStatus(null)
           }
         },
         onSettled: () => {
-          if (slugCheckInFlightRef.current === watchedSlug) {
+          if (slugCheckInFlightRef.current === normalizedSlug) {
             slugCheckInFlightRef.current = null
             setIsCheckingSlug(false)
           }
         },
       })
-    } else {
-      setSlugStatus(null)
-      slugCheckInFlightRef.current = null
-      setIsCheckingSlug(false)
+    }, 400)
+
+    return () => {
+      if (slugCheckDebounceRef.current) {
+        clearTimeout(slugCheckDebounceRef.current)
+        slugCheckDebounceRef.current = null
+      }
     }
-  }, [watchedSlug, setValue, getValues])
+  }, [watchedSlug, triggerSlugCheck, getValues, setValue])
 
   const onSubmit = async (data: OrgCreationFormData) => {
     const normalizedInvites = [...invitees]
@@ -241,7 +269,7 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
   }
 
   const handleSlugSuggestionClick = (suggestion: string) => {
-    setValue('slug', suggestion)
+    setValue('slug', suggestion, { shouldDirty: true, shouldValidate: true })
   }
 
   const slugIsAvailable = slugStatus?.isAvailable
@@ -270,7 +298,7 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
             <Input
               id="org-slug"
               placeholder="acme-corp"
-              {...form.register('slug')}
+              {...slugField}
               disabled={isSubmitting}
               className={cn(
                 slugIsAvailable === false && 'border-destructive',

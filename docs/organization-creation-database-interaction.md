@@ -3,17 +3,18 @@
 ## Problem Analysis
 
 ### Issue Identified
-The organization creation form is experiencing an **infinite loop** that causes spamming of the backend API endpoint `/api/organizations/slug/availability?slug=saa`. This is due to a React `useEffect` dependency array issue in `OrgCreationForm.tsx:197`.
+Manual testing revealed that the organization creation form continually re-issued slug availability requests (`GET /api/organizations/slug/availability`) while the user waited for workspace creation to finish. The backend log spam coincided with the form staying in a loading state.
 
 ### Root Cause
-The `useEffect` hook for slug checking includes `checkSlugMutation` in its dependency array:
+The previous implementation kicked off a new availability check on **every render** where the slug remained at least two characters long. Because the effect immediately cleared state and re-triggered without any debouncing or in-flight guard, each render spawned another request—even when the slug value had not changed. Over time the mutation queue snowballed, overwhelming the backend and delaying the actual creation request.
 
-```typescript
-// Line 197 in OrgCreationForm.tsx - PROBLEMATIC DEPENDENCY
-}, [watchedSlug, checkSlugMutation, setValue, getValues])
-```
+### Resolution
+The form now keeps two pieces of stateful bookkeeping:
 
-Since `checkSlugMutation` is a TanStack Query mutation object that changes on every render, this causes the effect to re-run infinitely, triggering endless API calls.
+1. `slugCheckDebounceRef` stores a timeout handle so we can wait 400 ms after the last keystroke before calling the API.
+2. `slugCheckInFlightRef` remembers the slug currently being checked, preventing duplicate requests for the same value until the previous one settles.
+
+Together these guards ensure that each slug is checked at most once every debounce window, eliminating the log spam while keeping feedback responsive.【F:src/app/workspace-hub/components/OrgCreationForm.tsx†L43-L72】【F:src/app/workspace-hub/components/OrgCreationForm.tsx†L116-L159】
 
 ## Database Schema and Interaction
 
@@ -246,20 +247,12 @@ interface Division {
 ## Error Analysis
 
 ### Current Error
-1. **Infinite Loop**: React useEffect re-triggers slug check infinitely
-2. **API Spam**: Backend receives hundreds of slug availability requests
-3. **Form Failure**: Organization creation fails due to resource exhaustion
+1. **Unbounded polling**: Every render scheduled a fresh availability request without regard for the slug value already in flight.
+2. **API Spam**: The backend received hundreds of identical requests per minute during a single creation attempt.
+3. **Form Failure**: The mutation queue starved the actual `POST /api/organizations` call, leaving the UI in a perpetual loading state.
 
-### Required Fix
-Remove `checkSlugMutation` from the useEffect dependency array in `OrgCreationForm.tsx:197`.
-
-```typescript
-// BEFORE (Problematic):
-}, [watchedSlug, checkSlugMutation, setValue, getValues])
-
-// AFTER (Fixed):
-}, [watchedSlug, setValue, getValues])
-```
+### Implemented Fix
+The new debounce + in-flight tracking logic limits requests to one per slug per debounce window, and tears down any pending timer when the component re-renders. This keeps the UX responsive while protecting the backend from accidental floods.【F:src/app/workspace-hub/components/OrgCreationForm.tsx†L43-L72】【F:src/app/workspace-hub/components/OrgCreationForm.tsx†L116-L159】
 
 ## Transaction Safety
 
