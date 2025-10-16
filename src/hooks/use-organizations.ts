@@ -76,7 +76,7 @@ export interface OrganizationCreateData {
 
 export interface SlugAvailability {
   slug: string
-  isAvailable: boolean
+  is_available: boolean
   suggestions: string[]
 }
 

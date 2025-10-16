@@ -244,6 +244,8 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
     setValue('slug', suggestion)
   }
 
+  const slugIsAvailable = slugStatus?.is_available
+
   return (
     <div className="space-y-6">
       {/* Basic Organization Info */}
@@ -271,22 +273,22 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
               {...form.register('slug')}
               disabled={isSubmitting}
               className={cn(
-                slugStatus?.isAvailable === false && 'border-destructive',
-                slugStatus?.isAvailable === true && 'border-green-600'
+                slugIsAvailable === false && 'border-destructive',
+                slugIsAvailable === true && 'border-green-600'
               )}
             />
             {isCheckingSlug && <Loader2 className="h-4 w-4 animate-spin" />}
-            {slugStatus?.isAvailable === true && (
+            {slugIsAvailable === true && (
               <Check className="h-4 w-4 text-green-600" />
             )}
-            {slugStatus?.isAvailable === false && (
+            {slugIsAvailable === false && (
               <X className="h-4 w-4 text-destructive" />
             )}
           </div>
           {errors.slug && (
             <p className="text-xs text-destructive">{errors.slug.message}</p>
           )}
-          {slugStatus?.isAvailable === false && slugStatus.suggestions.length > 0 && (
+          {slugIsAvailable === false && slugStatus.suggestions.length > 0 && (
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">This URL is taken. Try:</p>
               <div className="flex flex-wrap gap-2">
@@ -401,7 +403,7 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
         type="button"
         variant="secondary"
         onClick={handleSubmit(onSubmit)}
-        disabled={!isValid || isSubmitting || slugStatus?.isAvailable === false}
+        disabled={!isValid || isSubmitting || slugIsAvailable === false}
         className="w-full"
       >
         {isSubmitting ? (
