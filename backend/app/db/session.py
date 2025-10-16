@@ -78,8 +78,13 @@ async def get_db_session() -> AsyncIterator[AsyncSession]:
 
 async def db_session_dependency() -> AsyncIterator[AsyncSession]:
     """
-    FastAPI dependency wrapper for consumers that prefer `Depends`.
-    """
+    FastAPI dependency wrapper that provides a clean session for manual transaction management.
 
-    async with get_db_session() as session:
+    The repository methods manage their own transactions with begin(), commit(), and rollback().
+    """
+    session_factory = get_session_factory()
+    session = session_factory()
+    try:
         yield session
+    finally:
+        await session.close()
