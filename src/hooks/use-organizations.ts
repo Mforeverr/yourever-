@@ -65,31 +65,18 @@ export interface InvitationBatchCreateResponse {
   skipped: string[]
 }
 
-export interface Template {
-  id: string
-  name: string
-  description?: string
-  category?: string
-  tools: Record<string, any>
-  functions: Record<string, any>
-  intents: Record<string, any>
-  is_active: boolean
-  created_at: string
-}
-
 export interface OrganizationCreateData {
   name: string
   slug?: string
   description?: string
   division_name: string
   division_key?: string
-  template_id?: string
   invitations?: InvitationDraft[]
 }
 
 export interface SlugAvailability {
   slug: string
-  is_available: boolean
+  isAvailable: boolean
   suggestions: string[]
 }
 
@@ -180,9 +167,19 @@ export const useCreateOrganization = () => {
         }))
 
       const payload = {
-        ...data,
+        name: data.name.trim(),
+        slug: data.slug?.trim() || undefined,
+        description: data.description?.trim() || undefined,
+        divisionName: data.division_name.trim(),
+        divisionKey: data.division_key?.trim() || undefined,
         invitations: normalizedInvitations && normalizedInvitations.length > 0
-          ? normalizedInvitations
+          ? normalizedInvitations.map((invitation) => ({
+              email: invitation.email,
+              role: invitation.role,
+              divisionId: invitation.division_id,
+              message: invitation.message,
+              expiresAt: invitation.expires_at,
+            }))
           : undefined,
       }
 
@@ -398,20 +395,5 @@ export const useSendInvitations = () => {
         variant: 'destructive',
       })
     },
-  })
-}
-
-export const useAvailableTemplates = () => {
-  const { getAccessToken } = useCurrentUser()
-
-  return useQuery({
-    queryKey: ['templates'],
-    queryFn: async () => {
-      const token = await getAccessToken()
-      if (!token) throw new Error('Authentication required')
-      return apiRequest<Template[]>('GET', '/api/organizations/templates', token)
-    },
-    enabled: !!getAccessToken,
-    staleTime: 10 * 60 * 1000, // 10 minutes
   })
 }

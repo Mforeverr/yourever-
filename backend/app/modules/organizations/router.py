@@ -1,6 +1,6 @@
 """Organizations REST endpoints."""
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 
 from ...dependencies import CurrentPrincipal, require_current_principal
 from .di import get_organization_invitation_service, get_organization_service
@@ -12,6 +12,7 @@ from .schemas import (
     OrganizationCreate,
     OrganizationResponse,
     OrganizationSummary,
+    SlugAvailability,
     WorkspaceCreationResponse,
 )
 from .service import OrganizationInvitationService, OrganizationService
@@ -24,6 +25,12 @@ router = APIRouter(prefix="/api/organizations", tags=["organizations"])
     response_model=WorkspaceCreationResponse,
     status_code=status.HTTP_201_CREATED,
 )
+@router.post(
+    "/",
+    response_model=WorkspaceCreationResponse,
+    status_code=status.HTTP_201_CREATED,
+    include_in_schema=False,
+)
 async def create_organization(
     payload: OrganizationCreate,
     principal: CurrentPrincipal = Depends(require_current_principal),
@@ -32,6 +39,20 @@ async def create_organization(
     """Create a new organization and optionally send invitations."""
 
     return await service.create(principal, payload)
+
+
+@router.get(
+    "/slug/availability",
+    response_model=SlugAvailability,
+)
+async def check_slug_availability(
+    slug: str = Query(..., min_length=1, max_length=100),
+    _principal: CurrentPrincipal = Depends(require_current_principal),
+    service: OrganizationService = Depends(get_organization_service),
+) -> SlugAvailability:
+    """Check whether a slug can be used and return alternatives if needed."""
+
+    return await service.check_slug_availability(slug)
 
 
 @router.get("", response_model=list[OrganizationSummary])

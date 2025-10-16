@@ -255,7 +255,7 @@ function WorkspaceActionsSidebar({ createDialog, organizations }: WorkspaceActio
             Create a new organization
           </CardTitle>
           <CardDescription>
-            Launch a fresh workspace, invite teammates, and start from a template if you like.
+            Launch a fresh workspace and invite teammates in just a few steps.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -317,7 +317,7 @@ function CreateOrganizationDialog({ createDialog }: CreateOrganizationDialogProp
           <CardHeader className="space-y-2">
             <CardTitle>Create a new organization</CardTitle>
             <CardDescription>
-              Spin up a fresh workspace, invite teammates, and optionally start from a template.
+              Spin up a fresh workspace and invite teammates without leaving this page.
             </CardDescription>
           </CardHeader>
           <CardContent className="max-h-[70vh] overflow-y-auto p-6">

@@ -1,18 +1,21 @@
 'use client'
 
-import { useState, useEffect, type ChangeEvent, type KeyboardEvent } from 'react'
+import { useState, useEffect, useRef, type ChangeEvent, type KeyboardEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, Check, X } from 'lucide-react'
-import { useCreateOrganization, useCheckSlugAvailability } from '@/hooks/use-organizations'
-import { useAvailableTemplates, type Template, type WorkspaceCreationResult } from '@/hooks/use-organizations'
+import {
+  useCreateOrganization,
+  useCheckSlugAvailability,
+  type WorkspaceCreationResult,
+  type SlugAvailability,
+} from '@/hooks/use-organizations'
 import { cn } from '@/lib/utils'
 
 const orgCreationSchema = z.object({
@@ -21,7 +24,6 @@ const orgCreationSchema = z.object({
   description: z.string().optional(),
   division_name: z.string().min(1, 'Division name is required').max(100, 'Name too long'),
   division_key: z.string().optional(),
-  template_id: z.string().optional(),
 })
 
 type OrgCreationFormData = z.infer<typeof orgCreationSchema>
@@ -32,16 +34,13 @@ interface OrgCreationFormProps {
 }
 
 export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
-  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
   const [isCheckingSlug, setIsCheckingSlug] = useState(false)
-  const [slugStatus, setSlugStatus] = useState<{
-    is_available: boolean
-    suggestions: string[]
-  } | null>(null)
+  const [slugStatus, setSlugStatus] = useState<SlugAvailability | null>(null)
   const [invitees, setInvitees] = useState<string[]>([])
   const [inviteInput, setInviteInput] = useState('')
   const [inviteError, setInviteError] = useState<string | null>(null)
   const emailSchema = z.string().trim().email('Enter a valid email address')
+  const slugCheckInFlightRef = useRef<string | null>(null)
 
   const parseEmail = (value: string) => {
     const trimmed = value.trim()
@@ -126,7 +125,6 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
       description: '',
       division_name: '',
       division_key: '',
-      template_id: '',
     },
   })
 
@@ -134,6 +132,8 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
     handleSubmit,
     watch,
     setValue,
+    reset,
+    getValues,
     formState: { errors, isValid, isSubmitting },
   } = form
 
@@ -142,8 +142,6 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
 
   const createOrgMutation = useCreateOrganization()
   const checkSlugMutation = useCheckSlugAvailability()
-  const { data: templates, isLoading: templatesLoading } = useAvailableTemplates()
-
   // Auto-generate slug from name
   useEffect(() => {
     if (watchedName && !watchedSlug) {
@@ -160,25 +158,43 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
   // Check slug availability
   useEffect(() => {
     if (watchedSlug && watchedSlug.length >= 2) {
+      setSlugStatus(null)
+      slugCheckInFlightRef.current = watchedSlug
       setIsCheckingSlug(true)
       checkSlugMutation.mutate(watchedSlug, {
         onSuccess: (result) => {
-          setSlugStatus({
-            is_available: result.is_available,
-            suggestions: result.suggestions,
-          })
+          if (slugCheckInFlightRef.current !== watchedSlug) {
+            return
+          }
+
+          const currentValue = getValues('slug')
+          if (currentValue !== watchedSlug) {
+            return
+          }
+
+          setSlugStatus(result)
+          if (result.slug && result.slug !== watchedSlug) {
+            setValue('slug', result.slug)
+          }
         },
         onError: () => {
-          setSlugStatus(null)
+          if (slugCheckInFlightRef.current === watchedSlug) {
+            setSlugStatus(null)
+          }
         },
         onSettled: () => {
-          setIsCheckingSlug(false)
+          if (slugCheckInFlightRef.current === watchedSlug) {
+            slugCheckInFlightRef.current = null
+            setIsCheckingSlug(false)
+          }
         },
       })
     } else {
       setSlugStatus(null)
+      slugCheckInFlightRef.current = null
+      setIsCheckingSlug(false)
     }
-  }, [watchedSlug, checkSlugMutation])
+  }, [watchedSlug, checkSlugMutation, setValue, getValues])
 
   const onSubmit = async (data: OrgCreationFormData) => {
     const normalizedInvites = [...invitees]
@@ -207,7 +223,6 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
     try {
       const result = await createOrgMutation.mutateAsync({
         ...data,
-        template_id: selectedTemplate || undefined,
         invitations:
           normalizedInvites.length > 0
             ? normalizedInvites.map((email) => ({ email }))
@@ -217,6 +232,8 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
       setInvitees([])
       setInviteInput('')
       setInviteError(null)
+      reset()
+      setSlugStatus(null)
       onSuccess?.(result)
     } catch (error) {
       onError?.(error)
@@ -254,22 +271,22 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
               {...form.register('slug')}
               disabled={isSubmitting}
               className={cn(
-                slugStatus?.is_available === false && 'border-destructive',
-                slugStatus?.is_available === true && 'border-green-600'
+                slugStatus?.isAvailable === false && 'border-destructive',
+                slugStatus?.isAvailable === true && 'border-green-600'
               )}
             />
             {isCheckingSlug && <Loader2 className="h-4 w-4 animate-spin" />}
-            {slugStatus?.is_available === true && (
+            {slugStatus?.isAvailable === true && (
               <Check className="h-4 w-4 text-green-600" />
             )}
-            {slugStatus?.is_available === false && (
+            {slugStatus?.isAvailable === false && (
               <X className="h-4 w-4 text-destructive" />
             )}
           </div>
           {errors.slug && (
             <p className="text-xs text-destructive">{errors.slug.message}</p>
           )}
-          {slugStatus?.is_available === false && slugStatus.suggestions.length > 0 && (
+          {slugStatus?.isAvailable === false && slugStatus.suggestions.length > 0 && (
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">This URL is taken. Try:</p>
               <div className="flex flex-wrap gap-2">
@@ -368,59 +385,6 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
         {inviteError && <p className="text-xs text-destructive">{inviteError}</p>}
       </div>
 
-      {/* Template Selection */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-medium">Choose a template (optional)</h3>
-        {templatesLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin" />
-          </div>
-        ) : templates && templates.length > 0 ? (
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {/* No Template Option */}
-            <Card
-              className={cn(
-                "cursor-pointer transition-all hover:border-primary/70",
-                selectedTemplate === null
-                  ? "border-primary/70 bg-primary/5"
-                  : "border-border/60"
-              )}
-              onClick={() => setSelectedTemplate(null)}
-            >
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm">Start Fresh</CardTitle>
-                <CardDescription className="text-xs">
-                  Set up your workspace from scratch
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            {/* Template Options */}
-            {templates.map((template) => (
-              <Card
-                key={template.id}
-                className={cn(
-                  "cursor-pointer transition-all hover:border-primary/70",
-                  selectedTemplate === template.id
-                    ? "border-primary/70 bg-primary/5"
-                    : "border-border/60"
-                )}
-                onClick={() => setSelectedTemplate(template.id)}
-              >
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm">{template.name}</CardTitle>
-                  <CardDescription className="text-xs line-clamp-2">
-                    {template.description}
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">No templates available</p>
-        )}
-      </div>
-
       {/* Error Display */}
       {createOrgMutation.error && (
         <Alert variant="destructive">
@@ -437,7 +401,7 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
         type="button"
         variant="secondary"
         onClick={handleSubmit(onSubmit)}
-        disabled={!isValid || isSubmitting || slugStatus?.is_available === false}
+        disabled={!isValid || isSubmitting || slugStatus?.isAvailable === false}
         className="w-full"
       >
         {isSubmitting ? (
