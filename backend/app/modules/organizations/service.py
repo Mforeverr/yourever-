@@ -12,7 +12,11 @@ from ...dependencies import CurrentPrincipal
 from ..users.schemas import WorkspaceDivision, WorkspaceOrganization
 from ..users.service import UserService
 from .mock_data import build_fallback_organizations
-from .repository import OrganizationRepository
+from .repository import (
+    OrganizationRepository,
+    SlugConflictError,
+    SlugValidationError,
+)
 from .schemas import (
     InvitationBatchCreateRequest,
     InvitationBatchCreateResponse,
@@ -62,7 +66,12 @@ class OrganizationService:
                 user_id=user.id,
                 create_data=payload,
             )
-        except ValueError as error:
+        except SlugValidationError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(error),
+            ) from error
+        except SlugConflictError as error:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=str(error),

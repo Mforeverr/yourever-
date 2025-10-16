@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 import uuid
 
 from sqlalchemy import bindparam, text
@@ -25,6 +25,21 @@ from .schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class SlugError(ValueError):
+    """Base error for slug validation issues."""
+
+
+class SlugValidationError(SlugError):
+    """Raised when a slug fails validation rules."""
+
+
+class SlugConflictError(SlugError):
+    """Raised when attempting to use a slug that already exists."""
+
+
+MAX_SLUG_LENGTH = 63
 
 
 class OrganizationRepository:
@@ -69,6 +84,9 @@ class OrganizationRepository:
         slug = re.sub(r'-+', '-', slug)
         # Remove leading/trailing hyphens
         slug = slug.strip('-')
+        if len(slug) > MAX_SLUG_LENGTH:
+            slug = slug[:MAX_SLUG_LENGTH]
+            slug = slug.strip('-')
         return slug
 
     async def check_slug_availability(self, slug: str) -> bool:
@@ -88,13 +106,27 @@ class OrganizationRepository:
         """Generate a unique slug from base name."""
         base_slug = self.generate_slug(base_name)
 
+        if not base_slug:
+            raise SlugValidationError(
+                "Slug must include at least one alphanumeric character.",
+            )
+
         if await self.check_slug_availability(base_slug):
             return base_slug
 
         # Add numeric suffix if slug is taken
         counter = 1
         while True:
-            candidate_slug = f"{base_slug}-{counter}"
+            suffix = f"-{counter}"
+            trimmed_base = base_slug
+            if len(trimmed_base) + len(suffix) > MAX_SLUG_LENGTH:
+                trimmed_base = trimmed_base[: MAX_SLUG_LENGTH - len(suffix)]
+                trimmed_base = trimmed_base.rstrip('-')
+            if not trimmed_base:
+                raise SlugValidationError(
+                    "Unable to generate unique slug from the provided name.",
+                )
+            candidate_slug = f"{trimmed_base}{suffix}"
             if await self.check_slug_availability(candidate_slug):
                 return candidate_slug
             counter += 1
@@ -200,14 +232,22 @@ class OrganizationRepository:
 
         # Generate or validate slug
         if create_data.slug:
-            slug = create_data.slug.lower()
+            slug = self.generate_slug(create_data.slug)
+            if not slug:
+                raise SlugValidationError(
+                    "Slug must include at least one alphanumeric character.",
+                )
             if not await self.check_slug_availability(slug):
-                raise ValueError(f"Slug '{slug}' is already taken")
+                raise SlugConflictError(f"Slug '{slug}' is already taken")
         else:
             slug = await self.generate_unique_slug(create_data.name)
 
         # Generate division key
         division_key = create_data.division_key or self.generate_slug(create_data.division_name)
+        if not division_key:
+            raise SlugValidationError(
+                "Division key must include at least one alphanumeric character.",
+            )
 
         try:
             # Start transaction
