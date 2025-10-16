@@ -25,7 +25,6 @@ import type { OrganizationCardData } from '../components/OrganizationCard'
 export interface WorkspaceHubForm {
   organizationName?: string
   divisionName?: string
-  template?: string
   joinOrganizationId: string
   joinNickname: string
 }

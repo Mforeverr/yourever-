@@ -23,6 +23,7 @@ from .schemas import (
     OrganizationDivision,
     OrganizationResponse,
     OrganizationSummary,
+    SlugAvailability,
     WorkspaceCreationResponse,
 )
 
@@ -111,6 +112,28 @@ class OrganizationService:
             template_applied=payload.template_id,
             active_invitations=invitations_response.invitations,
             skipped_invites=invitations_response.skipped,
+        )
+
+    async def check_slug_availability(self, slug: str) -> SlugAvailability:
+        """Return slug availability and suggestions for conflicts."""
+
+        normalized = self._repository.generate_slug(slug)
+        if not normalized:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Slug must include at least one alphanumeric character.",
+            )
+
+        is_available = await self._repository.check_slug_availability(normalized)
+        suggestions: list[str] = []
+
+        if not is_available:
+            suggestions = await self._repository.suggest_slug_variants(normalized)
+
+        return SlugAvailability(
+            slug=normalized,
+            is_available=is_available,
+            suggestions=suggestions,
         )
 
     async def list_for_principal(self, principal: CurrentPrincipal) -> List[OrganizationSummary]:

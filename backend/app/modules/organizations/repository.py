@@ -101,6 +101,22 @@ class OrganizationRepository:
             if counter > 1000:  # Safety limit
                 raise ValueError("Unable to generate unique slug")
 
+    async def suggest_slug_variants(self, slug: str, limit: int = 3) -> list[str]:
+        """Generate a list of available slug suggestions."""
+
+        suggestions: list[str] = []
+        base_slug = slug or ""
+        counter = 1
+        max_attempts = max(limit * 5, 5)
+
+        while len(suggestions) < limit and counter <= max_attempts:
+            candidate = f"{base_slug}-{counter}"
+            if await self.check_slug_availability(candidate):
+                suggestions.append(candidate)
+            counter += 1
+
+        return suggestions
+
     async def get_user_organizations(self, user_id: str) -> List[OrganizationResponse]:
         """Get all organizations for a user with their roles."""
         query = text(
