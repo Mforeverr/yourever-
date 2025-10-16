@@ -194,7 +194,7 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
       slugCheckInFlightRef.current = null
       setIsCheckingSlug(false)
     }
-  }, [watchedSlug, checkSlugMutation, setValue, getValues])
+  }, [watchedSlug, setValue, getValues])
 
   const onSubmit = async (data: OrgCreationFormData) => {
     const normalizedInvites = [...invitees]
@@ -244,7 +244,7 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
     setValue('slug', suggestion)
   }
 
-  const slugIsAvailable = slugStatus?.is_available
+  const slugIsAvailable = slugStatus?.isAvailable
 
   return (
     <div className="space-y-6">

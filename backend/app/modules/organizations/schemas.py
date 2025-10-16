@@ -147,6 +147,8 @@ class TemplateResponse(BaseModel):
 class SlugAvailability(BaseModel):
     """Slug availability result with optional suggestions."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     slug: str
     is_available: bool = Field(alias="isAvailable")
     suggestions: List[str] = Field(default_factory=list)
