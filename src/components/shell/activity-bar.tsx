@@ -26,12 +26,13 @@ import {
   Sun,
   Moon,
   Monitor,
-  Languages
+  Languages,
+  X
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogClose, DialogContent, DialogTrigger } from "@/components/ui/dialog"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -213,46 +214,62 @@ function SettingsDialog({ isCollapsed }: SettingsDialogProps) {
         </TooltipContent>
       </Tooltip>
 
-      <DialogContent className="max-w-[95vw] sm:max-w-none md:max-w-[85vw] lg:max-w-6xl h-[85vh] overflow-hidden p-0">
-        <div className="flex h-full">
+      <DialogContent
+        showCloseButton={false}
+        className="max-w-[95vw] sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl max-h-[85vh] overflow-hidden p-0"
+      >
+        <div className="flex h-full max-h-[85vh]">
           {/* Left Navigation Sidebar */}
-          <div className="w-56 border-r border-border bg-muted/30 p-4 overflow-y-auto">
-            <div className="space-y-6">
-              {categories.map((category) => (
-                <div key={category} className="space-y-2">
-                  <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    {category}
-                  </h3>
-                  <div className="space-y-1">
-                    {navigationItems
-                      .filter(item => item.category === category)
-                      .map((item) => {
-                        const Icon = item.icon
-                        return (
-                          <Button
-                            key={item.id}
-                            variant={activeSection === item.id ? "secondary" : "ghost"}
-                            size="sm"
-                            className={cn(
-                              "w-full justify-start",
-                              activeSection === item.id && "bg-secondary"
-                            )}
-                            onClick={() => setActiveSection(item.id)}
-                          >
-                            <Icon className="mr-2 h-4 w-4" />
-                            {item.label}
-                          </Button>
-                        )
-                      })}
+          <div className="flex w-60 flex-col border-r border-border bg-muted/30">
+            <div className="px-4 pt-4">
+              <DialogClose asChild>
+                <button
+                  type="button"
+                  className="flex h-12 w-12 items-center justify-center rounded-lg border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-background hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
+                  aria-label="Close settings"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </DialogClose>
+            </div>
+            <div className="mt-2 flex-1 overflow-y-auto px-4 pb-6 scrollbar-thin">
+              <div className="space-y-6">
+                {categories.map((category) => (
+                  <div key={category} className="space-y-2">
+                    <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {category}
+                    </h3>
+                    <div className="space-y-1">
+                      {navigationItems
+                        .filter(item => item.category === category)
+                        .map((item) => {
+                          const Icon = item.icon
+                          return (
+                            <Button
+                              key={item.id}
+                              variant={activeSection === item.id ? "secondary" : "ghost"}
+                              size="sm"
+                              className={cn(
+                                "w-full justify-start",
+                                activeSection === item.id && "bg-secondary"
+                              )}
+                              onClick={() => setActiveSection(item.id)}
+                            >
+                              <Icon className="mr-2 h-4 w-4" />
+                              {item.label}
+                            </Button>
+                          )
+                        })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
 
           {/* Right Content Area */}
-          <div className="flex-1 overflow-y-auto min-w-0">
-            <div className="p-8">
+          <div className="min-w-0 flex-1 overflow-y-auto scrollbar-thin">
+            <div className="px-8 py-10">
               {renderContent()}
             </div>
           </div>
@@ -297,8 +314,8 @@ function ProfileSection({ user }: { user: any }) {
           <CardTitle>Basic Information</CardTitle>
           <CardDescription>Update your personal details</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
+        <CardContent className="space-y-6">
+          <div className="space-y-2">
             <Label htmlFor="fullName">Full Name</Label>
             <Input
               id="fullName"
@@ -307,7 +324,7 @@ function ProfileSection({ user }: { user: any }) {
               placeholder="Enter your full name"
             />
           </div>
-          <div>
+          <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
               id="email"
@@ -319,7 +336,7 @@ function ProfileSection({ user }: { user: any }) {
               Email cannot be changed
             </p>
           </div>
-          <div>
+          <div className="space-y-2">
             <Label htmlFor="bio">Bio</Label>
             <Textarea
               id="bio"
