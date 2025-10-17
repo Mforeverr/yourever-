@@ -10,7 +10,8 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 import uuid
 
-from sqlalchemy import bindparam, text
+from sqlalchemy import bindparam, text, null
+from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .schemas import (
@@ -348,6 +349,10 @@ class OrganizationRepository:
                 template = await self.get_template(create_data.template_id)
                 if template:
                     default_tools = template.tools
+
+            # Handle JSON field properly - use JSON.NULL for empty dict to avoid encoding issues
+            if not default_tools:
+                default_tools = JSON.NULL
 
             await self._session.execute(settings_query, {
                 "id": settings_id,
