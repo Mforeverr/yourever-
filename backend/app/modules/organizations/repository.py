@@ -48,6 +48,12 @@ class OrganizationRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    async def _reset_transaction(self) -> None:
+        """Ensure the session is ready for an explicit transaction."""
+
+        if self._session.in_transaction():
+            await self._session.rollback()
+
     @staticmethod
     def _map_invitation(row: Dict[str, Any]) -> InvitationResponse:
         """Normalize invitation rows returned from SQL queries."""
@@ -251,6 +257,7 @@ class OrganizationRepository:
 
         try:
             # Start transaction
+            await self._reset_transaction()
             await self._session.begin()
 
             # Create organization
@@ -436,6 +443,7 @@ class OrganizationRepository:
         """Accept an invitation and join the organization."""
 
         try:
+            await self._reset_transaction()
             await self._session.begin()
 
             inv_query = text(
@@ -519,6 +527,7 @@ class OrganizationRepository:
         """Decline an invitation, marking it as no longer pending."""
 
         try:
+            await self._reset_transaction()
             await self._session.begin()
 
             query = text(
@@ -641,6 +650,7 @@ class OrganizationRepository:
         )
 
         inserted: List[InvitationResponse] = []
+        await self._reset_transaction()
         await self._session.begin()
         try:
             for record in to_insert:
