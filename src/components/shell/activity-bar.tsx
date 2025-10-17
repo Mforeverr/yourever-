@@ -8,7 +8,6 @@ import {
   Users,
   Settings,
   Search,
-  Plus,
   Home,
   ChevronLeft,
   ChevronRight,
@@ -18,25 +17,16 @@ import {
   Lock,
   Bell,
   Palette,
-  Globe,
-  CreditCard,
   BarChart3,
   Shield,
-  Key,
   Smartphone,
-  CheckCircle2,
   AlertTriangle,
-  Trash2,
   Mail,
-  MessageCircle,
-  UserPlus,
-  Zap,
   Database,
   Sun,
   Moon,
   Monitor,
-  Languages,
-  Plug
+  Languages
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -53,9 +43,6 @@ import { Progress } from "@/components/ui/progress"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
-import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useCurrentUser } from "@/hooks/use-auth"
 
 interface ActivityBarProps {
@@ -162,16 +149,14 @@ function SettingsDialog({ isCollapsed }: SettingsDialogProps) {
     { id: 'profile', icon: User, label: 'Profile', category: 'YOUR ACCOUNT' },
     { id: 'security', icon: Shield, label: 'Security', category: 'YOUR ACCOUNT' },
     { id: 'notifications', icon: Bell, label: 'Notifications', category: 'YOUR ACCOUNT' },
-    // WORKSPACE
-    { id: 'general', icon: Settings, label: 'General', category: 'WORKSPACE' },
-    { id: 'members', icon: Users, label: 'Members', category: 'WORKSPACE' },
-    { id: 'billing', icon: CreditCard, label: 'Billing', category: 'WORKSPACE' },
-    { id: 'usage', icon: BarChart3, label: 'Usage', category: 'WORKSPACE' },
+    // AI SETTINGS
+    { id: 'ai-personalization', icon: Bot, label: 'Personalization', category: 'AI SETTINGS' },
+    { id: 'ai-usage', icon: BarChart3, label: 'AI Usage', category: 'AI SETTINGS' },
+    { id: 'data-control', icon: Database, label: 'Data Control', category: 'AI SETTINGS' },
     // APP SETTINGS
     { id: 'appearance', icon: Palette, label: 'Appearance', category: 'APP SETTINGS' },
     { id: 'accessibility', icon: Smartphone, label: 'Accessibility', category: 'APP SETTINGS' },
     { id: 'language', icon: Languages, label: 'Language', category: 'APP SETTINGS' },
-    { id: 'integrations', icon: Plug, label: 'Integrations', category: 'APP SETTINGS' },
   ]
 
   const categories = Array.from(new Set(navigationItems.map(item => item.category)))
@@ -184,22 +169,18 @@ function SettingsDialog({ isCollapsed }: SettingsDialogProps) {
         return <SecuritySection />
       case 'notifications':
         return <NotificationsSection />
-      case 'general':
-        return <GeneralSection />
-      case 'members':
-        return <MembersSection />
-      case 'billing':
-        return <BillingSection />
-      case 'usage':
-        return <UsageSection />
+      case 'ai-personalization':
+        return <AIPersonalizationSection />
+      case 'ai-usage':
+        return <AIUsageSection />
+      case 'data-control':
+        return <DataControlSection />
       case 'appearance':
         return <AppearanceSection />
       case 'accessibility':
         return <AccessibilitySection />
       case 'language':
         return <LanguageSection />
-      case 'integrations':
-        return <IntegrationsSection />
       default:
         return <ProfileSection user={user} />
     }
@@ -219,7 +200,7 @@ function SettingsDialog({ isCollapsed }: SettingsDialogProps) {
               )}
             >
               <Avatar className={cn(isCollapsed ? "h-6 w-6" : "h-8 w-8")}>
-                <AvatarImage src={user?.avatarUrl} alt={user?.fullName} />
+                <AvatarImage src={user?.avatarUrl || undefined} alt={user?.fullName || ''} />
                 <AvatarFallback className="text-xs">
                   {user?.fullName?.charAt(0).toUpperCase() || 'U'}
                 </AvatarFallback>
@@ -232,7 +213,7 @@ function SettingsDialog({ isCollapsed }: SettingsDialogProps) {
         </TooltipContent>
       </Tooltip>
 
-      <DialogContent className="max-w-7xl max-h-[85vh] overflow-hidden p-0">
+      <DialogContent className="max-w-[95vw] sm:max-w-none md:max-w-[85vw] lg:max-w-6xl h-[85vh] overflow-hidden p-0">
         <div className="flex h-full">
           {/* Left Navigation Sidebar */}
           <div className="w-56 border-r border-border bg-muted/30 p-4 overflow-y-auto">
@@ -271,7 +252,7 @@ function SettingsDialog({ isCollapsed }: SettingsDialogProps) {
 
           {/* Right Content Area */}
           <div className="flex-1 overflow-y-auto min-w-0">
-            <div className="p-8 max-w-4xl">
+            <div className="p-8">
               {renderContent()}
             </div>
           </div>
@@ -301,7 +282,7 @@ function ProfileSection({ user }: { user: any }) {
         <CardContent>
           <div className="flex items-center gap-4">
             <Avatar className="h-20 w-20">
-              <AvatarImage src={user?.avatarUrl} alt={user?.fullName} />
+              <AvatarImage src={user?.avatarUrl || undefined} alt={user?.fullName || ''} />
               <AvatarFallback className="text-lg">
                 {user?.fullName?.charAt(0).toUpperCase() || 'U'}
               </AvatarFallback>
@@ -358,6 +339,7 @@ function ProfileSection({ user }: { user: any }) {
 // Security Section Component
 function SecuritySection() {
   const [twoFactorEnabled, setTwoFactorEnabled] = React.useState(false)
+  const [deleteConfirmation, setDeleteConfirmation] = React.useState('')
 
   const activeSessions = [
     { id: 1, device: 'Chrome on macOS', location: 'San Francisco, CA', lastLogin: '2 hours ago' },
@@ -430,6 +412,55 @@ function SecuritySection() {
               </div>
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-destructive/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-destructive">
+            <AlertTriangle className="h-5 w-5" />
+            Danger Zone
+          </CardTitle>
+          <CardDescription>
+            Irreversible and destructive actions for your account
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive">Delete My Account</Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. This will permanently delete your account,
+                  profile data, and all associated content.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="py-4">
+                <Label htmlFor="deleteConfirmation">
+                  Type <strong>DELETE MY ACCOUNT</strong> to confirm
+                </Label>
+                <Input
+                  id="deleteConfirmation"
+                  value={deleteConfirmation}
+                  onChange={(e) => setDeleteConfirmation(e.target.value)}
+                  placeholder="DELETE MY ACCOUNT"
+                  className="mt-2"
+                />
+              </div>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={deleteConfirmation !== 'DELETE MY ACCOUNT'}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Delete My Account
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </CardContent>
       </Card>
     </div>
@@ -519,270 +550,6 @@ function NotificationsSection() {
   )
 }
 
-// General Section Component
-function GeneralSection() {
-  const [workspaceName, setWorkspaceName] = React.useState('My Workspace')
-  const [workspaceUrl, setWorkspaceUrl] = React.useState('my-workspace')
-  const [deleteConfirmation, setDeleteConfirmation] = React.useState('')
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">General</h2>
-        <p className="text-muted-foreground">Manage your workspace settings</p>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Workspace Information</CardTitle>
-          <CardDescription>Update your workspace details</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="workspaceName">Workspace Name</Label>
-            <Input
-              id="workspaceName"
-              value={workspaceName}
-              onChange={(e) => setWorkspaceName(e.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="workspaceUrl">Workspace URL</Label>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">yourever.app/</span>
-              <Input
-                id="workspaceUrl"
-                value={workspaceUrl}
-                onChange={(e) => setWorkspaceUrl(e.target.value)}
-              />
-            </div>
-          </div>
-          <div>
-            <Label htmlFor="workspaceLogo">Workspace Logo</Label>
-            <div className="flex items-center gap-4 mt-2">
-              <div className="h-12 w-12 rounded-lg border-2 border-dashed border-border flex items-center justify-center">
-                <Plus className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <Button variant="outline">Upload Logo</Button>
-            </div>
-          </div>
-          <Button>Save Changes</Button>
-        </CardContent>
-      </Card>
-
-      <Card className="border-destructive/50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-destructive">
-            <AlertTriangle className="h-5 w-5" />
-            Danger Zone
-          </CardTitle>
-          <CardDescription>
-            Irreversible and destructive actions
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive">Delete Workspace</Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This action cannot be undone. This will permanently delete your workspace
-                  and all associated data.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <div className="py-4">
-                <Label htmlFor="deleteConfirmation">
-                  Type <strong>{workspaceName}</strong> to confirm
-                </Label>
-                <Input
-                  id="deleteConfirmation"
-                  value={deleteConfirmation}
-                  onChange={(e) => setDeleteConfirmation(e.target.value)}
-                  placeholder={workspaceName}
-                  className="mt-2"
-                />
-              </div>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  disabled={deleteConfirmation !== workspaceName}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  Delete Workspace
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
-
-// Members Section Component
-function MembersSection() {
-  const members = [
-    { id: 1, name: 'John Doe', email: 'john@example.com', role: 'Owner', avatar: '' },
-    { id: 2, name: 'Jane Smith', email: 'jane@example.com', role: 'Admin', avatar: '' },
-    { id: 3, name: 'Bob Johnson', email: 'bob@example.com', role: 'Member', avatar: '' },
-  ]
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Members</h2>
-          <p className="text-muted-foreground">Manage your team members</p>
-        </div>
-        <Button>
-          <UserPlus className="mr-2 h-4 w-4" />
-          Invite Member
-        </Button>
-      </div>
-
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Member</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {members.map((member) => (
-                <TableRow key={member.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <Avatar>
-                        <AvatarImage src={member.avatar} alt={member.name} />
-                        <AvatarFallback>
-                          {member.name.charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium">{member.name}</p>
-                        <p className="text-sm text-muted-foreground">{member.email}</p>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={member.role === 'Owner' ? 'default' : 'secondary'}>
-                      {member.role}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm">
-                          <Settings className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent>
-                        <DropdownMenuItem>Change Role</DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">Remove</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
-
-// Billing Section Component
-function BillingSection() {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Billing</h2>
-        <p className="text-muted-foreground">Manage your subscription and payment</p>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Current Plan</CardTitle>
-          <CardDescription>Your active subscription</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-2xl font-bold">Free Plan</p>
-              <p className="text-muted-foreground">Up to 10 team members</p>
-            </div>
-            <Button>Upgrade Plan</Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Payment Method</CardTitle>
-          <CardDescription>Manage your payment methods</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">No payment methods on file</p>
-          <Button variant="outline" className="mt-2">Add Payment Method</Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Billing History</CardTitle>
-          <CardDescription>View your past invoices</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">No billing history available</p>
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
-
-// Usage Section Component
-function UsageSection() {
-  const usageStats = [
-    { name: 'Team Members', used: 3, total: 10, unit: 'members' },
-    { name: 'Storage', used: 2.1, total: 5, unit: 'GB' },
-    { name: 'API Calls', used: 1500, total: 10000, unit: 'calls' },
-  ]
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Usage</h2>
-        <p className="text-muted-foreground">Monitor your resource usage</p>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {usageStats.map((stat) => (
-          <Card key={stat.name}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-medium">{stat.name}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span>{stat.used} {stat.unit}</span>
-                  <span className="text-muted-foreground">/ {stat.total} {stat.unit}</span>
-                </div>
-                <Progress value={(stat.used / stat.total) * 100} />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </div>
-  )
-}
 
 // Appearance Section Component
 function AppearanceSection() {
@@ -933,46 +700,237 @@ function LanguageSection() {
   )
 }
 
-// Integrations Section Component
-function IntegrationsSection() {
-  const integrations = [
-    { name: 'GitHub', description: 'Connect your GitHub repositories', connected: false },
-    { name: 'Slack', description: 'Sync with your Slack workspace', connected: true },
-    { name: 'Google Drive', description: 'Access your Google Drive files', connected: false },
-  ]
 
+// AI Settings Components
+function AIPersonalizationSection() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold">Integrations</h2>
-        <p className="text-muted-foreground">Manage third-party connections</p>
+        <h3 className="text-lg font-semibold">AI Personalization</h3>
+        <p className="text-sm text-muted-foreground mt-1">
+          Customize how the AI Assistant interacts with you.
+        </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {integrations.map((integration) => (
-          <Card key={integration.name}>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">{integration.name}</CardTitle>
-                {integration.connected && (
-                  <CheckCircle2 className="h-5 w-5 text-green-600" />
-                )}
-              </div>
-              <CardDescription className="text-sm">
-                {integration.description}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button
-                variant={integration.connected ? "outline" : "default"}
-                className="w-full"
-              >
-                {integration.connected ? 'Configure' : 'Connect'}
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">AI Personality</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <RadioGroup defaultValue="casual" className="flex flex-col space-y-3">
+            <div className="flex items-center space-x-3">
+              <RadioGroupItem value="formal" id="formal" />
+              <Label htmlFor="formal" className="flex-1">
+                <div className="font-medium">Formal</div>
+                <div className="text-sm text-muted-foreground">
+                  Professional and respectful communication
+                </div>
+              </Label>
+            </div>
+            <div className="flex items-center space-x-3">
+              <RadioGroupItem value="casual" id="casual" />
+              <Label htmlFor="casual" className="flex-1">
+                <div className="font-medium">Casual</div>
+                <div className="text-sm text-muted-foreground">
+                  Friendly and conversational tone
+                </div>
+              </Label>
+            </div>
+            <div className="flex items-center space-x-3">
+              <RadioGroupItem value="concise" id="concise" />
+              <Label htmlFor="concise" className="flex-1">
+                <div className="font-medium">Concise</div>
+                <div className="text-sm text-muted-foreground">
+                  Brief and to-the-point responses
+                </div>
+              </Label>
+            </div>
+          </RadioGroup>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Custom Instructions</CardTitle>
+          <CardDescription>
+            Provide specific instructions on how the AI should behave for you
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Textarea
+            placeholder="E.g., 'Always respond in markdown', 'Assume I have a technical background', 'Explain concepts like I'm 5 years old'"
+            rows={4}
+            className="resize-none"
+          />
+          <div className="text-xs text-muted-foreground">
+            Examples: Always respond in markdown • Assume I have a technical background •
+            Explain concepts like I'm 5 years old • Focus on practical examples
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex justify-end">
+        <Button>Save AI Preferences</Button>
       </div>
+    </div>
+  )
+}
+
+function AIUsageSection() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold">AI Usage</h3>
+        <p className="text-sm text-muted-foreground mt-1">
+          Review your AI feature consumption.
+        </p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Monthly Usage</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span>AI Queries</span>
+              <span className="font-medium">1,250 / 5,000</span>
+            </div>
+            <Progress value={25} className="h-2" />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span>Tokens Used</span>
+              <span className="font-medium">3.5M / 10M</span>
+            </div>
+            <Progress value={35} className="h-2" />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span>Files Processed</span>
+              <span className="font-medium">847 / 2,000</span>
+            </div>
+            <Progress value={42} className="h-2" />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Usage Breakdown</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-primary">1,250</div>
+              <div className="text-sm text-muted-foreground">Total Queries</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-primary">98.2%</div>
+              <div className="text-sm text-muted-foreground">Success Rate</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-primary">2.3s</div>
+              <div className="text-sm text-muted-foreground">Avg Response</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex justify-center">
+        <Button variant="outline">Upgrade Plan</Button>
+      </div>
+    </div>
+  )
+}
+
+function DataControlSection() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold">Data Control</h3>
+        <p className="text-sm text-muted-foreground mt-1">
+          Manage how your data is used and stored.
+        </p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">AI Model Training</CardTitle>
+          <CardDescription>
+            Control how your data is used to improve AI services
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <Label htmlFor="ai-training" className="text-sm font-medium">
+                Allow my data to be used for AI model training
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Help improve AI services by using your anonymized data for training
+              </p>
+            </div>
+            <Switch id="ai-training" />
+          </div>
+          <div className="rounded-md bg-red-50 p-3 text-sm text-red-800">
+            <strong>Privacy Note:</strong> Your data is anonymized and aggregated before being used for training.
+            You can disable this at any time.
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Export Data</CardTitle>
+          <CardDescription>
+            Download a copy of your personal data
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Export all your personal data including tasks, documents, and comments you created.
+          </p>
+          <Button variant="outline">Export My Data</Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-red-200">
+        <CardHeader>
+          <CardTitle className="text-base text-red-600">Danger Zone</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium text-red-600">Delete All My Content</h4>
+            <p className="text-xs text-muted-foreground">
+              Permanently delete all your content, including tasks, documents, and comments.
+              This action cannot be undone.
+            </p>
+          </div>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm">
+                Delete All My Content
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete All Content</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to delete all your content? This action cannot be undone
+                  and will permanently remove all your tasks, documents, and comments.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction>Delete Everything</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </CardContent>
+      </Card>
     </div>
   )
 }
