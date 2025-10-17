@@ -188,7 +188,8 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
     const relativePath = `/${restSegments.join('/') || 'dashboard'}`
     const normalizedPath = `/${relativePath.replace(/^\/+/, '').replace(/\/+$/, '')}`
     const tabDescriptor = describePath(normalizedPath)
-    const existingTab = tabs.find((tab) => tab.path === normalizedPath)
+    const matchingTabs = tabs.filter((tab) => tab.path === normalizedPath)
+    const existingTab = matchingTabs.find((tab) => tab.isActive) ?? matchingTabs[0]
 
     if (existingTab) {
       const needsUpdate = existingTab.title !== tabDescriptor.title || existingTab.type !== tabDescriptor.type
@@ -317,7 +318,17 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
   }
 
   const handleTabDuplicate = (tabId: string) => {
+    const tab = tabs.find((candidate) => candidate.id === tabId)
+    if (!tab) {
+      return
+    }
+
     duplicateTab(tabId)
+
+    const { activeTabId: nextActiveId, tabs: nextTabs } = getUIState()
+    const nextActiveTab = nextTabs.find((candidate) => candidate.id === nextActiveId)
+
+    pushScopedPath(nextActiveTab?.path ?? tab.path)
   }
 
   const handleTabPinToggle = (tabId: string) => {
