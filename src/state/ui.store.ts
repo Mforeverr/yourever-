@@ -144,21 +144,6 @@ const normalizeTabPath = (path: string) => {
   return path.startsWith("/") ? path : `/${path}`
 }
 
-const sortTabsByPinState = (tabs: UITab[]) => {
-  const pinned: UITab[] = []
-  const unpinned: UITab[] = []
-
-  tabs.forEach((tab) => {
-    if (tab.isPinned) {
-      pinned.push(tab)
-    } else {
-      unpinned.push(tab)
-    }
-  })
-
-  return [...pinned, ...unpinned]
-}
-
 const ensurePaneId = (paneId?: TabPaneId): TabPaneId => paneId ?? "primary"
 
 const markPaneActiveTab = (tabs: UITab[], targetId: string, paneId: TabPaneId) =>
