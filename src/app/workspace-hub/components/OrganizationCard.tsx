@@ -249,7 +249,7 @@ export function OrganizationCard({
         <div>
           <Button
             className="w-full"
-            variant="default"
+            variant="secondary"
             onClick={(event) => {
               event.stopPropagation()
               handleEnter()

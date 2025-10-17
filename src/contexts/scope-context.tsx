@@ -11,13 +11,13 @@ import React, {
 import { useParams, useRouter } from 'next/navigation'
 import { useCurrentUser } from '@/hooks/use-auth'
 import { authStorage } from '@/lib/auth-utils'
-import type { Organization, OrganizationDivision } from '@/lib/mock-users'
+import type { Organization, Division } from '@/hooks/use-organizations'
 import { useScopeStore } from "@/state/scope.store"
 
 interface ScopeContextValue {
   organizations: Organization[]
   currentOrganization: Organization | null
-  currentDivision: OrganizationDivision | null
+  currentDivision: Division | null
   currentOrgId: string | null
   currentDivisionId: string | null
   setScope: (orgId: string, divisionId?: string) => void

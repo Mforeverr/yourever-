@@ -53,7 +53,7 @@ interface UseWorkspaceHubControllerResult {
     openOrganization: (
       organizationId: string,
       divisionId: string | null,
-      fallbackOrganization?: Pick<Organization, 'id' | 'name' | 'divisions'>,
+      fallbackOrganization?: Pick<Organization, 'id' | 'name' | 'slug' | 'divisions'>,
     ) => void
   }
   joinDialog: {
@@ -219,6 +219,9 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
       const divisions = organization?.divisions ?? fallbackOrganization?.divisions ?? []
       const organizationName = organization?.name ?? fallbackOrganization?.name ?? 'organization'
 
+      // Get organization slug with fallback to ID for backward compatibility
+      const orgSlug = organization?.slug ?? fallbackOrganization?.slug ?? organizationId
+
       if (divisions.length === 0) {
         toast({
           title: 'Division required',
@@ -244,6 +247,9 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
         return
       }
 
+      // Get division slug with fallback to key or ID for backward compatibility
+      const divisionSlug = targetDivision.key ?? targetDivision.id
+
       setSelectedOrgId(organizationId)
       setIsProcessing(true)
       setProcessingOrgId(organizationId)
@@ -256,7 +262,8 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
         [organizationId]: targetDivision.id,
       }))
 
-      router.push(`/${organizationId}/${targetDivision.id}/dashboard`)
+      // Construct URL using slugs instead of IDs
+      router.push(`/${orgSlug}/${divisionSlug}/dashboard`)
     },
     [enrichedOrganizations, toast, resetProcessing, router],
   )
@@ -270,13 +277,17 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
         [result.organization.id]: defaultDivisionId,
       }))
 
-      openOrganization(result.organization.id, defaultDivisionId, {
-        id: result.organization.id,
-        name: result.organization.name,
-        divisions: result.organization.divisions,
+      // Show success message and keep user on workspace hub
+      toast({
+        title: 'Organization created successfully!',
+        description: `"${result.organization.name}" is now available in your organizations list.`,
+        variant: 'default',
       })
+
+      // The organizations list will automatically refresh due to query invalidation
+      // No redirect - user stays on workspace hub
     },
-    [openOrganization],
+    [toast],
   )
 
   const handleOrgCreationError = useCallback(
@@ -508,6 +519,7 @@ function useEnrichedOrganizations(organizations?: Organization[] | null): Enrich
           return {
             id: organization.id,
             name: organization.name,
+            slug: organization.slug,
             role: organization.user_role,
             divisions: organization.divisions,
             description: organization.description,

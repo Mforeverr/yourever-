@@ -354,11 +354,15 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
     }
 
     try {
-      // For now, we'll create the organization with the primary division
-      // Additional divisions would need to be created via separate API calls
-      // This maintains backward compatibility with the current API
+      // Send both primary and additional divisions
       const result = await createOrgMutation.mutateAsync({
         ...data,
+        additional_divisions: validAdditionalDivisions.length > 0
+          ? validAdditionalDivisions.map((division) => ({
+              name: division.name,
+              key: division.key || undefined
+            }))
+          : undefined,
         invitations:
           normalizedInvites.length > 0
             ? normalizedInvites.map((email) => ({ email }))

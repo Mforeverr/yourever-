@@ -71,6 +71,7 @@ export interface OrganizationCreateData {
   description?: string
   division_name: string
   division_key?: string
+  additional_divisions?: Array<{ name: string; key?: string }>
   invitations?: InvitationDraft[]
 }
 
@@ -172,6 +173,13 @@ export const useCreateOrganization = () => {
         description: data.description?.trim() || undefined,
         divisionName: data.division_name.trim(),
         divisionKey: data.division_key?.trim() || undefined,
+        divisions: data.additional_divisions && data.additional_divisions.length > 0
+          ? data.additional_divisions.map((division) => ({
+              name: division.name.trim(),
+              key: division.key?.trim() || undefined,
+              description: undefined,
+            }))
+          : undefined,
         invitations: normalizedInvitations && normalizedInvitations.length > 0
           ? normalizedInvitations.map((invitation) => ({
               email: invitation.email,

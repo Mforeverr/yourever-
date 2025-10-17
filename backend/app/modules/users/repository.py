@@ -247,7 +247,7 @@ class UserRepository:
                         name=row["name"],
                         key=row["key"],
                         description=row["description"],
-                        orgId=org_id,
+                        orgId=str(org_id),
                     )
                 )
 
@@ -279,7 +279,7 @@ class UserRepository:
                     name=row["name"],
                     key=row["key"],
                     description=row["description"],
-                    orgId=org_id,
+                    orgId=str(org_id),
                     userRole=row["role"],
                 )
             )
