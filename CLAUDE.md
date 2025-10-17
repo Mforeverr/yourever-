@@ -149,10 +149,17 @@
       "Use context7.",
       "Use Playwright for browsing.",
       "Leverage specialized sub-agents for complex tasks.",
-      "Use build-analyzer for build analysis and diagnostics.",
-      "Use frontend-architect for complex frontend architecture.",
-      "Use supabase-db-handler for database operations.",
-      "Use fastapi-backend-architect for API design and implementation.",
+      "Always call agents from '/home/eldrie/Yourever)/.claude/agents' directory.",
+      "Use software-architect-coordinator for orchestrating multiple agents and coordinating complex implementations.",
+      "Use debug-coordinator for multi-system debugging across frontend, backend, database, and infrastructure.",
+      "Use integration-tester for testing newly implemented features and verifying integration points.",
+      "Use code-quality-reviewer for thorough code quality assessment after implementation completion.",
+      "Use code-finalizer for creating comprehensive delivery documentation and implementation summaries.",
+      "Use build-analyzer agents for build analysis and diagnostics.",
+      "Use frontend-architect agents for complex frontend architecture.",
+      "Use supabase-db-handler agents for database operations.",
+      "Use fastapi-backend-architect agents for API design and implementation.",
+      "Use general-purpose agents for complex research and multi-step workflows.",
       "Leverage all provided tools when appropriate."
     ],
     "context_adherence": [
@@ -586,6 +593,36 @@ This project uses specialized sub-agents for complex tasks. Each agent has speci
 - **Capabilities**: REST API design, service architecture, data models, OpenAPI specifications
 - **Example**: `/agent fastapi-backend-architect "Design complete user management API endpoints"`
 
+#### **software-architect-coordinator** 🏗️
+**Use for**: Orchestrating multiple agents and coordinating complex implementations
+- **When to use**: Large features requiring frontend, backend, database, and testing coordination
+- **Capabilities**: Multi-agent task distribution, system architecture design, implementation oversight
+- **Example**: `/agent software-architect-coordinator "Coordinate complete user management system implementation"`
+
+#### **debug-coordinator** 🔍
+**Use for**: Multi-system debugging across frontend, backend, database, and infrastructure
+- **When to use**: Complex issues spanning multiple systems, production debugging, performance issues
+- **Capabilities**: Cross-system error analysis, log aggregation, performance diagnostics
+- **Example**: `/agent debug-coordinator "Diagnose slow API response times across the stack"`
+
+#### **integration-tester** 🧪
+**Use for**: Testing newly implemented features and verifying integration points
+- **When to use**: After feature implementation, before deployment, regression testing
+- **Capabilities**: End-to-end testing, API integration validation, user flow testing
+- **Example**: `/agent integration-tester "Test complete division creation and management flow"`
+
+#### **code-quality-reviewer** ✅
+**Use for**: Thorough code quality assessment after implementation completion
+- **When to use**: Before merging PRs, after major refactoring, code review processes
+- **Capabilities**: Code analysis, best practices review, security assessment, performance review
+- **Example**: `/agent code-quality-reviewer "Review new organization management module implementation"`
+
+#### **code-finalizer** 📝
+**Use for**: Creating comprehensive delivery documentation and implementation summaries
+- **When to use**: After feature completion, before handoff, project milestones
+- **Capabilities**: Documentation generation, implementation summaries, delivery notes
+- **Example**: `/agent code-finalizer "Create delivery docs for completed multiple division feature"`
+
 #### **general-purpose** 🔧
 **Use for**: Complex research tasks, multi-step workflows, code searching
 - **When to use**: Open-ended searches, complex research, multi-step tasks not fitting other agents
@@ -603,8 +640,13 @@ This project uses specialized sub-agents for complex tasks. Each agent has speci
 ### Agent Integration with Development Workflow
 
 - **Before Development**: Use `build-analyzer` to understand current state
+- **Complex Features**: Use `software-architect-coordinator` to orchestrate multiple agents
 - **Frontend Tasks**: Use `frontend-architect` for complex component design
 - **Backend Tasks**: Use `fastapi-backend-architect` for API design and implementation
 - **Database Tasks**: Use `supabase-db-handler` for all database operations
+- **Testing**: Use `integration-tester` after implementation to verify functionality
+- **Code Review**: Use `code-quality-reviewer` before merging changes
+- **Documentation**: Use `code-finalizer` to create delivery documentation
+- **Debugging**: Use `debug-coordinator` for complex multi-system issues
 - **Research Tasks**: Use `general-purpose` for code analysis and research
 - **Simple Tasks**: Handle directly with available tools without agents

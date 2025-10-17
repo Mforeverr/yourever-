@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Check, X } from 'lucide-react'
+import { Loader2, Check, X, Plus } from 'lucide-react'
 import {
   useCreateOrganization,
   useCheckSlugAvailability,
@@ -19,6 +19,12 @@ import {
 import { cn } from '@/lib/utils'
 import { MAX_SLUG_LENGTH, normalizeSlug } from '@/lib/slug'
 
+// Division schema for individual division validation
+const divisionSchema = z.object({
+  name: z.string().min(1, 'Division name is required').max(100, 'Name too long'),
+  key: z.string().optional(),
+})
+
 const orgCreationSchema = z.object({
   name: z.string().min(1, 'Organization name is required').max(100, 'Name too long'),
   slug: z
@@ -26,8 +32,9 @@ const orgCreationSchema = z.object({
     .max(MAX_SLUG_LENGTH, `Slug must be ${MAX_SLUG_LENGTH} characters or fewer`)
     .optional(),
   description: z.string().optional(),
-  division_name: z.string().min(1, 'Division name is required').max(100, 'Name too long'),
+  division_name: z.string().min(1, 'Primary division name is required').max(100, 'Name too long'),
   division_key: z.string().optional(),
+  additional_divisions: z.array(divisionSchema).optional(),
 })
 
 type OrgCreationFormData = z.infer<typeof orgCreationSchema>
@@ -43,7 +50,9 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
   const [invitees, setInvitees] = useState<string[]>([])
   const [inviteInput, setInviteInput] = useState('')
   const [inviteError, setInviteError] = useState<string | null>(null)
-  const emailSchema = z.string().trim().email('Enter a valid email address')
+  const [additionalDivisions, setAdditionalDivisions] = useState<Array<{ id: string; name: string; key: string }>>([])
+  const [divisionErrors, setDivisionErrors] = useState<Record<string, string>>({})
+  const emailSchema = z.string().email('Enter a valid email address')
   const slugCheckInFlightRef = useRef<string | null>(null)
   const slugCheckDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -121,6 +130,80 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
     }
   }
 
+  // Division management functions
+  const addDivision = () => {
+    const newDivision = {
+      id: crypto.randomUUID(),
+      name: '',
+      key: '',
+    }
+    setAdditionalDivisions((prev) => [...prev, newDivision])
+  }
+
+  const removeDivision = (id: string) => {
+    setAdditionalDivisions((prev) => prev.filter((division) => division.id !== id))
+  }
+
+  const updateDivision = (id: string, field: 'name' | 'key', value: string) => {
+    // Clear any existing error for this division when field is updated
+    setDivisionErrors((prev) => {
+      const newErrors = { ...prev }
+      delete newErrors[id]
+      return newErrors
+    })
+
+    setAdditionalDivisions((prev) =>
+      prev.map((division) =>
+        division.id === id ? { ...division, [field]: value } : division
+      )
+    )
+  }
+
+  const validateDivision = (division: { id: string; name: string; key: string }) => {
+    const errors: string[] = []
+
+    // Validate name
+    if (!division.name.trim()) {
+      errors.push('Division name is required')
+    } else if (division.name.trim().length > 100) {
+      errors.push('Division name must be 100 characters or fewer')
+    }
+
+    // Validate key (optional but if provided, must be valid)
+    if (division.key.trim() && division.key.trim().length > 50) {
+      errors.push('Division key must be 50 characters or fewer')
+    }
+
+    return errors
+  }
+
+  const validateAllDivisions = () => {
+    const errors: Record<string, string> = {}
+
+    additionalDivisions.forEach((division) => {
+      const divisionValidationErrors = validateDivision(division)
+      if (divisionValidationErrors.length > 0) {
+        errors[division.id] = divisionValidationErrors.join(', ')
+      }
+    })
+
+    // Check for duplicate names
+    const validDivisions = additionalDivisions.filter(d => d.name.trim())
+    const names = validDivisions.map(d => d.name.trim())
+    const duplicates = names.filter((name, index) => names.indexOf(name) !== index)
+
+    if (duplicates.length > 0) {
+      validDivisions.forEach((division) => {
+        if (duplicates.includes(division.name.trim())) {
+          errors[division.id] = 'Duplicate division name'
+        }
+      })
+    }
+
+    setDivisionErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
   const form = useForm<OrgCreationFormData>({
     resolver: zodResolver(orgCreationSchema),
     mode: 'onChange',
@@ -130,6 +213,7 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
       description: '',
       division_name: '',
       division_key: '',
+      additional_divisions: [],
     },
   })
 
@@ -225,6 +309,27 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
   }, [watchedSlug, triggerSlugCheck, getValues, setValue])
 
   const onSubmit = async (data: OrgCreationFormData) => {
+    // Trigger validation for all divisions first
+    const isDivisionsValid = validateAllDivisions()
+
+    if (!isDivisionsValid) {
+      onError?.(new Error('Please fix division validation errors'))
+      return
+    }
+
+    const validAdditionalDivisions = additionalDivisions.filter(
+      (division) => division.name.trim()
+    )
+
+    // Check for duplicate division names between primary and additional divisions
+    const primaryDivisionName = data.division_name.trim()
+    const additionalDivisionNames = validAdditionalDivisions.map((d) => d.name.trim())
+
+    if (additionalDivisionNames.includes(primaryDivisionName)) {
+      onError?.(new Error('Division names must be unique'))
+      return
+    }
+
     const normalizedInvites = [...invitees]
     const pendingInput = inviteInput.trim()
 
@@ -249,6 +354,9 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
     }
 
     try {
+      // For now, we'll create the organization with the primary division
+      // Additional divisions would need to be created via separate API calls
+      // This maintains backward compatibility with the current API
       const result = await createOrgMutation.mutateAsync({
         ...data,
         invitations:
@@ -260,6 +368,7 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
       setInvitees([])
       setInviteInput('')
       setInviteError(null)
+      setAdditionalDivisions([])
       reset()
       setSlugStatus(null)
       onSuccess?.(result)
@@ -316,7 +425,7 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
           {errors.slug && (
             <p className="text-xs text-destructive">{errors.slug.message}</p>
           )}
-          {slugIsAvailable === false && slugStatus.suggestions.length > 0 && (
+          {slugIsAvailable === false && slugStatus?.suggestions && slugStatus.suggestions.length > 0 && (
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">This URL is taken. Try:</p>
               <div className="flex flex-wrap gap-2">
@@ -350,17 +459,112 @@ export function OrgCreationForm({ onSuccess, onError }: OrgCreationFormProps) {
 
       {/* Division Info */}
       <div className="space-y-4">
-        <h3 className="text-lg font-medium">Primary Division</h3>
-        <div className="space-y-2">
-          <Label htmlFor="division-name">Division name *</Label>
-          <Input
-            id="division-name"
-            placeholder="Product Team"
-            {...form.register('division_name')}
-            disabled={isSubmitting}
-          />
-          {errors.division_name && (
-            <p className="text-xs text-destructive">{errors.division_name.message}</p>
+        <h3 className="text-lg font-medium">Divisions</h3>
+
+        {/* Primary Division */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="division-name" className="text-sm font-medium">
+              Primary Division *
+            </Label>
+            <Badge variant="secondary" className="text-xs">
+              Main workspace
+            </Badge>
+          </div>
+          <div className="space-y-2">
+            <Input
+              id="division-name"
+              placeholder="Product Team"
+              {...form.register('division_name')}
+              disabled={isSubmitting}
+            />
+            {errors.division_name && (
+              <p className="text-xs text-destructive">{errors.division_name.message}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Additional Divisions */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-medium">Additional Divisions</Label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addDivision}
+              disabled={isSubmitting}
+              className="h-7 text-xs"
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              Add Division
+            </Button>
+          </div>
+
+          {additionalDivisions.length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              Add more divisions to organize your teams and projects.
+            </p>
+          )}
+
+          {additionalDivisions.map((division, index) => (
+            <div key={division.id} className={cn(
+              "space-y-2 p-3 border rounded-md bg-muted/20",
+              divisionErrors[division.id] && "border-destructive/50"
+            )}>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium">
+                  Division {index + 2}
+                </Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeDivision(division.id)}
+                  disabled={isSubmitting}
+                  className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 gap-2">
+                <div className="space-y-1">
+                  <Input
+                    placeholder="Division name"
+                    value={division.name}
+                    onChange={(e) => updateDivision(division.id, 'name', e.target.value)}
+                    disabled={isSubmitting}
+                    className={cn(
+                      "h-8 text-sm",
+                      divisionErrors[division.id] && "border-destructive"
+                    )}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Input
+                    placeholder="Division key (optional)"
+                    value={division.key}
+                    onChange={(e) => updateDivision(division.id, 'key', e.target.value)}
+                    disabled={isSubmitting}
+                    className={cn(
+                      "h-8 text-sm",
+                      divisionErrors[division.id] && "border-destructive"
+                    )}
+                  />
+                </div>
+              </div>
+              {divisionErrors[division.id] && (
+                <p className="text-xs text-destructive">
+                  {divisionErrors[division.id]}
+                </p>
+              )}
+            </div>
+          ))}
+
+          {additionalDivisions.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Each division will have its own workspace with dedicated channels, projects, and team members.
+            </p>
           )}
         </div>
       </div>

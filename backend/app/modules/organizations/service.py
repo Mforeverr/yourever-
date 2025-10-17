@@ -13,6 +13,8 @@ from ..users.schemas import WorkspaceDivision, WorkspaceOrganization
 from ..users.service import UserService
 from .mock_data import build_fallback_organizations
 from .repository import (
+    DivisionDuplicateError,
+    DivisionValidationError,
     OrganizationRepository,
     SlugConflictError,
     SlugValidationError,
@@ -62,7 +64,7 @@ class OrganizationService:
             )
 
         try:
-            organization, primary_division = await self._repository.create_organization(
+            organization, divisions = await self._repository.create_organization(
                 user_id=user.id,
                 create_data=payload,
             )
@@ -76,6 +78,16 @@ class OrganizationService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail=str(error),
             ) from error
+        except DivisionValidationError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(error),
+            ) from error
+        except DivisionDuplicateError as error:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(error),
+            ) from error
 
         invitations_response = InvitationBatchCreateResponse(
             invitations=[],
@@ -85,11 +97,13 @@ class OrganizationService:
         if payload.invitations:
             normalized_invites: list[InvitationCreatePayload] = []
             for invitation in payload.invitations:
+                # Default to first division if no division specified
+                default_division_id = divisions[0].id if divisions else None
                 normalized_invites.append(
                     InvitationCreatePayload(
                         email=invitation.email,
                         role=invitation.role or "member",
-                        division_id=invitation.division_id or primary_division.id,
+                        division_id=invitation.division_id or default_division_id,
                         message=invitation.message,
                         expires_at=invitation.expires_at,
                     )

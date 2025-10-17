@@ -10,11 +10,11 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 import uuid
 
-from sqlalchemy import bindparam, text, null
-from sqlalchemy.dialects.postgresql import JSON
+from sqlalchemy import bindparam, text, null, JSON
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .schemas import (
+    DivisionCreate,
     DivisionResponse,
     InvitationBatchCreateRequest,
     InvitationBatchCreateResponse,
@@ -38,6 +38,14 @@ class SlugValidationError(SlugError):
 
 class SlugConflictError(SlugError):
     """Raised when attempting to use a slug that already exists."""
+
+
+class DivisionValidationError(ValueError):
+    """Raised when division validation fails."""
+
+
+class DivisionDuplicateError(DivisionValidationError):
+    """Raised when duplicate division names or keys are detected."""
 
 
 MAX_SLUG_LENGTH = 63
@@ -140,6 +148,51 @@ class OrganizationRepository:
             if counter > 1000:  # Safety limit
                 raise ValueError("Unable to generate unique slug")
 
+    def _validate_divisions(self, divisions: List[DivisionCreate]) -> None:
+        """Validate divisions for uniqueness and proper format."""
+        if not divisions:
+            raise DivisionValidationError("At least one division must be provided")
+
+        # Check for duplicate division names
+        division_names = [d.name.lower().strip() for d in divisions]
+        if len(division_names) != len(set(division_names)):
+            raise DivisionDuplicateError("Division names must be unique within an organization")
+
+        # Check for duplicate division keys
+        division_keys = []
+        for division in divisions:
+            if division.key:
+                key = self.generate_slug(division.key)
+                if not key:
+                    raise DivisionValidationError(f"Division key '{division.key}' is invalid")
+                division_keys.append(key)
+
+        if len(division_keys) != len(set(division_keys)):
+            raise DivisionDuplicateError("Division keys must be unique within an organization")
+
+    def _prepare_division_data(self, divisions: List[DivisionCreate]) -> List[Dict[str, Any]]:
+        """Prepare division data for database insertion."""
+        prepared_divisions = []
+        for division in divisions:
+            # Generate division key if not provided
+            division_key = division.key or self.generate_slug(division.name)
+            if not division_key:
+                raise DivisionValidationError(
+                    f"Division key for '{division.name}' must include at least one alphanumeric character."
+                )
+
+            # Normalize the key
+            division_key = self.generate_slug(division_key)
+
+            prepared_divisions.append({
+                "id": str(uuid.uuid4()),
+                "name": division.name.strip(),
+                "key": division_key,
+                "description": division.description.strip() if division.description else None
+            })
+
+        return prepared_divisions
+
     async def suggest_slug_variants(self, slug: str, limit: int = 3) -> list[str]:
         """Generate a list of available slug suggestions."""
 
@@ -234,8 +287,8 @@ class OrganizationRepository:
         self,
         user_id: str,
         create_data: OrganizationCreate
-    ) -> Tuple[OrganizationResponse, DivisionResponse]:
-        """Create a new organization with a primary division."""
+    ) -> Tuple[OrganizationResponse, List[DivisionResponse]]:
+        """Create a new organization with multiple divisions."""
 
         # Generate or validate slug
         if create_data.slug:
@@ -249,12 +302,10 @@ class OrganizationRepository:
         else:
             slug = await self.generate_unique_slug(create_data.name)
 
-        # Generate division key
-        division_key = create_data.division_key or self.generate_slug(create_data.division_name)
-        if not division_key:
-            raise SlugValidationError(
-                "Division key must include at least one alphanumeric character.",
-            )
+        # Get and validate divisions
+        divisions_to_create = create_data.get_divisions_to_create()
+        self._validate_divisions(divisions_to_create)
+        prepared_divisions = self._prepare_division_data(divisions_to_create)
 
         try:
             # Start transaction
@@ -283,27 +334,28 @@ class OrganizationRepository:
             })
             org_row = org_result.mappings().first()
 
-            # Create primary division
-            division_query = text(
-                """
-                INSERT INTO public.divisions (
-                    id, org_id, name, key, description, created_at
-                ) VALUES (
-                    :id, :org_id, :name, :key, :description, NOW()
+            # Create divisions
+            division_rows = []
+            for division_data in prepared_divisions:
+                division_query = text(
+                    """
+                    INSERT INTO public.divisions (
+                        id, org_id, name, key, description, created_at
+                    ) VALUES (
+                        :id, :org_id, :name, :key, :description, NOW()
+                    )
+                    RETURNING id, name, key, description, org_id, created_at
+                    """
                 )
-                RETURNING id, name, key, description, org_id, created_at
-                """
-            )
 
-            division_id = str(uuid.uuid4())
-            division_result = await self._session.execute(division_query, {
-                "id": division_id,
-                "org_id": org_id,
-                "name": create_data.division_name,
-                "key": division_key,
-                "description": f"Primary division for {create_data.name}"
-            })
-            division_row = division_result.mappings().first()
+                division_result = await self._session.execute(division_query, {
+                    "id": division_data["id"],
+                    "org_id": org_id,
+                    "name": division_data["name"],
+                    "key": division_data["key"],
+                    "description": division_data["description"]
+                })
+                division_rows.append(division_result.mappings().first())
 
             # Create organization membership (owner)
             membership_query = text(
@@ -317,17 +369,20 @@ class OrganizationRepository:
                 "user_id": user_id
             })
 
-            # Create division membership (lead)
-            div_membership_query = text(
-                """
-                INSERT INTO public.division_memberships (division_id, user_id, role, joined_at)
-                VALUES (:division_id, :user_id, 'lead', NOW())
-                """
-            )
-            await self._session.execute(div_membership_query, {
-                "division_id": division_id,
-                "user_id": user_id
-            })
+            # Create division memberships (lead for first division, member for others)
+            for i, division_row in enumerate(division_rows):
+                role = "lead" if i == 0 else "contributor"
+                div_membership_query = text(
+                    """
+                    INSERT INTO public.division_memberships (division_id, user_id, role, joined_at)
+                    VALUES (:division_id, :user_id, :role, NOW())
+                    """
+                )
+                await self._session.execute(div_membership_query, {
+                    "division_id": division_row["id"],
+                    "user_id": user_id,
+                    "role": role
+                })
 
             # Create organization settings
             settings_query = text(
@@ -350,9 +405,9 @@ class OrganizationRepository:
                 if template:
                     default_tools = template.tools
 
-            # Handle JSON field properly - use JSON.NULL for empty dict to avoid encoding issues
+            # Handle JSON field properly - use None for empty dict to avoid encoding issues
             if not default_tools:
-                default_tools = JSON.NULL
+                default_tools = None
 
             await self._session.execute(settings_query, {
                 "id": settings_id,
@@ -365,6 +420,19 @@ class OrganizationRepository:
             await self._session.commit()
 
             # Create response objects
+            division_responses = []
+            for i, division_row in enumerate(division_rows):
+                role = "lead" if i == 0 else "contributor"
+                division_responses.append(DivisionResponse(
+                    id=str(division_row["id"]),
+                    name=division_row["name"],
+                    key=division_row["key"],
+                    description=division_row["description"],
+                    org_id=str(division_row["org_id"]),
+                    created_at=division_row["created_at"],
+                    user_role=role
+                ))
+
             organization = OrganizationResponse(
                 id=str(org_row["id"]),
                 name=org_row["name"],
@@ -372,29 +440,11 @@ class OrganizationRepository:
                 description=org_row["description"],
                 logo_url=org_row["logo_url"],
                 created_at=org_row["created_at"],
-                divisions=[DivisionResponse(
-                    id=str(division_row["id"]),
-                    name=division_row["name"],
-                    key=division_row["key"],
-                    description=division_row["description"],
-                    org_id=str(division_row["org_id"]),
-                    created_at=division_row["created_at"],
-                    user_role="lead"
-                )],
+                divisions=division_responses,
                 user_role="owner"
             )
 
-            division = DivisionResponse(
-                id=str(division_row["id"]),
-                name=division_row["name"],
-                key=division_row["key"],
-                description=division_row["description"],
-                org_id=str(division_row["org_id"]),
-                created_at=division_row["created_at"],
-                user_role="lead"
-            )
-
-            return organization, division
+            return organization, division_responses
 
         except Exception as e:
             await self._session.rollback()

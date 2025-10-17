@@ -30,6 +30,7 @@ import type { Division } from '@/hooks/use-organizations'
 export interface OrganizationCardData {
   id: string
   name: string
+  slug: string
   role: string
   divisions: Division[]
   tagline?: string

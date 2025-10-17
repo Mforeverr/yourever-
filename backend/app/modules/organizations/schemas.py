@@ -49,18 +49,50 @@ class OrganizationResponse(OrganizationSummary):
     pass
 
 
+class DivisionCreate(BaseModel):
+    """Payload for creating a single division during organization creation."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str = Field(..., min_length=1, max_length=100)
+    key: Optional[str] = Field(default=None, alias="divisionKey", min_length=1, max_length=63)
+    description: Optional[str] = Field(default=None, max_length=500)
+
+
+class DivisionCreateRequest(BaseModel):
+    """Request payload for creating multiple divisions."""
+
+    divisions: List[DivisionCreate] = Field(..., min_items=1, max_items=10)
+
+
 class OrganizationCreate(BaseModel):
     """Payload submitted when creating a new organization."""
 
     model_config = ConfigDict(populate_by_name=True)
 
-    name: str
-    slug: Optional[str] = None
-    description: Optional[str] = None
-    division_name: str = Field(alias="divisionName")
+    name: str = Field(..., min_length=1, max_length=100)
+    slug: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=500)
+    division_name: str = Field(default=None, alias="divisionName")
     division_key: Optional[str] = Field(default=None, alias="divisionKey")
+    divisions: Optional[List[DivisionCreate]] = None
     template_id: Optional[str] = Field(default=None, alias="templateId")
     invitations: Optional[List[InvitationCreatePayload]] = None
+
+    def get_divisions_to_create(self) -> List[DivisionCreate]:
+        """Get the list of divisions to create, handling backward compatibility."""
+        if self.divisions:
+            return self.divisions
+
+        # Backward compatibility: if no divisions array, use single division fields
+        if self.division_name:
+            return [DivisionCreate(
+                name=self.division_name,
+                key=self.division_key,
+                description=None
+            )]
+
+        raise ValueError("Either 'divisions' array or 'division_name' must be provided")
 
 
 class WorkspaceCreationResponse(BaseModel):

@@ -5,6 +5,8 @@ from fastapi import APIRouter, Depends, Query, status
 from ...dependencies import CurrentPrincipal, require_current_principal
 from .di import get_organization_invitation_service, get_organization_service
 from .schemas import (
+    DivisionCreate,
+    DivisionCreateRequest,
     InvitationBatchCreateRequest,
     InvitationBatchCreateResponse,
     InvitationListResponse,
