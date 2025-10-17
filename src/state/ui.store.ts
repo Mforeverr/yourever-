@@ -9,9 +9,11 @@ export interface UITab {
   id: string
   title: string
   type: UITabType
+  path: string
   isDirty?: boolean
   isActive?: boolean
   isSplit?: boolean
+  isPinned?: boolean
 }
 
 export interface HuddleParticipantState {
@@ -75,6 +77,9 @@ interface UIStoreState {
   setActiveTabId: (tabId: string) => void
   openTab: (tab: UITab) => void
   closeTab: (tabId: string) => void
+  closeAllTabs: () => void
+  duplicateTab: (tabId: string) => void
+  toggleTabPinned: (tabId: string) => void
   updateTab: (tabId: string, updates: Partial<UITab>) => void
   toggleSplitView: (tabId: string) => void
   resetTabs: () => void
@@ -86,10 +91,48 @@ interface UIStoreState {
 }
 
 const DEFAULT_TABS: UITab[] = [
-  { id: "dashboard", title: "Dashboard", type: "project", isActive: true, isSplit: false },
-  { id: "website-revamp", title: "Website Revamp", type: "project", isActive: false, isSplit: false },
-  { id: "general-channel", title: "#general", type: "channel", isDirty: true, isActive: false, isSplit: false },
+  { id: "dashboard", title: "Dashboard", type: "project", path: "/dashboard", isActive: true, isSplit: false, isPinned: false },
+  { id: "workspace", title: "Workspace", type: "project", path: "/workspace", isActive: false, isSplit: false, isPinned: false },
+  {
+    id: "general-channel",
+    title: "#general",
+    type: "channel",
+    path: "/channels/general",
+    isDirty: true,
+    isActive: false,
+    isSplit: false,
+    isPinned: false,
+  },
 ]
+
+const normalizeTabPath = (path: string) => {
+  if (!path) {
+    return "/dashboard"
+  }
+
+  return path.startsWith("/") ? path : `/${path}`
+}
+
+const sortTabsByPinState = (tabs: UITab[]) => {
+  const pinned: UITab[] = []
+  const unpinned: UITab[] = []
+
+  tabs.forEach((tab) => {
+    if (tab.isPinned) {
+      pinned.push(tab)
+    } else {
+      unpinned.push(tab)
+    }
+  })
+
+  return [...pinned, ...unpinned]
+}
+
+const markActiveTab = (tabs: UITab[], tabId: string) =>
+  tabs.map((tab) => ({
+    ...tab,
+    isActive: tab.id === tabId,
+  }))
 
 export const useUIStore = create<UIStoreState>()(
   withOptionalDevtools(
@@ -155,21 +198,44 @@ export const useUIStore = create<UIStoreState>()(
           set((state) => {
             const existingIndex = state.tabs.findIndex((candidate) => candidate.id === tab.id)
             if (existingIndex >= 0) {
-              const updatedTabs = state.tabs.map((candidate, index) => ({
-                ...candidate,
-                ...(index === existingIndex ? { ...candidate, ...tab, isActive: true } : { isActive: false }),
-              }))
+              const updatedTabs = markActiveTab(
+                state.tabs.map((candidate, index) => ({
+                  ...candidate,
+                  ...(index === existingIndex
+                    ? {
+                        ...candidate,
+                        ...tab,
+                        path: normalizeTabPath(tab.path ?? candidate.path),
+                      }
+                    : candidate),
+                })),
+                tab.id
+              )
               return {
-                tabs: updatedTabs,
+                tabs: sortTabsByPinState(updatedTabs),
                 activeTabId: tab.id,
               }
             }
 
+            const normalizedPath = normalizeTabPath(tab.path)
+            const preparedTabs = state.tabs.map((candidate) => ({
+              ...candidate,
+              isActive: false,
+            }))
+
+            const nextTabs = sortTabsByPinState([
+              ...preparedTabs,
+              {
+                ...tab,
+                path: normalizedPath,
+                isActive: true,
+                isSplit: tab.isSplit ?? false,
+                isPinned: tab.isPinned ?? false,
+              },
+            ])
+
             return {
-              tabs: [
-                ...state.tabs.map((candidate) => ({ ...candidate, isActive: false })),
-                { ...tab, isActive: true, isSplit: tab.isSplit ?? false },
-              ],
+              tabs: nextTabs,
               activeTabId: tab.id,
             }
           }),
@@ -188,23 +254,89 @@ export const useUIStore = create<UIStoreState>()(
                 ? filteredTabs[0].id
                 : state.activeTabId ?? filteredTabs[0].id
 
-            return {
-              tabs: filteredTabs.map((tab) => ({
+            const nextTabs = sortTabsByPinState(
+              filteredTabs.map((tab) => ({
                 ...tab,
                 isActive: tab.id === nextActiveId,
-              })),
+              }))
+            )
+
+            return {
+              tabs: nextTabs,
               activeTabId: nextActiveId,
+            }
+          }),
+        closeAllTabs: () =>
+          set((state) => {
+            const remainingTabs = state.tabs.filter((tab) => tab.isPinned)
+            const nextActiveId = remainingTabs[0]?.id ?? null
+
+            const nextTabs = remainingTabs.map((tab, index) => ({
+              ...tab,
+              isActive: index === 0,
+            }))
+
+            return {
+              tabs: nextTabs,
+              activeTabId: nextActiveId,
+            }
+          }),
+        duplicateTab: (tabId) =>
+          set((state) => {
+            const tabIndex = state.tabs.findIndex((tab) => tab.id === tabId)
+            if (tabIndex === -1) {
+              return {}
+            }
+
+            const tabToDuplicate = state.tabs[tabIndex]
+            const cloneId = `${tabToDuplicate.id}-copy-${Date.now()}`
+            const duplicatedTab: UITab = {
+              ...tabToDuplicate,
+              id: cloneId,
+              isActive: true,
+            }
+
+            const deactivatedTabs = state.tabs.map((tab) => ({
+              ...tab,
+              isActive: false,
+            }))
+
+            deactivatedTabs.splice(tabIndex + 1, 0, duplicatedTab)
+
+            const nextTabs = sortTabsByPinState(deactivatedTabs)
+
+            return {
+              tabs: nextTabs,
+              activeTabId: cloneId,
+            }
+          }),
+        toggleTabPinned: (tabId) =>
+          set((state) => {
+            const nextTabs = state.tabs.map((tab) =>
+              tab.id === tabId
+                ? {
+                    ...tab,
+                    isPinned: !tab.isPinned,
+                  }
+                : tab
+            )
+
+            return {
+              tabs: sortTabsByPinState(nextTabs),
             }
           }),
         updateTab: (tabId, updates) =>
           set((state) => ({
-            tabs: state.tabs.map((tab) =>
-              tab.id === tabId
-                ? {
-                    ...tab,
-                    ...updates,
-                  }
-                : tab
+            tabs: sortTabsByPinState(
+              state.tabs.map((tab) =>
+                tab.id === tabId
+                  ? {
+                      ...tab,
+                      ...updates,
+                      path: updates.path ? normalizeTabPath(updates.path) : tab.path,
+                    }
+                  : tab
+              )
             ),
           })),
         resetTabs: () =>
@@ -232,7 +364,7 @@ export const useUIStore = create<UIStoreState>()(
       }),
       {
         name: "yourever-ui",
-        version: 3,
+        version: 4,
         storage: createJSONStorage(() => localStorageService.toStorageAdapter()),
         partialize: (state) => ({
           activeActivity: state.activeActivity,
@@ -250,10 +382,14 @@ export const useUIStore = create<UIStoreState>()(
         }),
         migrate: (persistedState) => {
           const state = (persistedState as Partial<UIStoreState>) ?? {}
-          const tabs = (state.tabs ?? DEFAULT_TABS).map((tab) => ({
-            ...tab,
-            isSplit: tab.isSplit ?? false,
-          }))
+          const tabs = sortTabsByPinState(
+            (state.tabs ?? DEFAULT_TABS).map((tab) => ({
+              ...tab,
+              path: normalizeTabPath((tab as UITab).path ?? tab.id ?? ""),
+              isSplit: tab.isSplit ?? false,
+              isPinned: tab.isPinned ?? false,
+            }))
+          )
 
           return {
             ...state,

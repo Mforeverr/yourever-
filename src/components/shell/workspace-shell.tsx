@@ -15,7 +15,7 @@ import { FloatingAIAssistant } from "@/components/ui/floating-ai-assistant"
 import BottomPanel from "@/components/chat/bottom-panel"
 import { ScopeProvider, useScope } from "@/contexts/scope-context"
 import { useProtectedRoute } from "@/hooks/use-protected-route"
-import { useUIStore } from "@/state/ui.store"
+import { getUIState, useUIStore } from "@/state/ui.store"
 import type { UITab } from "@/state/ui.store"
 
 interface WorkspaceShellProps {
@@ -48,7 +48,11 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
   const activeTabId = useUIStore((state) => state.activeTabId ?? undefined)
   const setActiveTabId = useUIStore((state) => state.setActiveTabId)
   const closeTab = useUIStore((state) => state.closeTab)
+  const closeAllTabs = useUIStore((state) => state.closeAllTabs)
   const openTab = useUIStore((state) => state.openTab)
+  const duplicateTab = useUIStore((state) => state.duplicateTab)
+  const toggleTabPinned = useUIStore((state) => state.toggleTabPinned)
+  const updateTab = useUIStore((state) => state.updateTab)
   const toggleSplitView = useUIStore((state) => state.toggleSplitView)
   const rightPanelSize = useUIStore((state) => state.rightPanelSize)
   const setRightPanelSize = useUIStore((state) => state.setRightPanelSize)
@@ -89,6 +93,56 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
     [pathname, router]
   )
 
+  const toTitleCase = React.useCallback((value: string) => {
+    return value
+      .split(/[-_\s]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ')
+  }, [])
+
+  const describePath = React.useCallback(
+    (relativePath: string): Pick<UITab, 'title' | 'type'> => {
+      const normalized = relativePath.replace(/^\/+/, '') || 'dashboard'
+      const segments = normalized.split('/').filter(Boolean)
+      const [segment, ...rest] = segments
+
+      switch (segment) {
+        case 'dashboard':
+          return { title: 'Dashboard', type: 'project' }
+        case 'workspace':
+          return { title: 'Workspace', type: 'project' }
+        case 'calendar':
+          return { title: 'Calendar', type: 'calendar' }
+        case 'people':
+          return { title: 'People', type: 'doc' }
+        case 'admin':
+          return { title: 'Admin', type: 'project' }
+        case 'channels':
+          return { title: 'Channels', type: 'channel' }
+        case 'explorer':
+          return { title: 'Explorer', type: 'doc' }
+        case 'ai':
+          return { title: 'AI Studio', type: 'doc' }
+        case 'projects': {
+          const projectSegment = rest[0] ?? 'Project'
+          return { title: toTitleCase(projectSegment), type: 'project' }
+        }
+        case 'c': {
+          const channelSegment = rest[0] ?? 'channel'
+          return { title: `#${toTitleCase(channelSegment)}`, type: 'channel' }
+        }
+        case 'dm': {
+          const memberSegment = rest[0] ?? 'member'
+          return { title: `@${toTitleCase(memberSegment)}`, type: 'channel' }
+        }
+        default:
+          return { title: toTitleCase(segment ?? 'Tab'), type: 'doc' }
+      }
+    },
+    [toTitleCase]
+  )
+
   // Set active activity based on current path
   React.useEffect(() => {
     const segments = pathname.split('/').filter(Boolean)
@@ -115,6 +169,71 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
       setActiveActivity('home')
     }
   }, [pathname])
+
+  React.useEffect(() => {
+    if (!isReady || !currentOrgId || !currentDivisionId) {
+      return
+    }
+
+    const segments = pathname.split('/').filter(Boolean)
+    if (segments.length < 2) {
+      return
+    }
+
+    const [orgSegment, divisionSegment, ...restSegments] = segments
+    if (orgSegment !== currentOrgId || divisionSegment !== currentDivisionId) {
+      return
+    }
+
+    const relativePath = `/${restSegments.join('/') || 'dashboard'}`
+    const normalizedPath = `/${relativePath.replace(/^\/+/, '').replace(/\/+$/, '')}`
+    const tabDescriptor = describePath(normalizedPath)
+    const existingTab = tabs.find((tab) => tab.path === normalizedPath)
+
+    if (existingTab) {
+      const needsUpdate = existingTab.title !== tabDescriptor.title || existingTab.type !== tabDescriptor.type
+      if (needsUpdate) {
+        updateTab(existingTab.id, tabDescriptor)
+      }
+      if (!existingTab.isActive) {
+        setActiveTabId(existingTab.id)
+      }
+      return
+    }
+
+    const baseId = normalizedPath
+      .replace(/^\//, '')
+      .replace(/[^a-zA-Z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '') || 'tab'
+
+    let candidateId = baseId
+    let suffix = 1
+    while (tabs.some((tab) => tab.id === candidateId)) {
+      candidateId = `${baseId}-${suffix}`
+      suffix += 1
+    }
+
+    openTab({
+      id: candidateId,
+      title: tabDescriptor.title,
+      type: tabDescriptor.type,
+      path: normalizedPath,
+      isActive: true,
+      isSplit: false,
+      isPinned: false,
+    })
+  }, [
+    pathname,
+    isReady,
+    currentOrgId,
+    currentDivisionId,
+    tabs,
+    describePath,
+    updateTab,
+    setActiveTabId,
+    openTab,
+  ])
 
   // Handle activity changes with navigation
   const handleActivityChange = (activity: string) => {
@@ -153,21 +272,67 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
   
   const handleTabChange = (tabId: string) => {
     setActiveTabId(tabId)
+    const tab = tabs.find((candidate) => candidate.id === tabId)
+    if (tab) {
+      pushScopedPath(tab.path)
+    }
   }
 
   const handleTabClose = (tabId: string) => {
+    const state = getUIState()
+    const isActiveTab = state.activeTabId === tabId
     closeTab(tabId)
+    if (isActiveTab) {
+      const { tabs: nextTabs, activeTabId: nextActiveId } = getUIState()
+      const nextActiveTab = nextTabs.find((tab) => tab.id === nextActiveId)
+      if (nextActiveTab) {
+        pushScopedPath(nextActiveTab.path)
+      } else {
+        pushScopedPath('/dashboard')
+      }
+    }
   }
 
   const handleNewTab = () => {
-    const newTab: UITab = {
-      id: `tab-${Date.now()}`,
-      title: 'New Tab',
-      type: 'task',
-      isActive: true,
-      isSplit: false,
+    if (!activeTabId) {
+      return
     }
-    openTab(newTab)
+
+    duplicateTab(activeTabId)
+  }
+
+  const handleTabReload = (tabId: string) => {
+    const tab = tabs.find((candidate) => candidate.id === tabId)
+    if (!tab) {
+      return
+    }
+
+    if (activeTabId !== tabId) {
+      setActiveTabId(tabId)
+      pushScopedPath(tab.path)
+      return
+    }
+
+    router.refresh()
+  }
+
+  const handleTabDuplicate = (tabId: string) => {
+    duplicateTab(tabId)
+  }
+
+  const handleTabPinToggle = (tabId: string) => {
+    toggleTabPinned(tabId)
+  }
+
+  const handleCloseAllTabs = () => {
+    closeAllTabs()
+    const { tabs: nextTabs, activeTabId: nextActiveId } = getUIState()
+    const nextActiveTab = nextTabs.find((tab) => tab.id === nextActiveId)
+    if (nextActiveTab) {
+      pushScopedPath(nextActiveTab.path)
+    } else {
+      pushScopedPath('/dashboard')
+    }
   }
 
   // Keyboard shortcut to toggle right panel (Ctrl/Cmd + B)
@@ -259,6 +424,10 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
                 activeTabId={activeTabId}
                 onTabChange={handleTabChange}
                 onTabClose={handleTabClose}
+                onTabReload={handleTabReload}
+                onTabDuplicate={handleTabDuplicate}
+                onTabPinToggle={handleTabPinToggle}
+                onCloseAllTabs={handleCloseAllTabs}
                 onNewTab={handleNewTab}
                 onSplitView={toggleSplitView}
               />
