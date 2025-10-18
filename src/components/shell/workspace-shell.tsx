@@ -27,6 +27,7 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
   const router = useRouter()
   const pathname = usePathname()
   const { isLoading: authLoading } = useProtectedRoute()
+  const [isEmbedded, setIsEmbedded] = React.useState(false)
   const {
     organizations,
     currentOrgId,
@@ -58,6 +59,14 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
   const toggleSplitView = useUIStore((state) => state.toggleSplitView)
   const rightPanelSize = useUIStore((state) => state.rightPanelSize)
   const setRightPanelSize = useUIStore((state) => state.setRightPanelSize)
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    setIsEmbedded(window.self !== window.top)
+  }, [])
 
   const resolvePaneId = React.useCallback((tab?: UITab | null): TabPaneId => {
     return tab?.paneId === "secondary" ? "secondary" : "primary"
@@ -186,6 +195,10 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
 
   // Set active activity based on current path
   React.useEffect(() => {
+    if (isEmbedded) {
+      return
+    }
+
     const segments = pathname.split('/').filter(Boolean)
     const scopedSegment =
       segments.length >= 3 ? segments[2] : segments.length >= 1 ? segments[0] : ''
@@ -209,10 +222,15 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
     } else {
       setActiveActivity('home')
     }
-  }, [pathname])
+  }, [isEmbedded, pathname])
 
   React.useEffect(() => {
-    if (!isReady || !currentOrgId || !currentDivisionId) {
+    if (
+      isEmbedded ||
+      !isReady ||
+      !currentOrgId ||
+      !currentDivisionId
+    ) {
       return
     }
 
@@ -279,10 +297,15 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
     setActiveTabId,
     openTab,
     resolvePaneId,
+    isEmbedded,
   ])
 
   // Handle activity changes with navigation
   const handleActivityChange = (activity: string) => {
+    if (isEmbedded) {
+      return
+    }
+
     setActiveActivity(activity)
 
     switch (activity) {
@@ -317,6 +340,10 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
   }
   
   const handleTabChange = (tabId: string) => {
+    if (isEmbedded) {
+      return
+    }
+
     setActiveTabId(tabId)
     const tab = tabs.find((candidate) => candidate.id === tabId)
     if (tab && resolvePaneId(tab) === "primary") {
@@ -325,6 +352,10 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
   }
 
   const handleTabClose = (tabId: string) => {
+    if (isEmbedded) {
+      return
+    }
+
     const state = getUIState()
     const closingTab = state.tabs.find((candidate) => candidate.id === tabId) ?? null
     const paneId = resolvePaneId(closingTab)
@@ -348,6 +379,10 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
   }
 
   const handleNewTab = (pane: TabPaneId) => {
+    if (isEmbedded) {
+      return
+    }
+
     const currentPaneActiveId =
       pane === "primary" ? primaryActiveTabId ?? null : secondaryActiveTabId ?? null
 
@@ -368,6 +403,10 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
   }
 
   const handleTabReload = (tabId: string) => {
+    if (isEmbedded) {
+      return
+    }
+
     const tab = tabs.find((candidate) => candidate.id === tabId)
     if (!tab) {
       return
@@ -390,6 +429,10 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
   }
 
   const handleTabDuplicate = (tabId: string) => {
+    if (isEmbedded) {
+      return
+    }
+
     const tab = tabs.find((candidate) => candidate.id === tabId)
     if (!tab) {
       return
@@ -409,10 +452,18 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
   }
 
   const handleTabPinToggle = (tabId: string) => {
+    if (isEmbedded) {
+      return
+    }
+
     toggleTabPinned(tabId)
   }
 
   const handleCloseAllTabs = () => {
+    if (isEmbedded) {
+      return
+    }
+
     closeAllTabs()
     const { tabs: nextTabs, paneActiveTabIds: nextPaneIds, activeTabId: nextActiveId } = getUIState()
     const nextPrimaryId = nextPaneIds.primary ?? nextActiveId
@@ -426,13 +477,21 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
 
   const handleTabSplit = React.useCallback(
     (tabId: string, direction?: TabSplitDirection) => {
+      if (isEmbedded) {
+        return
+      }
+
       toggleSplitView(tabId, direction)
     },
-    [toggleSplitView]
+    [isEmbedded, toggleSplitView]
   )
 
   // Keyboard shortcut to toggle right panel (Ctrl/Cmd + B)
   React.useEffect(() => {
+    if (isEmbedded) {
+      return
+    }
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'b' && !event.shiftKey) {
         event.preventDefault()
@@ -450,7 +509,15 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [toggleLeftSidebar, toggleRightPanel])
+  }, [isEmbedded, toggleLeftSidebar, toggleRightPanel])
+
+  if (isEmbedded) {
+    return (
+      <div className={cn("h-full flex flex-col bg-background", className)}>
+        <div className="flex-1 overflow-auto">{children}</div>
+      </div>
+    )
+  }
 
   if (authLoading || !isReady) {
     return (
