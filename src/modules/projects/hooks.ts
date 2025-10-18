@@ -50,7 +50,7 @@ export const projectScopeSegments = (scope: ProjectScopeKey) => [
 ] as const
 
 export const projectQueryKeys = {
-  base: (scope: ProjectScopeKey) => ["projects", ...scopeSegments(scope)] as const,
+  base: (scope: ProjectScopeKey) => ["projects", ...projectScopeSegments(scope)] as const,
   detail: (scope: ProjectScopeKey, projectId: string) =>
     ["projects", ...projectScopeSegments(scope), "detail", projectId] as const,
   tasks: (scope: ProjectScopeKey, projectId: string, params?: { cursor?: string; limit?: number }) =>
@@ -98,7 +98,10 @@ export const useProjectEnvironment = () => {
     }
     return createFastProjectApi({
       baseUrl: API_BASE_URL,
-      scope,
+      scope: {
+        orgId: scope.orgId ?? undefined,
+        divisionId: scope.divisionId ?? undefined,
+      },
     })
   }, [realApiEnabled, scope])
 
@@ -244,7 +247,7 @@ export const useUpdateProject = (projectId: string, options?: UpdateProjectMutat
     onSuccess: (data, variables, context) => {
       queryClient.invalidateQueries({ queryKey: projectQueryKeys.detail(scope, projectId) })
       queryClient.invalidateQueries({ queryKey: projectQueryKeys.base(scope) })
-      options?.onSuccess?.(data, variables, context)
+      options?.onSuccess?.(data, variables, context, { variables } as any)
     },
     ...options,
   })
@@ -266,7 +269,7 @@ export const useUpdateProjectSettings = (projectId: string, options?: UpdateProj
     onSuccess: (data, variables, context) => {
       queryClient.invalidateQueries({ queryKey: projectQueryKeys.settings(scope, projectId) })
       queryClient.invalidateQueries({ queryKey: projectQueryKeys.base(scope) })
-      options?.onSuccess?.(data, variables, context)
+      options?.onSuccess?.(data, variables, context, { variables } as any)
     },
     ...options,
   })
@@ -289,7 +292,7 @@ export const useAddProjectMember = (projectId: string, options?: AddProjectMembe
       queryClient.invalidateQueries({ queryKey: projectQueryKeys.members(scope, projectId) })
       queryClient.invalidateQueries({ queryKey: projectQueryKeys.detail(scope, projectId) })
       queryClient.invalidateQueries({ queryKey: projectQueryKeys.base(scope) })
-      options?.onSuccess?.(data, variables, context)
+      options?.onSuccess?.(data, variables, context, { variables } as any)
     },
     ...options,
   })
@@ -312,7 +315,7 @@ export const useRemoveProjectMember = (options?: RemoveProjectMemberMutationOpti
       queryClient.invalidateQueries({ queryKey: projectQueryKeys.members(scope, variables.projectId) })
       queryClient.invalidateQueries({ queryKey: projectQueryKeys.detail(scope, variables.projectId) })
       queryClient.invalidateQueries({ queryKey: projectQueryKeys.base(scope) })
-      options?.onSuccess?.(data, variables, context)
+      options?.onSuccess?.(data, variables, context, { variables } as any)
     },
     ...options,
   })

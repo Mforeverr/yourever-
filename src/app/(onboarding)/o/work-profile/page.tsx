@@ -40,7 +40,7 @@ export default function WorkProfileOnboardingPage() {
   const form = useForm<WorkProfileStepData>({
     resolver: zodResolver(workProfileStepSchema),
     mode: 'onChange',
-    defaultValues: data,
+    defaultValues: data as WorkProfileStepData,
   })
   const { generalError } = useOnboardingValidationFeedback('work-profile', form)
   const {
@@ -54,7 +54,7 @@ export default function WorkProfileOnboardingPage() {
   useEffect(() => {
     if (!user) return
     if (hasPrefilledRef.current) return
-    if (data.teamName || data.jobTitle) {
+    if ((data as WorkProfileStepData).teamName || (data as WorkProfileStepData).jobTitle) {
       hasPrefilledRef.current = true
       return
     }
@@ -86,7 +86,7 @@ export default function WorkProfileOnboardingPage() {
     if (deepEqual(currentValues, data)) {
       return
     }
-    form.reset(data)
+    form.reset(data as WorkProfileStepData)
     void form.trigger()
   }, [data, form])
 

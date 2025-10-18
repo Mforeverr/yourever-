@@ -15,6 +15,7 @@ import { useOnboardingValidationFeedback } from '@/hooks/use-onboarding-validati
 import { cn } from '@/lib/utils'
 import { inviteStepSchema } from '@/lib/onboarding-schemas'
 import { deepEqual } from '@/lib/object-utils'
+import type { InviteStepData } from '@/lib/onboarding'
 
 export default function InviteOnboardingPage() {
   const {
@@ -32,10 +33,10 @@ export default function InviteOnboardingPage() {
     canNavigateToStep,
   } = useOnboardingStep('invite')
   const [pendingEmail, setPendingEmail] = useState('')
-  const form = useForm({
+  const form = useForm<InviteStepData>({
     resolver: zodResolver(inviteStepSchema),
     mode: 'onChange',
-    defaultValues: data,
+    defaultValues: data as InviteStepData,
   })
   const { generalError } = useOnboardingValidationFeedback('invite', form)
   const {
@@ -49,7 +50,7 @@ export default function InviteOnboardingPage() {
 
   useEffect(() => {
     const subscription = form.watch((values) => {
-      updateData(values as typeof data)
+      updateData(values as InviteStepData)
     })
     return () => subscription.unsubscribe()
   }, [form, updateData])
@@ -59,7 +60,7 @@ export default function InviteOnboardingPage() {
     if (deepEqual(currentValues, data)) {
       return
     }
-    form.reset(data)
+    form.reset(data as InviteStepData)
     void form.trigger()
   }, [data, form])
 

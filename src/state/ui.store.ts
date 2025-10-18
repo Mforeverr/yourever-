@@ -1,15 +1,37 @@
 import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
+import type { StateCreator } from "zustand"
 import { localStorageService } from "@/lib/storage"
 import { withOptionalDevtools } from "@/state/store-utils"
 
-export type UITabType = "task" | "project" | "doc" | "channel" | "calendar" | "timeline"
+export type UITabType = "task" | "project" | "doc" | "channel" | "calendar" | "timeline" | "dm" | "ai" | "admin" | "explorer"
+
+export interface TabRoute {
+  path: string
+  params?: Record<string, string>
+  query?: Record<string, string>
+  hash?: string
+}
+
+export interface TabMetadata {
+  createdAt: string
+  updatedAt: string
+  lastVisited: string
+  visitCount: number
+  contextData?: Record<string, any>
+  preview?: string
+  badgeCount?: number
+  icon?: string
+  tooltip?: string
+}
 
 export interface UITab {
   id: string
   title: string
   type: UITabType
-  path: string
+  path?: string
+  route?: TabRoute
+  metadata?: TabMetadata
   isDirty?: boolean
   isActive?: boolean
   isSplit?: boolean
@@ -84,6 +106,27 @@ interface UIStoreState {
   toggleSplitView: (tabId: string) => void
   resetTabs: () => void
 
+  // New advanced tab management methods
+  createTabForPage: (pageId: string, title: string, type: UITabType, route: TabRoute) => string
+  createTabForChannel: (channelId: string, channelName: string) => string
+  createTabForProject: (projectId: string, projectName: string) => string
+  createTabForDM: (userId: string, userName: string) => string
+  createTabForExplorer: (path: string) => string
+  ensureTabExists: (tabId: string, options: { title: string; type: UITabType; route?: TabRoute }) => string
+  closeTabById: (tabId: string) => void
+  closeTabsToRight: (tabId: string) => void
+  closeOtherTabs: (tabId: string) => void
+  pinTab: (tabId: string) => void
+  unpinTab: (tabId: string) => void
+  toggleTabPin: (tabId: string) => void
+  updateTabMetadata: (tabId: string, updates: Partial<TabMetadata>) => void
+  getTabByRoute: (route: TabRoute) => UITab | undefined
+  getTabsByType: (type: UITabType) => UITab[]
+  getPinnedTabs: () => UITab[]
+  getUnpinnedTabs: () => UITab[]
+  sortTabsByLastVisited: () => void
+  incrementTabVisitCount: (tabId: string) => void
+
   rightPanelSize: number
   setRightPanelSize: (size: number) => void
   bottomPanelHeight: number
@@ -91,13 +134,50 @@ interface UIStoreState {
 }
 
 const DEFAULT_TABS: UITab[] = [
-  { id: "dashboard", title: "Dashboard", type: "project", path: "/dashboard", isActive: true, isSplit: false, isPinned: false },
-  { id: "workspace", title: "Workspace", type: "project", path: "/workspace", isActive: false, isSplit: false, isPinned: false },
+  {
+    id: "dashboard",
+    title: "Dashboard",
+    type: "project",
+    path: "/dashboard",
+    route: { path: "/dashboard" },
+    metadata: {
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      lastVisited: new Date().toISOString(),
+      visitCount: 0
+    },
+    isActive: true,
+    isSplit: false,
+    isPinned: false
+  },
+  {
+    id: "workspace",
+    title: "Workspace",
+    type: "project",
+    path: "/workspace",
+    route: { path: "/workspace" },
+    metadata: {
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      lastVisited: new Date().toISOString(),
+      visitCount: 0
+    },
+    isActive: false,
+    isSplit: false,
+    isPinned: false
+  },
   {
     id: "general-channel",
     title: "#general",
     type: "channel",
     path: "/channels/general",
+    route: { path: "/channels/general" },
+    metadata: {
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      lastVisited: new Date().toISOString(),
+      visitCount: 0
+    },
     isDirty: true,
     isActive: false,
     isSplit: false,
@@ -112,6 +192,14 @@ const normalizeTabPath = (path: string) => {
 
   return path.startsWith("/") ? path : `/${path}`
 }
+
+const createMetadata = (overrides: Partial<TabMetadata> = {}): TabMetadata => ({
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  lastVisited: new Date().toISOString(),
+  visitCount: 0,
+  ...overrides
+})
 
 const sortTabsByPinState = (tabs: UITab[]) => {
   const pinned: UITab[] = []
@@ -137,7 +225,7 @@ const markActiveTab = (tabs: UITab[], tabId: string) =>
 export const useUIStore = create<UIStoreState>()(
   withOptionalDevtools(
     persist(
-      (set) => ({
+      (set, get) => ({
         activeActivity: "home",
         setActiveActivity: (activity) => set({ activeActivity: activity }),
 
@@ -205,7 +293,7 @@ export const useUIStore = create<UIStoreState>()(
                     ? {
                         ...candidate,
                         ...tab,
-                        path: normalizeTabPath(tab.path ?? candidate.path),
+                        path: normalizeTabPath(tab.path ?? candidate.path ?? ""),
                       }
                     : candidate),
                 })),
@@ -217,7 +305,7 @@ export const useUIStore = create<UIStoreState>()(
               }
             }
 
-            const normalizedPath = normalizeTabPath(tab.path)
+            const normalizedPath = normalizeTabPath(tab.path ?? "")
             const preparedTabs = state.tabs.map((candidate) => ({
               ...candidate,
               isActive: false,
@@ -281,35 +369,50 @@ export const useUIStore = create<UIStoreState>()(
               activeTabId: nextActiveId,
             }
           }),
-        duplicateTab: (tabId) =>
-          set((state) => {
-            const tabIndex = state.tabs.findIndex((tab) => tab.id === tabId)
-            if (tabIndex === -1) {
-              return {}
-            }
+        duplicateTab: (tabId) => {
+          const state = get()
+          const tabIndex = state.tabs.findIndex((tab) => tab.id === tabId)
+          if (tabIndex === -1) {
+            return tabId
+          }
 
-            const tabToDuplicate = state.tabs[tabIndex]
-            const cloneId = `${tabToDuplicate.id}-copy-${Date.now()}`
-            const duplicatedTab: UITab = {
-              ...tabToDuplicate,
-              id: cloneId,
-              isActive: true,
-            }
+          const tabToDuplicate = state.tabs[tabIndex]
+          const cloneId = `${tabToDuplicate.id}-copy-${Date.now()}`
+          const duplicatedTab: UITab = {
+            ...tabToDuplicate,
+            id: cloneId,
+            title: `${tabToDuplicate.title} (Copy)`,
+            metadata: tabToDuplicate.metadata ? {
+              ...tabToDuplicate.metadata,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              lastVisited: new Date().toISOString(),
+              visitCount: 0
+            } : {
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              lastVisited: new Date().toISOString(),
+              visitCount: 0
+            },
+            isActive: true,
+          }
 
-            const deactivatedTabs = state.tabs.map((tab) => ({
-              ...tab,
-              isActive: false,
-            }))
+          const deactivatedTabs = state.tabs.map((tab) => ({
+            ...tab,
+            isActive: false,
+          }))
 
-            deactivatedTabs.splice(tabIndex + 1, 0, duplicatedTab)
+          deactivatedTabs.splice(tabIndex + 1, 0, duplicatedTab as any)
 
-            const nextTabs = sortTabsByPinState(deactivatedTabs)
+          const nextTabs = sortTabsByPinState(deactivatedTabs)
 
-            return {
-              tabs: nextTabs,
-              activeTabId: cloneId,
-            }
-          }),
+          set({
+            tabs: nextTabs,
+            activeTabId: cloneId,
+          })
+
+          return cloneId
+        },
         toggleTabPinned: (tabId) =>
           set((state) => {
             const nextTabs = state.tabs.map((tab) =>
@@ -333,7 +436,7 @@ export const useUIStore = create<UIStoreState>()(
                   ? {
                       ...tab,
                       ...updates,
-                      path: updates.path ? normalizeTabPath(updates.path) : tab.path,
+                      path: updates.path ? normalizeTabPath(updates.path) : tab.path ?? "",
                     }
                   : tab
               )
@@ -350,6 +453,291 @@ export const useUIStore = create<UIStoreState>()(
               tab.id === tabId ? { ...tab, isSplit: !tab.isSplit } : tab
             ),
           })),
+
+        // Advanced tab management methods
+        createTabForPage: (pageId, title, type, route) => {
+          const tabId = `page-${pageId}`
+          const tab: UITab = {
+            id: tabId,
+            title,
+            type,
+            route,
+            path: route.path,
+            metadata: {
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              lastVisited: new Date().toISOString(),
+              visitCount: 0
+            },
+            isActive: true,
+            isPinned: false,
+            isSplit: false
+          };
+          get().openTab(tab);
+          return tabId;
+        },
+
+        createTabForChannel: (channelId, channelName) => {
+          const tabId = `channel-${channelId}`
+          const tab: UITab = {
+            id: tabId,
+            title: `#${channelName}`,
+            type: "channel",
+            route: { path: `/channels/${channelId}` },
+            path: `/channels/${channelId}`,
+            metadata: {
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              lastVisited: new Date().toISOString(),
+              visitCount: 0
+            },
+            isActive: true,
+            isPinned: false,
+            isSplit: false,
+          };
+          get().openTab(tab);
+          return tabId;
+        },
+
+        createTabForProject: (projectId, projectName) => {
+          const tabId = `project-${projectId}`
+          const tab: UITab = {
+            id: tabId,
+            title: projectName,
+            type: "project",
+            route: { path: `/projects/${projectId}` },
+            path: `/projects/${projectId}`,
+            metadata: {
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              lastVisited: new Date().toISOString(),
+              visitCount: 0,
+              contextData: { projectId }
+            },
+            isActive: true,
+            isPinned: false,
+            isSplit: false,
+          };
+          get().openTab(tab);
+          return tabId;
+        },
+
+        createTabForDM: (userId, userName) => {
+          const tabId = `dm-${userId}`
+          const tab: UITab = {
+            id: tabId,
+            title: userName,
+            type: "dm",
+            route: { path: `/dm/${userId}` },
+            path: `/dm/${userId}`,
+            metadata: {
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              lastVisited: new Date().toISOString(),
+              visitCount: 0,
+              contextData: { userId }
+            },
+            isActive: true,
+            isPinned: false,
+            isSplit: false,
+          };
+          get().openTab(tab);
+          return tabId;
+        },
+
+        createTabForExplorer: (path) => {
+          const tabId = `explorer-${path.replace(/[^a-zA-Z0-9]/g, '-')}`
+          const tab: UITab = {
+            id: tabId,
+            title: `Explorer: ${path}`,
+            type: "explorer",
+            route: { path: `/explorer${path}` },
+            path: `/explorer${path}`,
+            metadata: {
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              lastVisited: new Date().toISOString(),
+              visitCount: 0,
+              contextData: { path }
+            },
+            isActive: true,
+            isPinned: false,
+            isSplit: false,
+          };
+          get().openTab(tab);
+          return tabId;
+        },
+
+        ensureTabExists: (tabId, options) => {
+          const state = get()
+          const existingTab = state.tabs.find(tab => tab.id === tabId)
+
+          if (existingTab) {
+            state.setActiveTabId(tabId)
+            return tabId
+          }
+
+          const tab: UITab = {
+            id: tabId,
+            title: options.title,
+            type: options.type,
+            route: options.route,
+            path: options.route?.path,
+            metadata: {
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              lastVisited: new Date().toISOString(),
+              visitCount: 0
+            },
+            isActive: true,
+            isPinned: false,
+            isSplit: false
+          }
+          state.openTab(tab)
+          return tabId
+        },
+
+        closeTabById: (tabId) => {
+          get().closeTab(tabId)
+        },
+
+        closeTabsToRight: (tabId) => {
+          const state = get()
+          const tabIndex = state.tabs.findIndex(tab => tab.id === tabId)
+          if (tabIndex === -1) return
+
+          const tabsToKeep = state.tabs.slice(0, tabIndex + 1)
+          const newActiveId = tabsToKeep.find(tab => tab.id === state.activeTabId)?.id ||
+                            tabsToKeep[tabsToKeep.length - 1]?.id || null
+
+          set({
+            tabs: sortTabsByPinState(tabsToKeep),
+            activeTabId: newActiveId
+          })
+        },
+
+        closeOtherTabs: (tabId) => {
+          const state = get()
+          const targetTab = state.tabs.find(tab => tab.id === tabId)
+          if (!targetTab) return
+
+          const pinnedTabs = state.tabs.filter(tab => tab.isPinned && tab.id !== tabId)
+          const finalTabs = [...pinnedTabs, targetTab]
+
+          set({
+            tabs: sortTabsByPinState(finalTabs.map(tab => ({ ...tab, isActive: tab.id === tabId }))),
+            activeTabId: tabId
+          })
+        },
+
+        pinTab: (tabId) => {
+          set((state) => ({
+            tabs: sortTabsByPinState(
+              state.tabs.map(tab =>
+                tab.id === tabId ? { ...tab, isPinned: true } : tab
+              )
+            )
+          }))
+        },
+
+        unpinTab: (tabId) => {
+          set((state) => ({
+            tabs: sortTabsByPinState(
+              state.tabs.map(tab =>
+                tab.id === tabId ? { ...tab, isPinned: false } : tab
+              )
+            )
+          }))
+        },
+
+        toggleTabPin: (tabId) => {
+          get().toggleTabPinned(tabId)
+        },
+
+        updateTabMetadata: (tabId, updates) => {
+          set((state) => ({
+            tabs: sortTabsByPinState(
+              state.tabs.map(tab =>
+                tab.id === tabId
+                  ? {
+                      ...tab,
+                      metadata: tab.metadata
+                        ? { ...tab.metadata, ...updates, updatedAt: new Date().toISOString() }
+                        : {
+                            createdAt: new Date().toISOString(),
+                            updatedAt: new Date().toISOString(),
+                            lastVisited: new Date().toISOString(),
+                            visitCount: 0,
+                            ...updates
+                          }
+                    }
+                  : tab
+              )
+            )
+          }))
+        },
+
+        getTabByRoute: (route) => {
+          const state = get()
+          return state.tabs.find(tab =>
+            tab.route?.path === route.path &&
+            JSON.stringify(tab.route?.params) === JSON.stringify(route.params) &&
+            JSON.stringify(tab.route?.query) === JSON.stringify(route.query)
+          )
+        },
+
+        getTabsByType: (type) => {
+          const state = get()
+          return state.tabs.filter(tab => tab.type === type)
+        },
+
+        getPinnedTabs: () => {
+          const state = get()
+          return state.tabs.filter(tab => tab.isPinned)
+        },
+
+        getUnpinnedTabs: () => {
+          const state = get()
+          return state.tabs.filter(tab => !tab.isPinned)
+        },
+
+        sortTabsByLastVisited: () => {
+          set((state) => {
+            const sortedTabs = [...state.tabs].sort((a, b) => {
+              const aTime = a.metadata?.lastVisited || ''
+              const bTime = b.metadata?.lastVisited || ''
+              return new Date(bTime).getTime() - new Date(aTime).getTime()
+            })
+            return { tabs: sortTabsByPinState(sortedTabs) }
+          })
+        },
+
+        incrementTabVisitCount: (tabId) => {
+          set((state) => ({
+            tabs: sortTabsByPinState(
+              state.tabs.map(tab =>
+                tab.id === tabId
+                  ? {
+                      ...tab,
+                      metadata: tab.metadata
+                        ? {
+                            ...tab.metadata,
+                            visitCount: tab.metadata.visitCount + 1,
+                            lastVisited: new Date().toISOString(),
+                            updatedAt: new Date().toISOString()
+                          }
+                        : {
+                            createdAt: new Date().toISOString(),
+                            updatedAt: new Date().toISOString(),
+                            lastVisited: new Date().toISOString(),
+                            visitCount: 1
+                          }
+                    }
+                  : tab
+              )
+            )
+          }))
+        },
 
         rightPanelSize: 25,
         setRightPanelSize: (size) =>
@@ -383,12 +771,17 @@ export const useUIStore = create<UIStoreState>()(
         migrate: (persistedState) => {
           const state = (persistedState as Partial<UIStoreState>) ?? {}
           const tabs = sortTabsByPinState(
-            (state.tabs ?? DEFAULT_TABS).map((tab) => ({
-              ...tab,
-              path: normalizeTabPath((tab as UITab).path ?? tab.id ?? ""),
-              isSplit: tab.isSplit ?? false,
-              isPinned: tab.isPinned ?? false,
-            }))
+            (state.tabs ?? DEFAULT_TABS).map((tab) => {
+              const existingTab = tab as UITab
+              return {
+                ...existingTab,
+                path: normalizeTabPath(existingTab.path ?? existingTab.route?.path ?? existingTab.id ?? ""),
+                route: existingTab.route ?? (existingTab.path ? { path: existingTab.path } : { path: "/" }),
+                metadata: existingTab.metadata ?? createMetadata(),
+                isSplit: existingTab.isSplit ?? false,
+                isPinned: existingTab.isPinned ?? false,
+              }
+            })
           )
 
           return {
@@ -417,3 +810,45 @@ export const useUIStore = create<UIStoreState>()(
 )
 
 export const getUIState = () => useUIStore.getState()
+
+// Selector hooks for components
+export const useActiveTab = () => {
+  const activeTabId = useUIStore((state) => state.activeTabId)
+  const tabs = useUIStore((state) => state.tabs)
+  return tabs.find(tab => tab.id === activeTabId)
+}
+
+export const useTabById = (tabId: string) => {
+  const tabs = useUIStore((state) => state.tabs)
+  return tabs.find(tab => tab.id === tabId)
+}
+
+export const useTabsByType = (type: UITabType) => {
+  const tabs = useUIStore((state) => state.tabs)
+  return tabs.filter(tab => tab.type === type)
+}
+
+export const usePinnedTabs = () => {
+  const tabs = useUIStore((state) => state.tabs)
+  return tabs.filter(tab => tab.isPinned)
+}
+
+export const useUnpinnedTabs = () => {
+  const tabs = useUIStore((state) => state.tabs)
+  return tabs.filter(tab => !tab.isPinned)
+}
+
+export const useTabCount = () => {
+  const tabs = useUIStore((state) => state.tabs)
+  return {
+    total: tabs.length,
+    pinned: tabs.filter(tab => tab.isPinned).length,
+    unpinned: tabs.filter(tab => !tab.isPinned).length,
+    dirty: tabs.filter(tab => tab.isDirty).length
+  }
+}
+
+export const useTabWithUnsavedChanges = () => {
+  const tabs = useUIStore((state) => state.tabs)
+  return tabs.filter(tab => tab.isDirty)
+}

@@ -1,9 +1,10 @@
 import { ResolvingSplash } from '@/components/global/resolving-splash'
 
 interface TaskShortlinkPageProps {
-  params: { taskId: string }
+  params: Promise<{ taskId: string }>
 }
 
-export default function TaskShortlinkPage({ params }: TaskShortlinkPageProps) {
-  return <ResolvingSplash type="task" entityId={params.taskId} />
+export default async function TaskShortlinkPage({ params }: TaskShortlinkPageProps) {
+  const { taskId } = await params
+  return <ResolvingSplash type="task" entityId={taskId} />
 }

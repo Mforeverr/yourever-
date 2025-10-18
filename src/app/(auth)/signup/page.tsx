@@ -97,11 +97,14 @@ function SignupPageContent() {
 
       if (loginSuccess) {
         // Mock user data - in real implementation, this would come from the API
+        const fullName = `${data.firstName} ${data.lastName}`.trim()
         const mockUser: WorkspaceUser = {
           id: 'new-user-' + Date.now(),
           email: data.email,
           firstName: data.firstName,
           lastName: data.lastName,
+          fullName: fullName,
+          displayName: fullName, // Use full name as display name initially
           avatar: null,
           organizations: [], // New users start with no organizations
           createdAt: new Date().toISOString(),

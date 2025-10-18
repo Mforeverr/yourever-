@@ -131,8 +131,9 @@ export function SignupForm({ onSignup, isSubmitting }: SignupFormProps) {
 
       // Set form errors if they exist
       if (error && typeof error === 'object' && 'field' in error) {
-        setError(error.field as keyof SignupFormData, {
-          message: error.message
+        const fieldError = error as { field: string; message: string }
+        setError(fieldError.field as keyof SignupFormData, {
+          message: fieldError.message
         })
       }
     }

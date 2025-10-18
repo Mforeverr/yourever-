@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Authentication Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Authentication Test</h1>
+    <div id="status">Initializing...</div>
+    <div id="user-info"></div>
+    <div id="token-info"></div>
+
+    <script>
+        const supabaseUrl = 'https://yeonbgjzgdbialjcmpbr.supabase.co';
+        const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inllb25iZ2p6Z2RiaWFsamNtcGJyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk3NTAwMzksImV4cCI6MjA3NTMyNjAzOX0.Y4AnH_i21ZSO5h3dPQ9tLhIzq1C5hE_Pi0qQJdNQqW4';
+        const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+        async function testAuth() {
+            const statusEl = document.getElementById('status');
+            const userEl = document.getElementById('user-info');
+            const tokenEl = document.getElementById('token-info');
+
+            try {
+                // Check current session
+                const { data: { session }, error } = await supabase.auth.getSession();
+
+                if (error) {
+                    statusEl.textContent = 'Error getting session: ' + error.message;
+                    return;
+                }
+
+                if (session) {
+                    statusEl.textContent = '✅ Session found! User is authenticated.';
+                    userEl.innerHTML = `
+                        <h3>User Info:</h3>
+                        <p><strong>Email:</strong> ${session.user.email}</p>
+                        <p><strong>ID:</strong> ${session.user.id}</p>
+                        <p><strong>Created:</strong> ${new Date(session.user.created_at).toLocaleString()}</p>
+                    `;
+                    tokenEl.innerHTML = `
+                        <h3>Token Info:</h3>
+                        <p><strong>Token exists:</strong> ${session.access_token ? 'Yes' : 'No'}</p>
+                        <p><strong>Expires at:</strong> ${new Date(session.expires_at * 1000).toLocaleString()}</p>
+                        <button onclick="testAPI()">Test API Call</button>
+                    `;
+
+                    // Store token for API testing
+                    window.authToken = session.access_token;
+                } else {
+                    statusEl.textContent = '❌ No session found. User is not authenticated.';
+                    userEl.innerHTML = `
+                        <p>Please sign in first:</p>
+                        <form onsubmit="signIn(event)">
+                            <input type="email" id="email" placeholder="Email" required><br><br>
+                            <input type="password" id="password" placeholder="Password" required><br><br>
+                            <button type="submit">Sign In</button>
+                        </form>
+                    `;
+                }
+            } catch (err) {
+                statusEl.textContent = '❌ Error: ' + err.message;
+            }
+        }
+
+        async function signIn(event) {
+            event.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+            if (error) {
+                alert('Sign in error: ' + error.message);
+            } else {
+                alert('Sign in successful! Please wait...');
+                testAuth(); // Refresh the display
+            }
+        }
+
+        async function testAPI() {
+            const tokenEl = document.getElementById('token-info');
+
+            if (!window.authToken) {
+                alert('No auth token available');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/users/me', {
+                    headers: {
+                        'Authorization': `Bearer ${window.authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    tokenEl.innerHTML += `
+                        <h3>API Response:</h3>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                        <p><strong>✅ API call successful!</strong> Authentication is working.</p>
+                    `;
+                } else {
+                    const error = await response.text();
+                    tokenEl.innerHTML += `
+                        <h3>API Error:</h3>
+                        <p>Status: ${response.status}</p>
+                        <pre>${error}</pre>
+                    `;
+                }
+            } catch (err) {
+                tokenEl.innerHTML += `
+                    <h3>API Error:</h3>
+                    <p>${err.message}</p>
+                `;
+            }
+        }
+
+        // Run test when page loads
+        testAuth();
+    </script>
+</body>
+</html>

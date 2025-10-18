@@ -14,6 +14,7 @@ import { Card } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
 import {
   type ProjectDetailResponse,
+  type ProjectMetrics,
   type ProjectPriority,
   type ProjectStatus,
   PROJECT_I18N_KEYS,
@@ -104,6 +105,10 @@ interface ProjectHeaderProps {
   project: ProjectDetailResponse["project"]
 }
 
+interface UpdateProjectContext {
+  previous?: ProjectDetailResponse
+}
+
 export function ProjectHeader({ project }: ProjectHeaderProps) {
   const { toast } = useToast()
   const { scope } = useProjectEnvironment()
@@ -126,13 +131,36 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
       const previous = queryClient.getQueryData<ProjectDetailResponse>(projectQueryKeys.detail(scope, project.id))
 
       if (previous) {
+        // Create updated project by spreading all non-metrics properties from payload
+        const { metrics: payloadMetrics, ...otherPayloadProperties } = payload
+        let updatedProject = {
+          ...previous.project,
+          ...otherPayloadProperties,
+          updatedAt: new Date().toISOString(),
+        }
+
+        // Handle metrics merge separately if present in payload
+        if (payloadMetrics) {
+          if (previous.project.metrics) {
+            // Merge partial metrics with existing metrics - this ensures all required fields are present
+            updatedProject.metrics = {
+              ...previous.project.metrics,
+              ...payloadMetrics,
+            }
+          } else {
+            // If no existing metrics, we need to create a complete ProjectMetrics object
+            // For optimistic updates, we create a safe default with the partial data
+            const defaultMetrics: ProjectMetrics = {
+              health: "green", // Default health
+              ...payloadMetrics,
+            }
+            updatedProject.metrics = defaultMetrics
+          }
+        }
+
         const optimistic: ProjectDetailResponse = {
           ...previous,
-          project: {
-            ...previous.project,
-            ...payload,
-            updatedAt: new Date().toISOString(),
-          },
+          project: updatedProject,
         }
         queryClient.setQueryData(projectQueryKeys.detail(scope, project.id), optimistic)
       }
@@ -140,8 +168,9 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
       return { previous }
     },
     onError: (_error, _vars, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(projectQueryKeys.detail(scope, project.id), context.previous)
+      const typedContext = context as UpdateProjectContext
+      if (typedContext?.previous) {
+        queryClient.setQueryData(projectQueryKeys.detail(scope, project.id), typedContext.previous)
       }
       toast({
         variant: "destructive",

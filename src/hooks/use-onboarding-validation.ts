@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { FieldValues, UseFormReturn } from 'react-hook-form'
+import type { FieldValues, UseFormReturn, Path } from 'react-hook-form'
 import type { OnboardingStepId } from '@/lib/onboarding'
 import { useOnboardingValidationStore } from '@/state/onboarding-validation.store'
 
@@ -27,7 +27,7 @@ export const useOnboardingValidationFeedback = <TFieldValues extends FieldValues
 
     stepIssues.forEach((issue) => {
       if (issue.field) {
-        form.setError(issue.field as keyof TFieldValues, {
+        form.setError(issue.field as Path<TFieldValues>, {
           type: 'server',
           message: issue.message,
         })

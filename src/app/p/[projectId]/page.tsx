@@ -1,9 +1,10 @@
 import { ResolvingSplash } from '@/components/global/resolving-splash'
 
 interface ProjectShortlinkPageProps {
-  params: { projectId: string }
+  params: Promise<{ projectId: string }>
 }
 
-export default function ProjectShortlinkPage({ params }: ProjectShortlinkPageProps) {
-  return <ResolvingSplash type="project" entityId={params.projectId} />
+export default async function ProjectShortlinkPage({ params }: ProjectShortlinkPageProps) {
+  const { projectId } = await params
+  return <ResolvingSplash type="project" entityId={projectId} />
 }

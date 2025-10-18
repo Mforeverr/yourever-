@@ -11,6 +11,7 @@ import { useOnboardingStep } from '@/hooks/use-onboarding-step'
 import { useOnboardingValidationFeedback } from '@/hooks/use-onboarding-validation'
 import { preferencesStepSchema } from '@/lib/onboarding-schemas'
 import { deepEqual } from '@/lib/object-utils'
+import type { PreferencesStepData } from '@/lib/onboarding'
 
 export default function PreferencesOnboardingPage() {
   const {
@@ -25,10 +26,10 @@ export default function PreferencesOnboardingPage() {
     goToStepId,
     canNavigateToStep,
   } = useOnboardingStep('preferences')
-  const form = useForm({
+  const form = useForm<PreferencesStepData>({
     resolver: zodResolver(preferencesStepSchema),
     mode: 'onChange',
-    defaultValues: data,
+    defaultValues: data as PreferencesStepData,
   })
   const { generalError } = useOnboardingValidationFeedback('preferences', form)
   const {
@@ -42,7 +43,7 @@ export default function PreferencesOnboardingPage() {
 
   useEffect(() => {
     const subscription = form.watch((values) => {
-      updateData(values as typeof data)
+      updateData(values as PreferencesStepData)
     })
     return () => subscription.unsubscribe()
   }, [form, updateData])
@@ -52,7 +53,7 @@ export default function PreferencesOnboardingPage() {
     if (deepEqual(currentValues, data)) {
       return
     }
-    form.reset(data)
+    form.reset(data as PreferencesStepData)
     void form.trigger()
   }, [data, form])
 

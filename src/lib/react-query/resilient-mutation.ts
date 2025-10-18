@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef } from 'react'
+import type { ReactNode } from 'react'
 import {
   useMutation,
   type UseMutationOptions,
@@ -8,11 +9,15 @@ import {
 } from '@tanstack/react-query'
 
 import { ApiError } from '@/lib/api/http'
-import type { ToastProps } from '@/components/ui/toast'
 import { toast } from '@/hooks/use-toast'
 
-type ToastContent = Pick<ToastProps, 'title' | 'description' | 'variant'> & {
+type ToastContent = {
+  title?: React.ReactNode
+  description?: React.ReactNode
+  variant?: 'default' | 'destructive'
   open?: boolean
+  action?: any
+  [key: string]: any
 }
 
 type MessageFactory<TArgs extends unknown[]> =
@@ -137,9 +142,9 @@ export function useResilientMutation<
           const message = resolveMessage(messages?.retrying, failureCount, maxRetryAttempts, error)
           if (message) {
             if (!toastController.current) {
-              toastController.current = toast({ ...message })
+              toastController.current = toast(message as any)
             } else {
-              toastController.current.update({ ...message })
+              toastController.current.update(message as any)
             }
           }
           onRetry?.(failureCount, error)
@@ -158,13 +163,13 @@ export function useResilientMutation<
       const pendingMessage = resolveMessage(messages?.pending, variables)
       if (pendingMessage) {
         if (toastController.current) {
-          toastController.current.update({ ...pendingMessage, open: true })
+          toastController.current.update({ ...pendingMessage, open: true } as any)
         } else {
-          toastController.current = toast({ ...pendingMessage })
+          toastController.current = toast(pendingMessage as any)
         }
       }
 
-      const maybeContext = onMutate?.(variables)
+      const maybeContext = onMutate?.(variables as any, { variables } as any)
       if (isPromise<TContext | void>(maybeContext)) {
         return maybeContext as Promise<TContext>
       }
@@ -174,34 +179,34 @@ export function useResilientMutation<
       const successMessage = resolveMessage(messages?.success, data, variables, context)
       if (successMessage) {
         if (toastController.current) {
-          toastController.current.update({ ...successMessage, open: true })
+          toastController.current.update({ ...successMessage, open: true } as any)
         } else {
-          toastController.current = toast({ ...successMessage })
+          toastController.current = toast({ ...successMessage } as any)
         }
         scheduleDismiss()
       } else {
         clearToast()
       }
-      onSuccess?.(data, variables, context)
+      onSuccess?.(data, variables, context, { variables } as any)
     },
     onError(error, variables, context) {
       const errorMessage = resolveMessage(messages?.error, error, variables, context)
       if (errorMessage) {
         if (toastController.current) {
-          toastController.current.update({ ...errorMessage, open: true })
+          toastController.current.update({ ...errorMessage, open: true } as any)
         } else {
-          toastController.current = toast({ ...errorMessage })
+          toastController.current = toast({ ...errorMessage } as any)
         }
       } else {
         clearToast()
       }
-      onError?.(error, variables, context)
+      onError?.(error, variables, context, { variables } as any)
     },
     onSettled(data, error, variables, context) {
       if (!error) {
         // Toast already dismissed on success path when applicable
       }
-      onSettled?.(data, error, variables, context)
+      onSettled?.(data, error, variables, context, { variables } as any)
       if (error) {
         // leave error toast open for manual dismissal
         return

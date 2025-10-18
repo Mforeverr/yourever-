@@ -41,6 +41,14 @@ interface ProjectMembersProps {
   projectId: string
 }
 
+interface AddProjectMemberContext {
+  previous?: ProjectMembersResponse
+}
+
+interface RemoveProjectMemberContext {
+  previous?: ProjectMembersResponse
+}
+
 const messages = enMessages
 
 const ROLE_LABELS: Record<ProjectMembersResponse["members"][number]["role"], string> = {
@@ -88,7 +96,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
               role: payload.role,
               joinedAt: new Date().toISOString(),
               isActive: true,
-              avatarUrl: user?.avatar,
+              avatarUrl: user?.avatar ?? undefined,
             },
           ],
         }
@@ -98,8 +106,9 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
       return { previous }
     },
     onError: (_error, _vars, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(projectQueryKeys.members(scope, projectId), context.previous)
+      const typedContext = context as AddProjectMemberContext
+      if (typedContext?.previous) {
+        queryClient.setQueryData(projectQueryKeys.members(scope, projectId), typedContext.previous)
       }
       toast({
         variant: "destructive",
@@ -133,8 +142,9 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
       return { previous }
     },
     onError: (_error, payload, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(projectQueryKeys.members(scope, payload.projectId), context.previous)
+      const typedContext = context as RemoveProjectMemberContext
+      if (typedContext?.previous) {
+        queryClient.setQueryData(projectQueryKeys.members(scope, payload.projectId), typedContext.previous)
       }
       toast({
         variant: "destructive",
@@ -219,7 +229,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                         <SelectItem key={user.id} value={user.id}>
                           <div className="flex items-center gap-2">
                             <Avatar className="h-6 w-6">
-                              <AvatarImage src={user.avatar} />
+                              <AvatarImage src={user.avatar ?? undefined} />
                               <AvatarFallback>{user.label.charAt(0)}</AvatarFallback>
                             </Avatar>
                             <div className="flex flex-col">

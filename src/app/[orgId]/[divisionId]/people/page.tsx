@@ -1,12 +1,12 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { 
+import {
   Table,
   TableBody,
   TableCell,
@@ -21,12 +21,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { 
-  Search, 
-  MoreHorizontal, 
-  UserPlus, 
-  Mail, 
-  Shield, 
+import {
+  Search,
+  MoreHorizontal,
+  UserPlus,
+  Mail,
+  Shield,
   Clock,
   Filter,
   Download,
@@ -148,7 +148,35 @@ const getRoleIcon = (role: Person['role']) => {
 }
 
 // Main Component
-export default function PeoplePage({ params }: { params: { orgId: string; divisionId: string } }) {
+export default function PeoplePage({ params }: { params: Promise<{ orgId: string; divisionId: string }> }) {
+  const [orgId, setOrgId] = useState<string>('')
+  const [divisionId, setDivisionId] = useState<string>('')
+  const [paramsResolved, setParamsResolved] = useState(false)
+
+  useEffect(() => {
+    const resolveParams = async () => {
+      const resolvedParams = await params
+      setOrgId(resolvedParams.orgId)
+      setDivisionId(resolvedParams.divisionId)
+      setParamsResolved(true)
+    }
+    resolveParams()
+  }, [params])
+
+  // Don't render until params are resolved
+  if (!paramsResolved) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-muted-foreground">Loading...</div>
+      </div>
+    )
+  }
+
+  return <PeoplePageContent orgId={orgId} divisionId={divisionId} />
+}
+
+// Component that contains all the state and UI logic
+function PeoplePageContent({ orgId, divisionId }: { orgId: string; divisionId: string }) {
   const [people, setPeople] = useState<Person[]>(mockPeople)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedRole, setSelectedRole] = useState<string>('all')
@@ -163,7 +191,7 @@ export default function PeoplePage({ params }: { params: { orgId: string; divisi
                          person.email.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesRole = selectedRole === 'all' || person.role === selectedRole
     const matchesStatus = selectedStatus === 'all' || person.status === selectedStatus
-    
+
     return matchesSearch && matchesRole && matchesStatus
   })
 
@@ -349,7 +377,7 @@ export default function PeoplePage({ params }: { params: { orgId: string; divisi
       <InviteModal
         open={inviteModalOpen}
         onOpenChange={setInviteModalOpen}
-        orgId={params.orgId}
+        orgId={orgId}
       />
       
       <DeactivateModal 

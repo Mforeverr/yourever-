@@ -1,9 +1,10 @@
 import { ResolvingSplash } from '@/components/global/resolving-splash'
 
 interface ChannelShortlinkPageProps {
-  params: { channelId: string }
+  params: Promise<{ channelId: string }>
 }
 
-export default function ChannelShortlinkPage({ params }: ChannelShortlinkPageProps) {
-  return <ResolvingSplash type="channel" entityId={params.channelId} />
+export default async function ChannelShortlinkPage({ params }: ChannelShortlinkPageProps) {
+  const { channelId } = await params
+  return <ResolvingSplash type="channel" entityId={channelId} />
 }

@@ -274,7 +274,7 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
   const handleTabChange = (tabId: string) => {
     setActiveTabId(tabId)
     const tab = tabs.find((candidate) => candidate.id === tabId)
-    if (tab) {
+    if (tab && tab.path) {
       pushScopedPath(tab.path)
     }
   }
@@ -286,7 +286,7 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
     if (isActiveTab) {
       const { tabs: nextTabs, activeTabId: nextActiveId } = getUIState()
       const nextActiveTab = nextTabs.find((tab) => tab.id === nextActiveId)
-      if (nextActiveTab) {
+      if (nextActiveTab && nextActiveTab.path) {
         pushScopedPath(nextActiveTab.path)
       } else {
         pushScopedPath('/dashboard')
@@ -310,7 +310,9 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
 
     if (activeTabId !== tabId) {
       setActiveTabId(tabId)
-      pushScopedPath(tab.path)
+      if (tab.path) {
+        pushScopedPath(tab.path)
+      }
       return
     }
 
@@ -328,7 +330,10 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
     const { activeTabId: nextActiveId, tabs: nextTabs } = getUIState()
     const nextActiveTab = nextTabs.find((candidate) => candidate.id === nextActiveId)
 
-    pushScopedPath(nextActiveTab?.path ?? tab.path)
+    const fallbackPath = nextActiveTab?.path ?? tab.path
+    if (fallbackPath) {
+      pushScopedPath(fallbackPath)
+    }
   }
 
   const handleTabPinToggle = (tabId: string) => {
@@ -339,7 +344,7 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
     closeAllTabs()
     const { tabs: nextTabs, activeTabId: nextActiveId } = getUIState()
     const nextActiveTab = nextTabs.find((tab) => tab.id === nextActiveId)
-    if (nextActiveTab) {
+    if (nextActiveTab && nextActiveTab.path) {
       pushScopedPath(nextActiveTab.path)
     } else {
       pushScopedPath('/dashboard')

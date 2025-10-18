@@ -25,6 +25,10 @@ interface ProjectSettingsProps {
   projectId: string
 }
 
+interface UpdateProjectSettingsContext {
+  previous?: any
+}
+
 const messages = enMessages
 
 export function ProjectSettings({ projectId }: ProjectSettingsProps) {
@@ -57,8 +61,9 @@ export function ProjectSettings({ projectId }: ProjectSettingsProps) {
       return { previous }
     },
     onError: (_error, _vars, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(projectQueryKeys.settings(scope, projectId), context.previous)
+      const typedContext = context as UpdateProjectSettingsContext
+      if (typedContext?.previous) {
+        queryClient.setQueryData(projectQueryKeys.settings(scope, projectId), typedContext.previous)
       }
       toast({
         variant: "destructive",

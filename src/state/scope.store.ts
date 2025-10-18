@@ -75,6 +75,10 @@ export const useScopeStore = create<ScopeStoreState>()(
             ...state,
             currentOrgId,
             currentDivisionId,
+            setSnapshot: () => {
+              // set function will be provided by zustand store
+              throw new Error("setSnapshot cannot be called during migration")
+            },
             workspaceBasePath: computeWorkspaceBasePath({
               ...initialSnapshot,
               currentOrgId,

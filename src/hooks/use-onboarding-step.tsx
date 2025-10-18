@@ -12,6 +12,7 @@ import {
   getStepById,
   getStepIndex,
   type BaseOnboardingStep,
+  type KnownOnboardingStepId,
   type OnboardingStepId,
   type StepDataMap,
   defaultOnboardingStatus,
@@ -127,7 +128,13 @@ const buildValidationDispatchPayload = (
 
   const candidate = input as Partial<OnboardingValidationSummary> & { issues?: unknown }
   const issuesSource = Array.isArray(candidate.issues) ? candidate.issues : []
-  const issuesByStep: ValidationDispatchPayload['issuesByStep'] = {}
+  const issuesByStep: ValidationDispatchPayload['issuesByStep'] = {
+    profile: [],
+    'work-profile': [],
+    tools: [],
+    invite: [],
+    preferences: [],
+  }
 
   for (const rawIssue of issuesSource) {
     if (!rawIssue || typeof rawIssue !== 'object') continue
@@ -157,7 +164,7 @@ const buildValidationDispatchPayload = (
   return { blockingStepId, issuesByStep }
 }
 
-export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
+export const useOnboardingStep = <T extends KnownOnboardingStepId>(stepId: T) => {
   const { manifest, steps: manifestSteps } = useOnboardingManifest()
   const {
     onboardingStatus,
@@ -376,7 +383,7 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
       return undefined
     }
 
-    return addOfflineListener((event) => {
+    const cleanup = addOfflineListener((event) => {
       if (event.type === 'onboarding.persist.failed') {
         toast({
           title: 'Progress could not sync',
@@ -385,6 +392,11 @@ export const useOnboardingStep = <T extends OnboardingStepId>(stepId: T) => {
         })
       }
     })
+
+    // Ensure cleanup function returns void
+    return () => {
+      cleanup?.()
+    }
   }, [addOfflineListener, isOfflineQueueSupported, toast])
 
   const attemptPersistStatus = useCallback(

@@ -13,6 +13,7 @@ import { useOnboardingStep } from '@/hooks/use-onboarding-step'
 import { useOnboardingValidationFeedback } from '@/hooks/use-onboarding-validation'
 import { toolsStepSchema } from '@/lib/onboarding-schemas'
 import { deepEqual } from '@/lib/object-utils'
+import type { ToolsStepData } from '@/lib/onboarding'
 import {
   Slack,
   Github,
@@ -92,10 +93,10 @@ export default function ToolsOnboardingPage() {
     goToStepId,
     canNavigateToStep,
   } = useOnboardingStep('tools')
-  const form = useForm({
+  const form = useForm<ToolsStepData>({
     resolver: zodResolver(toolsStepSchema),
     mode: 'onChange',
-    defaultValues: data,
+    defaultValues: data as ToolsStepData,
   })
   const { generalError } = useOnboardingValidationFeedback('tools', form)
   const {
@@ -112,7 +113,7 @@ export default function ToolsOnboardingPage() {
 
   useEffect(() => {
     const subscription = form.watch((values) => {
-      updateData(values as typeof data)
+      updateData(values as ToolsStepData)
     })
     return () => subscription.unsubscribe()
   }, [form, updateData])
@@ -122,7 +123,7 @@ export default function ToolsOnboardingPage() {
     if (deepEqual(currentValues, data)) {
       return
     }
-    form.reset(data)
+    form.reset(data as ToolsStepData)
     void form.trigger()
   }, [data, form])
 
@@ -161,7 +162,7 @@ export default function ToolsOnboardingPage() {
 
   const handleIntegrationStatus = (toolId: string, status: IntegrationStatus) => {
     const currentIntegrations = form.getValues('integrations') ?? []
-    const nextIntegrations = currentIntegrations.map((integration: { id: string; status: IntegrationStatus }) =>
+    const nextIntegrations = currentIntegrations.map((integration: { id: string; name: string; status: IntegrationStatus }) =>
       integration.id === toolId ? { ...integration, status } : integration,
     )
     form.setValue('integrations', nextIntegrations, { shouldDirty: true })
@@ -254,7 +255,7 @@ export default function ToolsOnboardingPage() {
                             key={statusOption}
                             type="button"
                             variant={integration?.status === statusOption ? 'default' : 'outline'}
-                            size="xs"
+                            size="sm"
                             onClick={() => handleIntegrationStatus(tool.id, statusOption)}
                           >
                             {statusOption.replace('-', ' ')}

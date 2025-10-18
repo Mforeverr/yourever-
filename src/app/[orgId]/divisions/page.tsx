@@ -90,7 +90,7 @@ export default function DivisionSelectionPage() {
         const overview = overviews.find((candidate) => candidate.id === division.id)
         const allowedRoles = overview?.allowedRoles ?? ['owner', 'admin', 'member']
 
-        if (!allowedRoles.includes(userRole)) {
+        if (!userRole || !allowedRoles.includes(userRole as 'owner' | 'admin' | 'member')) {
           restricted += 1
           return accumulator
         }
@@ -107,7 +107,7 @@ export default function DivisionSelectionPage() {
           timezone: overview?.timezone,
           lastSync: overview?.lastSync,
           accentColor: overview?.accentColor,
-          userRole
+          userRole: userRole as 'owner' | 'admin' | 'member' | undefined
         })
 
         return accumulator

@@ -870,8 +870,12 @@ function WorkspaceContent({ className, liveDataEnabled, overviewQuery }: Workspa
     router.push(`${workspaceBasePath}/projects/${projectId}`)
   }
 
-  const handleTaskSelect = (taskId: string) => {
+const handleTaskSelect = (taskId: string) => {
     setSelectedItem(taskId)
+    if (!workspaceBasePath) {
+      return
+    }
+    router.push(`${workspaceBasePath}/tasks/${taskId}`)
   }
 
   return (

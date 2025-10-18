@@ -6,11 +6,11 @@ const ENABLE_DEVTOOLS =
 
 export function withOptionalDevtools<
   T extends object,
-  Mps extends [string, unknown][] = [],
-  Mcs extends [string, unknown][] = []
+  Mps extends any[] = [],
+  Mcs extends any[] = []
 >(store: StateCreator<T, Mps, Mcs>, label: string): StateCreator<T, Mps, Mcs> {
   if (!ENABLE_DEVTOOLS) {
     return store
   }
-  return devtools(store, { name: label })
+  return devtools(store as any, { name: label }) as any
 }

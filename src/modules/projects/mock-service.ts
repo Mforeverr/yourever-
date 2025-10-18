@@ -66,7 +66,12 @@ class MockProjectApi implements ProjectApiContract {
     const updated = {
       ...existing,
       ...body,
-      metrics: body.metrics ? { ...existing.metrics, ...body.metrics } : existing.metrics,
+      metrics: body.metrics ? {
+        ...existing.metrics,
+        ...body.metrics,
+        // Ensure health is always defined
+        health: body.metrics.health ?? existing.metrics?.health ?? "green",
+      } : existing.metrics,
       tags: body.tags ?? existing.tags,
       updatedAt: new Date().toISOString(),
     }

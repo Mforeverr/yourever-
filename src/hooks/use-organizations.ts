@@ -217,7 +217,7 @@ export const useCreateOrganization = () => {
     },
     onError: (error) => {
       const message = error instanceof ApiError
-        ? error.detail
+        ? error.body?.detail
         : 'Failed to create organization'
 
       toast({
@@ -293,7 +293,7 @@ export const useAcceptInvitation = () => {
     },
     onError: (error) => {
       const message = error instanceof ApiError
-        ? error.detail
+        ? error.body?.detail
         : 'Failed to accept invitation'
 
       toast({
@@ -331,7 +331,7 @@ export const useDeclineInvitation = () => {
     },
     onError: (error) => {
       const message = error instanceof ApiError
-        ? error.detail
+        ? error.body?.detail
         : 'Failed to decline invitation'
 
       toast({
@@ -395,7 +395,7 @@ export const useSendInvitations = () => {
     },
     onError: (error) => {
       const message = error instanceof ApiError
-        ? error.detail
+        ? error.body?.detail
         : 'Failed to send invitations'
 
       toast({

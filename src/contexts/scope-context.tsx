@@ -69,9 +69,17 @@ const fallbackContext: ScopeContextValue = {
   refresh: async () => {},
 }
 
+<<<<<<< Updated upstream
 const normalizeParam = (value: string | string[] | undefined): string | undefined => {
   if (Array.isArray(value)) {
     return value[0]
+=======
+const getDefaultDivision = (org: WorkspaceOrganization | undefined, prefDivisionId?: string) => {
+  if (!org) return null
+  if (prefDivisionId) {
+    const preferred = org.divisions.find((division) => division.id === prefDivisionId)
+    if (preferred) return preferred
+>>>>>>> Stashed changes
   }
   return value
 }

@@ -65,7 +65,7 @@ export async function httpRequest<TResponse>(
 
   const accessToken = await resolveAuthToken()
 
-  const normalizedHeaders =
+  const normalizedHeaders: Record<string, string> =
     method === "GET"
       ? {
           ...headers,
@@ -109,6 +109,8 @@ export async function httpRequest<TResponse>(
         meta: {
           ...meta,
           requestId,
+          endpoint: requestUrl,
+          method,
         },
       })
 
@@ -144,6 +146,8 @@ export async function httpRequest<TResponse>(
       meta: {
         ...meta,
         requestId,
+        endpoint: requestUrl,
+        method,
         cause: error instanceof Error ? error.stack : error,
       },
     })

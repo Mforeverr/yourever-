@@ -35,7 +35,7 @@ export default function WelcomePage() {
     return null
   }
 
-  const firstName = user.first_name || user.email?.split('@')[0] || 'there'
+  const firstName = user.firstName || user.email?.split('@')[0] || 'there'
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">

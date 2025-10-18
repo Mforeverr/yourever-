@@ -22,7 +22,7 @@ export const authToasts = {
     description: `We've sent a magic link to ${email}. The link will expire in 15 minutes.`,
     action: (
       <button
-        onClick={() => window.location.href = 'https://gmail.com' || 'https://mail.google.com'}
+        onClick={() => window.location.href = 'https://gmail.com'}
         className="text-sm font-medium text-primary hover:underline"
       >
         Open Email
