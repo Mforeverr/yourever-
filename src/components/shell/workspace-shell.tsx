@@ -15,8 +15,8 @@ import { FloatingAIAssistant } from "@/components/ui/floating-ai-assistant"
 import BottomPanel from "@/components/chat/bottom-panel"
 import { ScopeProvider, useScope } from "@/contexts/scope-context"
 import { useProtectedRoute } from "@/hooks/use-protected-route"
-import { useUIStore } from "@/state/ui.store"
-import type { UITab } from "@/state/ui.store"
+import { getUIState, useUIStore } from "@/state/ui.store"
+import type { TabPaneId, TabSplitDirection, UITab } from "@/state/ui.store"
 
 interface WorkspaceShellProps {
   children: React.ReactNode
@@ -27,6 +27,7 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
   const router = useRouter()
   const pathname = usePathname()
   const { isLoading: authLoading } = useProtectedRoute()
+  const [isEmbedded, setIsEmbedded] = React.useState(false)
   const {
     organizations,
     currentOrgId,
@@ -47,11 +48,64 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
   const tabs = useUIStore((state) => state.tabs)
   const activeTabId = useUIStore((state) => state.activeTabId ?? undefined)
   const setActiveTabId = useUIStore((state) => state.setActiveTabId)
+  const paneActiveTabIds = useUIStore((state) => state.paneActiveTabIds)
+  const splitLayout = useUIStore((state) => state.splitLayout)
   const closeTab = useUIStore((state) => state.closeTab)
+  const closeAllTabs = useUIStore((state) => state.closeAllTabs)
   const openTab = useUIStore((state) => state.openTab)
+  const duplicateTab = useUIStore((state) => state.duplicateTab)
+  const toggleTabPinned = useUIStore((state) => state.toggleTabPinned)
+  const updateTab = useUIStore((state) => state.updateTab)
   const toggleSplitView = useUIStore((state) => state.toggleSplitView)
   const rightPanelSize = useUIStore((state) => state.rightPanelSize)
   const setRightPanelSize = useUIStore((state) => state.setRightPanelSize)
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    setIsEmbedded(window.self !== window.top)
+  }, [])
+
+  const resolvePaneId = React.useCallback((tab?: UITab | null): TabPaneId => {
+    return tab?.paneId === "secondary" ? "secondary" : "primary"
+  }, [])
+
+  const primaryTabs = React.useMemo(
+    () => tabs.filter((tab) => resolvePaneId(tab) === "primary"),
+    [tabs, resolvePaneId]
+  )
+
+  const secondaryTabs = React.useMemo(
+    () => tabs.filter((tab) => resolvePaneId(tab) === "secondary"),
+    [tabs, resolvePaneId]
+  )
+
+  const primaryActiveTabId = paneActiveTabIds.primary ?? activeTabId
+  const secondaryActiveTabId = paneActiveTabIds.secondary ?? undefined
+
+  const secondaryActiveTab = React.useMemo(() => {
+    if (secondaryTabs.length === 0) {
+      return undefined
+    }
+
+    if (secondaryActiveTabId) {
+      return secondaryTabs.find((tab) => tab.id === secondaryActiveTabId) ?? secondaryTabs[0]
+    }
+
+    return secondaryTabs.find((tab) => tab.isActive) ?? secondaryTabs[0]
+  }, [secondaryActiveTabId, secondaryTabs])
+
+  const hasSplitPane = React.useMemo(
+    () => Boolean(splitLayout && secondaryTabs.length > 0),
+    [splitLayout, secondaryTabs]
+  )
+
+  const splitDirection = splitLayout?.direction
+  const splitOrientation =
+    splitDirection === "up" || splitDirection === "down" ? "vertical" : "horizontal"
+  const secondaryBeforePrimary = splitDirection === "left" || splitDirection === "up"
 
   const scopedBasePath = React.useMemo(() => {
     if (!currentOrgId || !currentDivisionId) return null
@@ -89,8 +143,62 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
     [pathname, router]
   )
 
+  const toTitleCase = React.useCallback((value: string) => {
+    return value
+      .split(/[-_\s]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ')
+  }, [])
+
+  const describePath = React.useCallback(
+    (relativePath: string): Pick<UITab, 'title' | 'type'> => {
+      const normalized = relativePath.replace(/^\/+/, '') || 'dashboard'
+      const segments = normalized.split('/').filter(Boolean)
+      const [segment, ...rest] = segments
+
+      switch (segment) {
+        case 'dashboard':
+          return { title: 'Dashboard', type: 'project' }
+        case 'workspace':
+          return { title: 'Workspace', type: 'project' }
+        case 'calendar':
+          return { title: 'Calendar', type: 'calendar' }
+        case 'people':
+          return { title: 'People', type: 'doc' }
+        case 'admin':
+          return { title: 'Admin', type: 'project' }
+        case 'channels':
+          return { title: 'Channels', type: 'channel' }
+        case 'explorer':
+          return { title: 'Explorer', type: 'doc' }
+        case 'ai':
+          return { title: 'AI Studio', type: 'doc' }
+        case 'projects': {
+          const projectSegment = rest[0] ?? 'Project'
+          return { title: toTitleCase(projectSegment), type: 'project' }
+        }
+        case 'c': {
+          const channelSegment = rest[0] ?? 'channel'
+          return { title: `#${toTitleCase(channelSegment)}`, type: 'channel' }
+        }
+        case 'dm': {
+          const memberSegment = rest[0] ?? 'member'
+          return { title: `@${toTitleCase(memberSegment)}`, type: 'channel' }
+        }
+        default:
+          return { title: toTitleCase(segment ?? 'Tab'), type: 'doc' }
+      }
+    },
+    [toTitleCase]
+  )
+
   // Set active activity based on current path
   React.useEffect(() => {
+    if (isEmbedded) {
+      return
+    }
+
     const segments = pathname.split('/').filter(Boolean)
     const scopedSegment =
       segments.length >= 3 ? segments[2] : segments.length >= 1 ? segments[0] : ''
@@ -114,10 +222,90 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
     } else {
       setActiveActivity('home')
     }
-  }, [pathname])
+  }, [isEmbedded, pathname])
+
+  React.useEffect(() => {
+    if (
+      isEmbedded ||
+      !isReady ||
+      !currentOrgId ||
+      !currentDivisionId
+    ) {
+      return
+    }
+
+    const segments = pathname.split('/').filter(Boolean)
+    if (segments.length < 2) {
+      return
+    }
+
+    const [orgSegment, divisionSegment, ...restSegments] = segments
+    if (orgSegment !== currentOrgId || divisionSegment !== currentDivisionId) {
+      return
+    }
+
+    const relativePath = `/${restSegments.join('/') || 'dashboard'}`
+    const normalizedPath = `/${relativePath.replace(/^\/+/, '').replace(/\/+$/, '')}`
+    const tabDescriptor = describePath(normalizedPath)
+    const matchingTabs = tabs.filter(
+      (tab) => tab.path === normalizedPath && resolvePaneId(tab) === "primary"
+    )
+    const existingTab = matchingTabs.find((tab) => tab.isActive) ?? matchingTabs[0]
+
+    if (existingTab) {
+      const needsUpdate = existingTab.title !== tabDescriptor.title || existingTab.type !== tabDescriptor.type
+      if (needsUpdate) {
+        updateTab(existingTab.id, tabDescriptor)
+      }
+      if (!existingTab.isActive) {
+        setActiveTabId(existingTab.id)
+      }
+      return
+    }
+
+    const baseId = normalizedPath
+      .replace(/^\//, '')
+      .replace(/[^a-zA-Z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '') || 'tab'
+
+    let candidateId = baseId
+    let suffix = 1
+    while (tabs.some((tab) => tab.id === candidateId)) {
+      candidateId = `${baseId}-${suffix}`
+      suffix += 1
+    }
+
+    openTab({
+      id: candidateId,
+      title: tabDescriptor.title,
+      type: tabDescriptor.type,
+      path: normalizedPath,
+      isActive: true,
+      isSplit: false,
+      isPinned: false,
+      paneId: "primary",
+    })
+  }, [
+    pathname,
+    isReady,
+    currentOrgId,
+    currentDivisionId,
+    tabs,
+    describePath,
+    updateTab,
+    setActiveTabId,
+    openTab,
+    resolvePaneId,
+    isEmbedded,
+  ])
 
   // Handle activity changes with navigation
   const handleActivityChange = (activity: string) => {
+    if (isEmbedded) {
+      return
+    }
+
     setActiveActivity(activity)
 
     switch (activity) {
@@ -152,26 +340,158 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
   }
   
   const handleTabChange = (tabId: string) => {
+    if (isEmbedded) {
+      return
+    }
+
     setActiveTabId(tabId)
+    const tab = tabs.find((candidate) => candidate.id === tabId)
+    if (tab && resolvePaneId(tab) === "primary") {
+      pushScopedPath(tab.path)
+    }
   }
 
   const handleTabClose = (tabId: string) => {
+    if (isEmbedded) {
+      return
+    }
+
+    const state = getUIState()
+    const closingTab = state.tabs.find((candidate) => candidate.id === tabId) ?? null
+    const paneId = resolvePaneId(closingTab)
+    const wasActive =
+      paneId === "primary"
+        ? state.paneActiveTabIds?.primary === tabId || state.activeTabId === tabId
+        : state.paneActiveTabIds?.secondary === tabId
+
     closeTab(tabId)
+
+    if (paneId === "primary" && wasActive) {
+      const nextState = getUIState()
+      const nextPrimaryId = nextState.paneActiveTabIds.primary ?? nextState.activeTabId
+      const nextActiveTab = nextState.tabs.find((tab) => tab.id === nextPrimaryId)
+      if (nextActiveTab) {
+        pushScopedPath(nextActiveTab.path)
+      } else {
+        pushScopedPath('/dashboard')
+      }
+    }
   }
 
-  const handleNewTab = () => {
-    const newTab: UITab = {
-      id: `tab-${Date.now()}`,
-      title: 'New Tab',
-      type: 'task',
-      isActive: true,
-      isSplit: false,
+  const handleNewTab = (pane: TabPaneId) => {
+    if (isEmbedded) {
+      return
     }
-    openTab(newTab)
+
+    const currentPaneActiveId =
+      pane === "primary" ? primaryActiveTabId ?? null : secondaryActiveTabId ?? null
+
+    if (!currentPaneActiveId) {
+      return
+    }
+
+    duplicateTab(currentPaneActiveId)
+
+    if (pane === "primary") {
+      const nextState = getUIState()
+      const nextPrimaryId = nextState.paneActiveTabIds.primary ?? nextState.activeTabId
+      const nextActiveTab = nextState.tabs.find((candidate) => candidate.id === nextPrimaryId)
+      if (nextActiveTab) {
+        pushScopedPath(nextActiveTab.path)
+      }
+    }
   }
+
+  const handleTabReload = (tabId: string) => {
+    if (isEmbedded) {
+      return
+    }
+
+    const tab = tabs.find((candidate) => candidate.id === tabId)
+    if (!tab) {
+      return
+    }
+
+    const paneId = resolvePaneId(tab)
+
+    if (paneId === "secondary") {
+      updateTab(tabId, { viewKey: Date.now() })
+      return
+    }
+
+    if (primaryActiveTabId !== tabId) {
+      setActiveTabId(tabId)
+      pushScopedPath(tab.path)
+      return
+    }
+
+    router.refresh()
+  }
+
+  const handleTabDuplicate = (tabId: string) => {
+    if (isEmbedded) {
+      return
+    }
+
+    const tab = tabs.find((candidate) => candidate.id === tabId)
+    if (!tab) {
+      return
+    }
+
+    const paneId = resolvePaneId(tab)
+
+    duplicateTab(tabId)
+
+    const nextState = getUIState()
+
+    if (paneId === "primary") {
+      const nextPrimaryId = nextState.paneActiveTabIds.primary ?? nextState.activeTabId
+      const nextActiveTab = nextState.tabs.find((candidate) => candidate.id === nextPrimaryId)
+      pushScopedPath(nextActiveTab?.path ?? tab.path)
+    }
+  }
+
+  const handleTabPinToggle = (tabId: string) => {
+    if (isEmbedded) {
+      return
+    }
+
+    toggleTabPinned(tabId)
+  }
+
+  const handleCloseAllTabs = () => {
+    if (isEmbedded) {
+      return
+    }
+
+    closeAllTabs()
+    const { tabs: nextTabs, paneActiveTabIds: nextPaneIds, activeTabId: nextActiveId } = getUIState()
+    const nextPrimaryId = nextPaneIds.primary ?? nextActiveId
+    const nextActiveTab = nextTabs.find((tab) => tab.id === nextPrimaryId)
+    if (nextActiveTab) {
+      pushScopedPath(nextActiveTab.path)
+    } else {
+      pushScopedPath('/dashboard')
+    }
+  }
+
+  const handleTabSplit = React.useCallback(
+    (tabId: string, direction?: TabSplitDirection) => {
+      if (isEmbedded) {
+        return
+      }
+
+      toggleSplitView(tabId, direction)
+    },
+    [isEmbedded, toggleSplitView]
+  )
 
   // Keyboard shortcut to toggle right panel (Ctrl/Cmd + B)
   React.useEffect(() => {
+    if (isEmbedded) {
+      return
+    }
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'b' && !event.shiftKey) {
         event.preventDefault()
@@ -189,7 +509,15 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [toggleLeftSidebar, toggleRightPanel])
+  }, [isEmbedded, toggleLeftSidebar, toggleRightPanel])
+
+  if (isEmbedded) {
+    return (
+      <div className={cn("h-full flex flex-col bg-background", className)}>
+        <div className="flex-1 overflow-auto">{children}</div>
+      </div>
+    )
+  }
 
   if (authLoading || !isReady) {
     return (
@@ -200,6 +528,59 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
       </div>
     )
   }
+
+  const primaryPane = (
+    <div className="h-full flex flex-col">
+      <TabsBar
+        tabs={primaryTabs}
+        activeTabId={primaryActiveTabId ?? undefined}
+        paneId="primary"
+        onTabChange={handleTabChange}
+        onTabClose={handleTabClose}
+        onTabReload={handleTabReload}
+        onTabDuplicate={handleTabDuplicate}
+        onTabPinToggle={handleTabPinToggle}
+        onCloseAllTabs={handleCloseAllTabs}
+        onNewTab={handleNewTab}
+        onSplitView={handleTabSplit}
+      />
+      <div className="flex-1 overflow-auto">
+        {children}
+      </div>
+    </div>
+  )
+
+  const secondaryPane = (
+    <div className="h-full flex flex-col bg-surface-panel/30">
+      <TabsBar
+        tabs={secondaryTabs}
+        activeTabId={secondaryActiveTabId}
+        paneId="secondary"
+        onTabChange={handleTabChange}
+        onTabClose={handleTabClose}
+        onTabReload={handleTabReload}
+        onTabDuplicate={handleTabDuplicate}
+        onTabPinToggle={handleTabPinToggle}
+        onCloseAllTabs={handleCloseAllTabs}
+        onNewTab={handleNewTab}
+        onSplitView={handleTabSplit}
+      />
+      <div className="flex-1 overflow-hidden bg-background">
+        {secondaryActiveTab ? (
+          <iframe
+            key={`${secondaryActiveTab.id}-${secondaryActiveTab.viewKey ?? 0}`}
+            src={buildScopedPath(secondaryActiveTab.path)}
+            title={`Split view for ${secondaryActiveTab.title}`}
+            className="h-full w-full border-0"
+          />
+        ) : (
+          <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+            Select a tab to view in split mode
+          </div>
+        )}
+      </div>
+    </div>
+  )
 
   return (
     <div className={cn("h-screen flex flex-col bg-background", className)}>
@@ -252,22 +633,31 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
           
           {/* Main Editor Area */}
           <ResizablePanel defaultSize={leftSidebarCollapsed ? 80 : 60}>
-            <div className="h-full flex flex-col">
-              {/* Tabs Bar */}
-              <TabsBar
-                tabs={tabs}
-                activeTabId={activeTabId}
-                onTabChange={handleTabChange}
-                onTabClose={handleTabClose}
-                onNewTab={handleNewTab}
-                onSplitView={toggleSplitView}
-              />
-              
-              {/* Editor Content */}
-              <div className="flex-1 overflow-auto">
-                {children}
-              </div>
-            </div>
+            {hasSplitPane ? (
+              <ResizablePanelGroup direction={splitOrientation} className="h-full">
+                {secondaryBeforePrimary && secondaryTabs.length > 0 && (
+                  <ResizablePanel defaultSize={50} minSize={20}>
+                    {secondaryPane}
+                  </ResizablePanel>
+                )}
+                {secondaryBeforePrimary && secondaryTabs.length > 0 && (
+                  <ResizableHandle withHandle className={splitOrientation === "horizontal" ? "w-px bg-border" : "h-px bg-border"} />
+                )}
+                <ResizablePanel defaultSize={50} minSize={30}>
+                  {primaryPane}
+                </ResizablePanel>
+                {!secondaryBeforePrimary && secondaryTabs.length > 0 && (
+                  <>
+                    <ResizableHandle withHandle className={splitOrientation === "horizontal" ? "w-px bg-border" : "h-px bg-border"} />
+                    <ResizablePanel defaultSize={50} minSize={20}>
+                      {secondaryPane}
+                    </ResizablePanel>
+                  </>
+                )}
+              </ResizablePanelGroup>
+            ) : (
+              primaryPane
+            )}
           </ResizablePanel>
           
           <ResizableHandle withHandle className="w-px bg-border" />
