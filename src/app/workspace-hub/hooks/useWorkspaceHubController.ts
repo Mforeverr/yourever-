@@ -6,20 +6,16 @@ import { useRouter } from 'next/navigation'
 
 import { useCurrentUser } from '@/hooks/use-auth'
 import { useProtectedRoute } from '@/hooks/use-protected-route'
-import {
-  usePendingInvitations,
-  useUserOrganizations,
-  type Invitation,
-  type Organization,
-  type WorkspaceCreationResult,
-} from '@/hooks/use-organizations'
+import { useWorkspaceHubOverviewQuery } from '@/hooks/api/use-workspace-hub-query'
 import { useToast } from '@/hooks/use-toast'
 import { authStorage } from '@/lib/auth-utils'
-import { fetchOrganizationOverviews, type OrganizationOverview } from '@/lib/mock-organizations'
 import {
   WORKSPACE_HUB_TUTORIAL_STEPS,
   useTutorialManager,
 } from '@/components/tutorial/tutorial-provider'
+import { useScope } from '@/contexts/scope-context'
+import type { HubInvitation, HubOrganization } from '@/modules/organizations/types'
+import type { WorkspaceCreationResult } from '@/hooks/use-organizations'
 import type { OrganizationCardData } from '../components/OrganizationCard'
 
 export interface WorkspaceHubForm {
@@ -53,7 +49,7 @@ interface UseWorkspaceHubControllerResult {
     openOrganization: (
       organizationId: string,
       divisionId: string | null,
-      fallbackOrganization?: Pick<Organization, 'id' | 'name' | 'slug' | 'divisions'>,
+      fallbackOrganization?: Pick<HubOrganization, 'id' | 'name' | 'slug' | 'divisions'>,
     ) => void
   }
   joinDialog: {
@@ -72,10 +68,10 @@ interface UseWorkspaceHubControllerResult {
     onError: (error: unknown) => void
   }
   invitations: {
-    list: Invitation[]
+    list: HubInvitation[]
     isLoading: boolean
-    onAccept: (invitation: Invitation, organization: Organization) => void
-    onDecline: (invitation: Invitation) => void
+    onAccept: (invitation: HubInvitation, organization: HubOrganization) => void
+    onDecline: (invitation: HubInvitation) => void
   }
   statuses: {
     isInitialLoading: boolean
@@ -110,25 +106,31 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
   const [isJoinDialogOpen, setIsJoinDialogOpen] = useState(false)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
 
+  const { setScope } = useScope()
+
   const {
-    data: organizations,
-    isLoading: isLoadingOrganizations,
-    error: organizationsError,
-  } = useUserOrganizations()
-  const {
-    data: invitations,
-    isLoading: invitationsLoading,
-  } = usePendingInvitations()
+    data: hubOverview,
+    status: hubStatus,
+    error: hubError,
+    isFetching: isFetchingHub,
+  } = useWorkspaceHubOverviewQuery({
+    enabled: Boolean(user),
+  })
+
+  const organizations = hubOverview?.organizations ?? []
+  const invitations = hubOverview?.invitations ?? []
+
+  const enrichedOrganizations = useMemo(() => buildOrganizationCards(organizations), [organizations])
 
   const pendingInvitations = useMemo(
-    () => invitations?.filter((invitation) => invitation.status === 'pending') ?? [],
+    () => invitations.filter((invitation) => invitation.status === 'pending'),
     [invitations],
   )
 
-  const {
-    list: enrichedOrganizations,
-    isLoading: isOverviewLoading,
-  } = useEnrichedOrganizations(organizations)
+  const isLoadingOrganizations = hubStatus === 'pending' && !hubOverview
+  const isOverviewLoading = isFetchingHub && Boolean(hubOverview)
+  const organizationsError = hubError
+  const invitationsLoading = isFetchingHub && !hubOverview
 
   const watchJoinOrganizationId = watch('joinOrganizationId')
 
@@ -254,18 +256,29 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
       setIsProcessing(true)
       setProcessingOrgId(organizationId)
 
-      authStorage.setActiveOrganizationId(organizationId)
-      authStorage.setActiveDivisionId(targetDivision.id)
       setActiveOrgId(organizationId)
       setDivisionSelections((previous) => ({
         ...previous,
         [organizationId]: targetDivision.id,
       }))
 
-      // Construct URL using slugs instead of IDs
-      router.push(`/${orgSlug}/${divisionSlug}/dashboard`)
+      void setScope(organizationId, targetDivision.id, { reason: 'workspace-hub:enter' })
+        .then(() => {
+          router.push(`/${orgSlug}/${divisionSlug}/dashboard`)
+        })
+        .catch((error: unknown) => {
+          toast({
+            title: 'Failed to enter workspace',
+            description:
+              error instanceof Error
+                ? error.message
+                : 'We could not update your workspace scope. Please try again.',
+            variant: 'destructive',
+          })
+        })
+        .finally(resetProcessing)
     },
-    [enrichedOrganizations, toast, resetProcessing, router],
+    [enrichedOrganizations, toast, resetProcessing, router, setScope],
   )
 
   const handleOrgCreationSuccess = useCallback(
@@ -395,7 +408,7 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
   }, [selectedOrgId])
 
   const handleInvitationAccept = useCallback(
-    (_invitation: Invitation, organization: Organization) => {
+    (_invitation: HubInvitation, organization: HubOrganization) => {
       const defaultDivisionId = organization.divisions[0]?.id ?? null
       setDivisionSelections((previous) => ({
         ...previous,
@@ -406,17 +419,17 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
     [openOrganization],
   )
 
-  const handleInvitationDecline = useCallback((_invitation: Invitation) => {
+  const handleInvitationDecline = useCallback((_invitation: HubInvitation) => {
     // The mutation hook invalidates pending invitations, so no additional state updates are required here.
   }, [])
 
   const isInitialLoading = useMemo(() => {
-    const noOrgsYet = !organizations
-    const noInvitationsYet = !invitations
+    const hasOverview = Boolean(hubOverview)
+    const hasInvitations = Boolean(invitations.length)
 
     return (
-      (isLoadingOrganizations && noOrgsYet) ||
-      (invitationsLoading && noInvitationsYet) ||
+      (isLoadingOrganizations && !hasOverview) ||
+      (invitationsLoading && !hasInvitations) ||
       (isOverviewLoading && enrichedOrganizations.length === 0)
     )
   }, [
@@ -425,7 +438,7 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
     invitationsLoading,
     isLoadingOrganizations,
     isOverviewLoading,
-    organizations,
+    hubOverview,
   ])
 
   return {
@@ -473,86 +486,32 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
   }
 }
 
-interface EnrichedOrganizationsState {
-  list: OrganizationCardData[]
-  isLoading: boolean
+function buildOrganizationCards(organizations: HubOrganization[]): OrganizationCardData[] {
+  const sorted = [...organizations].sort(compareOrganizationsByRole)
+
+  return sorted.map<OrganizationCardData>((organization) => ({
+    id: organization.id,
+    name: organization.name,
+    slug: organization.slug ?? organization.id,
+    role: organization.userRole ?? 'member',
+    divisions: organization.divisions ?? [],
+    description: organization.description ?? undefined,
+    tagline: organization.industry ?? undefined,
+    industry: organization.industry ?? undefined,
+    location: organization.location ?? undefined,
+    timezone: organization.timezone ?? undefined,
+    memberCount: organization.memberCount ?? undefined,
+    activeProjects: organization.activeProjects ?? undefined,
+    lastActive: organization.lastActiveAt ?? undefined,
+    tags: organization.tags ?? undefined,
+    accentColor: organization.accentColor ?? undefined,
+    logoUrl: organization.logoUrl ?? undefined,
+  }))
 }
 
-function useEnrichedOrganizations(organizations?: Organization[] | null): EnrichedOrganizationsState {
-  const [state, setState] = useState<EnrichedOrganizationsState>({ list: [], isLoading: false })
-
-  useEffect(() => {
-    if (!organizations || organizations.length === 0) {
-      setState({ list: [], isLoading: false })
-      return
-    }
-
-    let isMounted = true
-    const sorted = [...organizations].sort(compareOrganizationsByRole)
-
-    const loadOverviews = async () => {
-      setState((previous) => ({ ...previous, isLoading: true }))
-
-      let overviewByKey: Map<string, OrganizationOverview> = new Map()
-      let overviewByName: Map<string, OrganizationOverview> = new Map()
-
-      try {
-        const identifiers = sorted.map((organization) => organization.slug ?? organization.id)
-        if (identifiers.length > 0) {
-          const overviews = await fetchOrganizationOverviews(identifiers)
-          overviewByKey = new Map(overviews.map((overview) => [overview.id, overview]))
-          overviewByName = new Map(overviews.map((overview) => [overview.name, overview]))
-        }
-      } catch (error) {
-        console.warn('Failed to load organization overviews', error)
-      } finally {
-        if (!isMounted) {
-          return
-        }
-
-        const list = sorted.map<OrganizationCardData>((organization) => {
-          const overview =
-            overviewByKey.get(organization.slug ?? '') ??
-            overviewByKey.get(organization.id) ??
-            overviewByName.get(organization.name)
-
-          return {
-            id: organization.id,
-            name: organization.name,
-            slug: organization.slug,
-            role: organization.user_role,
-            divisions: organization.divisions,
-            description: organization.description,
-            tagline: overview?.tagline,
-            industry: overview?.industry,
-            location: overview?.location,
-            timezone: overview?.timezone,
-            memberCount: overview?.memberCount,
-            activeProjects: overview?.activeProjects,
-            lastActive: overview?.lastActive,
-            tags: overview?.tags,
-            accentColor: overview?.accentColor,
-            logoUrl: overview?.logoUrl ?? organization.logo_url,
-          }
-        })
-
-        setState({ list, isLoading: false })
-      }
-    }
-
-    void loadOverviews()
-
-    return () => {
-      isMounted = false
-    }
-  }, [organizations])
-
-  return state
-}
-
-function compareOrganizationsByRole(a: Organization, b: Organization) {
-  const roleWeightA = rolePriority[a.user_role?.toLowerCase() ?? 'member'] ?? 3
-  const roleWeightB = rolePriority[b.user_role?.toLowerCase() ?? 'member'] ?? 3
+function compareOrganizationsByRole(a: HubOrganization, b: HubOrganization) {
+  const roleWeightA = rolePriority[a.userRole?.toLowerCase() ?? 'member'] ?? 3
+  const roleWeightB = rolePriority[b.userRole?.toLowerCase() ?? 'member'] ?? 3
 
   if (roleWeightA !== roleWeightB) {
     return roleWeightA - roleWeightB

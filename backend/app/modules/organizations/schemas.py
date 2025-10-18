@@ -122,6 +122,7 @@ class InvitationResponse(BaseModel):
     message: Optional[str] = None
     status: str
     token: Optional[str] = None
+    token_hash: Optional[str] = Field(default=None, alias="tokenHash")
     inviter_id: Optional[str] = Field(default=None, alias="inviterId")
     inviter_name: Optional[str] = Field(default=None, alias="inviterName")
     org_name: Optional[str] = Field(default=None, alias="orgName")
@@ -137,6 +138,12 @@ class InvitationListResponse(BaseModel):
     """Envelope for returning pending invitations."""
 
     invitations: List[InvitationResponse]
+
+
+class HubInvitation(InvitationResponse):
+    """Hub-specific invitation view with hashed token metadata."""
+
+    pass
 
 
 class InvitationCreatePayload(BaseModel):
@@ -184,3 +191,38 @@ class SlugAvailability(BaseModel):
     slug: str
     is_available: bool = Field(alias="isAvailable")
     suggestions: List[str] = Field(default_factory=list)
+
+
+class HubOrganization(OrganizationResponse):
+    """Hub representation of an organization with optional analytics fields."""
+
+    industry: Optional[str] = None
+    location: Optional[str] = None
+    timezone: Optional[str] = None
+    member_count: Optional[int] = Field(default=None, alias="memberCount")
+    active_projects: Optional[int] = Field(default=None, alias="activeProjects")
+    last_active_at: Optional[datetime] = Field(default=None, alias="lastActiveAt")
+    tags: Optional[List[str]] = None
+    accent_color: Optional[str] = Field(default=None, alias="accentColor")
+
+
+class HubStats(BaseModel):
+    """Metrics describing hub readiness."""
+
+    total_organizations: int = Field(alias="totalOrganizations")
+    pending_invitations: int = Field(alias="pendingInvitations")
+    last_updated_at: datetime = Field(alias="lastUpdatedAt")
+
+
+class HubOverview(BaseModel):
+    """Aggregated payload returned to the workspace hub."""
+
+    organizations: List[HubOrganization] = Field(default_factory=list)
+    invitations: List[HubInvitation] = Field(default_factory=list)
+    stats: HubStats
+
+
+class InvitationActionRequest(BaseModel):
+    """Payload for accepting or declining an invitation from the hub."""
+
+    invitation_id: str = Field(..., alias="invitationId", min_length=1)

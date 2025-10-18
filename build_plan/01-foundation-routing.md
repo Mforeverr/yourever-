@@ -118,7 +118,7 @@ export const getDevUser = (): MockUser => {
 'use client'
 
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import { MockUser } from '@/lib/mock-users'
+import { MockUser } from '@/mocks/data/users'
 
 interface AuthContext {
   user: MockUser | null
@@ -230,7 +230,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
-import { mockUsers } from '@/lib/mock-users'
+import { mockUsers } from '@/mocks/data/users'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')

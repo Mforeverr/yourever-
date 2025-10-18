@@ -8,7 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Search, Plus, ChevronDown, ChevronRight, Hash, Lock, Users, Star, Bell, BellOff, Calendar, FileText } from "lucide-react"
+import { Search, Plus, ChevronDown, ChevronRight, Hash, Lock, Users, Star, Bell, BellOff, Calendar, FileText, Loader2, Pencil, X, AlertCircle } from "lucide-react"
 import { PeopleSidebar } from "@/components/people/people-sidebar"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { ProjectForm } from "@/components/forms/project-form"
@@ -18,14 +18,21 @@ import {
   useMockConversationStore,
   selectChannelsForScope,
   selectDirectMessageUsersForScope
-} from "@/lib/mock-conversations"
+} from "@/mocks/data/conversations"
 import {
   useMockWorkspaceStore,
   filterProjectsByScope,
   filterTasksByScope,
   filterDocsByScope,
   countProjectsForDivision
-} from "@/lib/mock-workspace"
+} from "@/mocks/data/workspace"
+import { useWorkspaceOverviewQuery } from "@/hooks/api/use-workspace-overview-query"
+import { useDivisionChannelsQuery } from "@/hooks/api/use-division-channels-query"
+import { useWorkspaceStore } from "@/state/workspace.store"
+import { useUpdateChannelMutation } from "@/hooks/api/use-workspace-mutations"
+import type { UseQueryResult } from "@tanstack/react-query"
+import type { WorkspaceOverview, WorkspaceChannel, WorkspaceProject } from "@/modules/workspace/types"
+import { toast } from "@/hooks/use-toast"
 
 interface SideBarProps {
   activePanel: string
@@ -35,6 +42,8 @@ interface SideBarProps {
 
 interface ExplorerContentProps {
   className?: string
+  liveDataEnabled: boolean
+  overviewQuery: UseQueryResult<WorkspaceOverview, unknown>
 }
 
 interface ChannelsContentProps {
@@ -55,29 +64,113 @@ interface AdminContentProps {
 
 interface WorkspaceContentProps {
   className?: string
+  liveDataEnabled: boolean
+  overviewQuery: UseQueryResult<WorkspaceOverview, unknown>
 }
 
-function ExplorerContent({ className }: ExplorerContentProps) {
+const countProjectsForDivisionLive = (projects: WorkspaceProject[], divisionId: string) =>
+  projects.filter((project) => project.divisionId === divisionId).length
+
+const filterProjectsByDivision = (
+  projects: WorkspaceProject[],
+  orgId?: string | null,
+  divisionId?: string | null,
+) => {
+  if (!orgId) return []
+  if (divisionId) {
+    return projects.filter((project) => project.divisionId === divisionId)
+  }
+  return projects
+}
+
+const filterDocsByDivision = (
+  docs: { divisionId: string | null }[],
+  divisionId?: string | null,
+) => {
+  if (divisionId) {
+    return docs.filter((doc) => doc.divisionId === divisionId)
+  }
+  return docs
+}
+
+const filterTasksByDivision = (
+  tasks: { divisionId: string | null }[],
+  divisionId?: string | null,
+) => {
+  if (divisionId) {
+    return tasks.filter((task) => task.divisionId === divisionId)
+  }
+  return tasks
+}
+
+function ExplorerContent({ className, liveDataEnabled, overviewQuery }: ExplorerContentProps) {
   const [expandedSections, setExpandedSections] = React.useState<string[]>(['divisions', 'projects'])
   const router = useRouter()
+  const bannerState = useWorkspaceStore((state) => ({
+    showBanner: state.showTemplatesBanner,
+    dismiss: state.dismissTemplatesBanner,
+  }))
   const { currentOrganization, currentOrgId, currentDivision, currentDivisionId, setScope, setDivision } = useScope()
 
-  const projects = useMockWorkspaceStore((state) => state.projects)
-  const docs = useMockWorkspaceStore((state) => state.docs)
+  const mockProjects = useMockWorkspaceStore((state) => state.projects)
+  const mockDocs = useMockWorkspaceStore((state) => state.docs)
+  const mockTasks = useMockWorkspaceStore((state) => state.tasks)
 
-  const scopedProjects = React.useMemo(
-    () => filterProjectsByScope(projects, currentOrgId, currentDivisionId),
-    [projects, currentOrgId, currentDivisionId]
-  )
+  const shouldUseMockData = !liveDataEnabled
 
-  const scopedDocs = React.useMemo(
-    () => filterDocsByScope(docs, currentOrgId, currentDivisionId),
-    [docs, currentOrgId, currentDivisionId]
-  )
+  const projects: WorkspaceProject[] = React.useMemo(() => {
+    if (overviewQuery.isSuccess) {
+      return overviewQuery.data.projects
+    }
+    if (shouldUseMockData) {
+      return filterProjectsByScope(mockProjects, currentOrgId, currentDivisionId)
+    }
+    return []
+  }, [
+    overviewQuery.isSuccess,
+    overviewQuery.data,
+    shouldUseMockData,
+    mockProjects,
+    currentOrgId,
+    currentDivisionId,
+  ])
 
-  const canOpenProjects = isFeatureEnabled("projects.detail", process.env.NODE_ENV !== "production")
-  const workspaceBasePath =
-    currentOrgId && currentDivisionId ? `/${currentOrgId}/${currentDivisionId}` : null
+  const docs = React.useMemo(() => {
+    if (overviewQuery.isSuccess) {
+      return filterDocsByDivision(overviewQuery.data.docs, currentDivisionId)
+    }
+    if (shouldUseMockData) {
+      return filterDocsByScope(mockDocs, currentOrgId, currentDivisionId)
+    }
+    return []
+  }, [
+    overviewQuery.isSuccess,
+    overviewQuery.data,
+    shouldUseMockData,
+    mockDocs,
+    currentOrgId,
+    currentDivisionId,
+  ])
+
+  const tasks = React.useMemo(() => {
+    if (overviewQuery.isSuccess) {
+      return filterTasksByDivision(overviewQuery.data.tasks, currentDivisionId)
+    }
+    if (shouldUseMockData) {
+      return filterTasksByScope(mockTasks, currentOrgId, currentDivisionId)
+    }
+    return []
+  }, [
+    overviewQuery.isSuccess,
+    overviewQuery.data,
+    shouldUseMockData,
+    mockTasks,
+    currentOrgId,
+    currentDivisionId,
+  ])
+
+  const canOpenProjects = isFeatureEnabled('projects.detail', process.env.NODE_ENV !== 'production')
+  const workspaceBasePath = currentOrgId && currentDivisionId ? `/${currentOrgId}/${currentDivisionId}` : null
 
   const handleProjectOpen = (projectId: string) => {
     if (!workspaceBasePath || !canOpenProjects) {
@@ -94,27 +187,46 @@ function ExplorerContent({ className }: ExplorerContentProps) {
 
   const handleDivisionSelect = (orgId: string, divisionId: string) => {
     if (currentOrganization?.id === orgId) {
-      setDivision(divisionId)
+      void setDivision(divisionId)
     } else {
-      setScope(orgId, divisionId)
+      void setScope(orgId, divisionId)
     }
   }
 
+  const projectCountForDivision = React.useCallback(
+    (divisionId: string) => {
+      if (overviewQuery.isSuccess) {
+        return countProjectsForDivisionLive(overviewQuery.data.projects, divisionId)
+      }
+      if (shouldUseMockData) {
+        return countProjectsForDivision(mockProjects, currentOrgId, divisionId)
+      }
+      return 0
+    },
+    [overviewQuery.isSuccess, overviewQuery.data, shouldUseMockData, mockProjects, currentOrgId],
+  )
+
+  const showTemplatesBanner = overviewQuery.isSuccess && overviewQuery.data.hasTemplates && bannerState.showBanner
+
   return (
-    <div className={cn("flex flex-col h-full", className)}>
-      <div className="p-3 border-b border-border">
+    <div className={cn('flex flex-col h-full', className)}>
+      <div className="p-3 border-b border-border space-y-2">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input
-            placeholder="Search workspace..."
-            className="pl-9 h-8 bg-surface-elevated border-border"
-          />
+          <Input placeholder="Search workspace..." className="pl-9 h-8 bg-surface-elevated border-border" />
         </div>
+        {showTemplatesBanner && (
+          <div className="rounded-lg border border-dashed border-brand/40 bg-brand/10 px-3 py-2 text-xs text-brand-foreground flex items-center justify-between">
+            <span>Sample projects are ready to customise. Edit or delete them to make this workspace yours.</span>
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={bannerState.dismiss}>
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
       </div>
 
       <ScrollArea className="flex-1 p-2">
         <div className="space-y-2">
-          {/* Divisions */}
           <div>
             <Button
               variant="ghost"
@@ -132,35 +244,29 @@ function ExplorerContent({ className }: ExplorerContentProps) {
             {expandedSections.includes('divisions') && (
               <div className="ml-4 space-y-1">
                 {currentOrganization ? (
-                  currentOrganization.divisions.map((division) => {
-                    const projectCount = countProjectsForDivision(projects, currentOrgId, division.id)
-                    return (
-                      <button
-                        key={division.id}
-                        type="button"
-                        className={cn(
-                          "flex w-full items-center justify-between rounded-lg p-2 transition-colors hover:bg-accent/50",
-                          currentDivision?.id === division.id && "bg-accent"
-                        )}
-                        onClick={() => handleDivisionSelect(currentOrganization.id, division.id)}
-                      >
-                        <span className="text-sm">{division.name}</span>
-                        <Badge variant="secondary" className="text-xs">
-                          {projectCount}
-                        </Badge>
-                      </button>
-                    )
-                  })
+                  currentOrganization.divisions.map((division) => (
+                    <button
+                      key={division.id}
+                      type="button"
+                      className={cn(
+                        'flex w-full items-center justify-between rounded-lg p-2 transition-colors hover:bg-accent/50',
+                        currentDivision?.id === division.id && 'bg-accent',
+                      )}
+                      onClick={() => handleDivisionSelect(currentOrganization.id, division.id)}
+                    >
+                      <span className="text-sm">{division.name}</span>
+                      <Badge variant="secondary" className="text-xs">
+                        {projectCountForDivision(division.id)}
+                      </Badge>
+                    </button>
+                  ))
                 ) : (
-                  <p className="text-sm text-muted-foreground">
-                    Select an organization to see its divisions.
-                  </p>
+                  <p className="text-sm text-muted-foreground">Select an organization to see its divisions.</p>
                 )}
               </div>
             )}
           </div>
 
-          {/* Projects */}
           <div>
             <Button
               variant="ghost"
@@ -177,34 +283,67 @@ function ExplorerContent({ className }: ExplorerContentProps) {
             </Button>
             {expandedSections.includes('projects') && (
               <div className="ml-4 space-y-1">
-                {scopedProjects.length > 0 ? (
-                  scopedProjects.map((project) => (
-                    <button
+                {overviewQuery.isPending && liveDataEnabled ? (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground px-2 py-3">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Loading scoped projects...
+                  </div>
+                ) : overviewQuery.isError ? (
+                  <div className="flex items-center gap-2 text-xs text-destructive px-2 py-3">
+                    <AlertCircle className="h-3 w-3" /> Unable to load projects.
+                  </div>
+                ) : projects.length > 0 ? (
+                  projects.map((project) => (
+                    <div
                       key={project.id}
-                      type="button"
-                      onClick={() => handleProjectOpen(project.id)}
-                      className={cn(
-                        "flex w-full items-center justify-between rounded-lg p-2 transition-colors",
-                        canOpenProjects ? "hover:bg-accent/50" : "cursor-not-allowed opacity-60"
-                      )}
-                      disabled={!canOpenProjects || !workspaceBasePath}
+                      className="flex items-center justify-between rounded-lg p-2 hover:bg-accent/50"
                     >
-                      <span className="text-sm text-left">{project.name}</span>
-                      <Badge variant="outline" className="text-xs">
-                        {project.badgeCount}
-                      </Badge>
-                    </button>
+                      <button
+                        type="button"
+                        className={cn(
+                          'flex flex-1 items-center justify-between text-left',
+                          canOpenProjects ? '' : 'cursor-not-allowed opacity-60',
+                        )}
+                        onClick={() => handleProjectOpen(project.id)}
+                        disabled={!canOpenProjects || !workspaceBasePath}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">{project.name}</span>
+                          {project.isTemplate && (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] uppercase tracking-wide text-muted-foreground"
+                            >
+                              Sample
+                            </Badge>
+                          )}
+                        </div>
+                        <Badge variant="outline" className="text-xs">
+                          {project.badgeCount}
+                        </Badge>
+                      </button>
+                      <ProjectForm
+                        orgId={currentOrgId}
+                        divisionId={project.divisionId ?? currentDivisionId}
+                        project={project}
+                        onSuccess={() => {
+                          if (liveDataEnabled) {
+                            overviewQuery.refetch()
+                          }
+                        }}
+                      >
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground">
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                      </ProjectForm>
+                    </div>
                   ))
                 ) : (
-                  <p className="text-sm text-muted-foreground">
-                    Select a division to see scoped projects.
-                  </p>
+                  <p className="text-sm text-muted-foreground">Select a division to see scoped projects.</p>
                 )}
               </div>
             )}
           </div>
 
-          {/* Docs */}
           <div>
             <Button
               variant="ghost"
@@ -221,19 +360,33 @@ function ExplorerContent({ className }: ExplorerContentProps) {
             </Button>
             {expandedSections.includes('docs') && (
               <div className="ml-4 space-y-1">
-                {scopedDocs.length > 0 ? (
-                  scopedDocs.map((doc) => (
-                    <div
-                      key={doc.id}
-                      className="p-2 rounded-lg hover:bg-accent/50 cursor-pointer"
-                    >
-                      <span className="text-sm">{doc.name}</span>
+                {overviewQuery.isPending && liveDataEnabled ? (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground px-2 py-3">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Loading documents...
+                  </div>
+                ) : overviewQuery.isError ? (
+                  <div className="flex items-center gap-2 text-xs text-destructive px-2 py-3">
+                    <AlertCircle className="h-3 w-3" /> Unable to load documents.
+                  </div>
+                ) : docs.length > 0 ? (
+                  docs.map((doc) => (
+                    <div key={doc.id} className="p-2 rounded-lg hover:bg-accent/50 cursor-pointer flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileText className="size-4 text-muted-foreground" />
+                        <span className="text-sm">{doc.name}</span>
+                        {doc.isTemplate && (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] uppercase tracking-wide text-muted-foreground"
+                          >
+                            Sample
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   ))
                 ) : (
-                  <p className="text-sm text-muted-foreground">
-                    Switch to a division to load its documentation.
-                  </p>
+                  <p className="text-sm text-muted-foreground">Switch to a division to load its documentation.</p>
                 )}
               </div>
             )}
@@ -242,10 +395,20 @@ function ExplorerContent({ className }: ExplorerContentProps) {
       </ScrollArea>
 
       <div className="p-2 border-t border-border">
-        <Button variant="outline" size="sm" className="w-full">
-          <Plus className="size-4 mr-2" />
-          New Project
-        </Button>
+        <ProjectForm
+          orgId={currentOrgId}
+          divisionId={currentDivisionId}
+          onSuccess={() => {
+            if (liveDataEnabled) {
+              overviewQuery.refetch()
+            }
+          }}
+        >
+          <Button variant="outline" size="sm" className="w-full">
+            <Plus className="size-4 mr-2" />
+            New project
+          </Button>
+        </ProjectForm>
       </div>
     </div>
   )
@@ -253,29 +416,52 @@ function ExplorerContent({ className }: ExplorerContentProps) {
 
 function ChannelsContent({ className }: ChannelsContentProps) {
   const router = useRouter()
-  const [searchQuery, setSearchQuery] = React.useState('')
-  const [showFavoritesOnly, setShowFavoritesOnly] = React.useState(false)
   const [expandedSections, setExpandedSections] = React.useState<string[]>(['channels', 'dms'])
   const { currentOrgId, currentDivisionId } = useScope()
+  const store = useWorkspaceStore((state) => ({
+    search: state.channelSearch,
+    setSearch: state.setChannelSearch,
+  }))
+  const liveDataEnabled = isFeatureEnabled('workspace.liveData', true)
 
-  const channels = useMockConversationStore(
+  const channelsQuery = useDivisionChannelsQuery(currentOrgId, currentDivisionId, {
+    enabled: liveDataEnabled && Boolean(currentOrgId && currentDivisionId),
+  })
+
+  const mockChannels = useMockConversationStore(
     React.useCallback(
       (state) => selectChannelsForScope(state, currentOrgId, currentDivisionId),
-      [currentDivisionId, currentOrgId]
-    )
+      [currentDivisionId, currentOrgId],
+    ),
   )
 
   const dmUsers = useMockConversationStore(
     React.useCallback(
       (state) => selectDirectMessageUsersForScope(state, currentOrgId, currentDivisionId),
-      [currentDivisionId, currentOrgId]
-    )
+      [currentDivisionId, currentOrgId],
+    ),
   )
 
-  const toggleChannelFavorite = useMockConversationStore((state) => state.toggleChannelFavorite)
-  const toggleChannelMute = useMockConversationStore((state) => state.toggleChannelMute)
-  const markChannelRead = useMockConversationStore((state) => state.markChannelRead)
+  const updateChannelMutation = useUpdateChannelMutation()
+  const toggleChannelFavoriteMock = useMockConversationStore((state) => state.toggleChannelFavorite)
+  const toggleChannelMuteMock = useMockConversationStore((state) => state.toggleChannelMute)
   const markDirectMessageRead = useMockConversationStore((state) => state.markDirectMessageRead)
+
+  const shouldUseMockChannels = !liveDataEnabled
+
+  const channels: WorkspaceChannel[] = React.useMemo(() => {
+    if (channelsQuery.isSuccess) {
+      return channelsQuery.data.items
+    }
+    if (shouldUseMockChannels) {
+      return mockChannels
+    }
+    return []
+  }, [channelsQuery.isSuccess, channelsQuery.data, shouldUseMockChannels, mockChannels])
+
+  const filteredChannels = channels.filter((channel) =>
+    channel.name.toLowerCase().includes(store.search.toLowerCase()),
+  )
 
   const buildScopedPath = React.useCallback(
     (suffix: string) => {
@@ -284,60 +470,104 @@ function ChannelsContent({ className }: ChannelsContentProps) {
       }
       return `/${currentOrgId}/${currentDivisionId}${suffix}`
     },
-    [currentDivisionId, currentOrgId]
+    [currentDivisionId, currentOrgId],
   )
 
   const toggleSection = (section: string) => {
-    setExpandedSections(prev => 
-      prev.includes(section) 
-        ? prev.filter(s => s !== section)
-        : [...prev, section]
+    setExpandedSections((prev) =>
+      prev.includes(section) ? prev.filter((s) => s !== section) : [...prev, section],
     )
   }
 
-  const filteredChannels = channels.filter(channel => {
-    const matchesSearch = channel.name.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesFavorites = !showFavoritesOnly || !!channel.isFavorite
-    return matchesSearch && matchesFavorites
-  })
+  const handleToggleFavorite = async (channel: WorkspaceChannel) => {
+    if (!liveDataEnabled || !currentOrgId) {
+      toggleChannelFavoriteMock(channel.id)
+      return
+    }
+    try {
+      await updateChannelMutation.mutateAsync({
+        channelId: channel.id,
+        orgId: currentOrgId,
+        payload: {
+          name: channel.slug,
+          slug: channel.slug,
+          channelType: channel.channelType,
+          topic: channel.topic ?? '',
+          description: channel.description ?? '',
+          divisionId: channel.divisionId ?? currentDivisionId ?? null,
+          isFavorite: !channel.isFavorite,
+          isMuted: channel.isMuted,
+        },
+      })
+      await channelsQuery.refetch()
+    } catch (error) {
+      toast({
+        title: 'Unable to update channel',
+        description: error instanceof Error ? error.message : 'Unexpected error occurred',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleToggleMute = async (channel: WorkspaceChannel) => {
+    if (!liveDataEnabled || !currentOrgId) {
+      toggleChannelMuteMock(channel.id)
+      return
+    }
+    try {
+      await updateChannelMutation.mutateAsync({
+        channelId: channel.id,
+        orgId: currentOrgId,
+        payload: {
+          name: channel.slug,
+          slug: channel.slug,
+          channelType: channel.channelType,
+          topic: channel.topic ?? '',
+          description: channel.description ?? '',
+          divisionId: channel.divisionId ?? currentDivisionId ?? null,
+          isFavorite: channel.isFavorite,
+          isMuted: !channel.isMuted,
+        },
+      })
+      await channelsQuery.refetch()
+    } catch (error) {
+      toast({
+        title: 'Unable to update channel',
+        description: error instanceof Error ? error.message : 'Unexpected error occurred',
+        variant: 'destructive',
+      })
+    }
+  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'online': return 'bg-green-500'
-      case 'away': return 'bg-yellow-500'
-      case 'offline': return 'bg-gray-400'
-      default: return 'bg-gray-400'
+      case 'online':
+        return 'bg-green-500'
+      case 'away':
+        return 'bg-yellow-500'
+      case 'offline':
+        return 'bg-gray-400'
+      default:
+        return 'bg-gray-400'
     }
   }
 
   return (
-    <div className={cn("flex flex-col h-full", className)}>
+    <div className={cn('flex flex-col h-full', className)}>
       <div className="p-3 border-b border-border">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input 
-            placeholder="Search channels..." 
+          <Input
+            placeholder="Search channels..."
             className="pl-9 h-8 bg-surface-elevated border-border"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={store.search}
+            onChange={(event) => store.setSearch(event.target.value)}
           />
         </div>
-        <div className="flex items-center gap-2 mt-2">
-          <Button
-            variant={showFavoritesOnly ? "default" : "ghost"}
-            size="sm"
-            className="flex-1"
-            onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
-          >
-            <Star className={cn("size-3 mr-1", showFavoritesOnly && "fill-current")} />
-            Favorites
-          </Button>
-        </div>
       </div>
-      
+
       <ScrollArea className="flex-1 p-2">
         <div className="space-y-3">
-          {/* Channels */}
           <div>
             <Button
               variant="ghost"
@@ -354,57 +584,82 @@ function ChannelsContent({ className }: ChannelsContentProps) {
             </Button>
             {expandedSections.includes('channels') && (
               <div className="space-y-1">
-                {filteredChannels.length > 0 ? filteredChannels.map(channel => {
-                  const Icon = channel.type === 'private' ? Lock : Hash
-                  return (
-                    <div
-                      key={channel.id}
-                      className="flex items-center justify-between p-2 rounded-lg hover:bg-accent/50 cursor-pointer group"
-                      onClick={() => {
-                        markChannelRead(channel.id)
-                        router.push(buildScopedPath(`/c/${channel.id}`))
-                      }}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Icon className="size-4 text-muted-foreground" />
-                        <span className="text-sm">#{channel.name}</span>
-                        {channel.isFavorite && <Star className="size-3 fill-current text-yellow-500" />}
-                        {channel.isMuted && <BellOff className="size-3 text-muted-foreground" />}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {(channel.unreadCount ?? 0) > 0 && (
-                          <Badge variant="destructive" className="text-xs">
-                            {channel.unreadCount}
-                          </Badge>
-                        )}
-                        <div className="opacity-0 group-hover:opacity-100 flex gap-1">
+                {channelsQuery.isPending && liveDataEnabled ? (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground px-2 py-3">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Loading channels...
+                  </div>
+                ) : channelsQuery.isError ? (
+                  <div className="flex items-center gap-2 text-xs text-destructive px-2 py-3">
+                    <AlertCircle className="h-3 w-3" /> Unable to load channels.
+                  </div>
+                ) : filteredChannels.length > 0 ? (
+                  filteredChannels.map((channel) => {
+                    const Icon = channel.channelType === 'private' ? Lock : Hash
+                    return (
+                      <div
+                        key={channel.id}
+                        className="flex items-center justify-between p-2 rounded-lg hover:bg-accent/50 group"
+                      >
+                        <button
+                          type="button"
+                          className="flex flex-1 items-center gap-2"
+                          onClick={() => router.push(buildScopedPath(`/c/${channel.id}`))}
+                        >
+                          <Icon className="size-4 text-muted-foreground" />
+                          <span className="text-sm">#{channel.slug}</span>
+                          {channel.isTemplate && (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] uppercase tracking-wide text-muted-foreground"
+                            >
+                              Sample
+                            </Badge>
+                          )}
+                          {channel.isFavorite && <Star className="size-3 fill-current text-yellow-500" />}
+                          {channel.isMuted && <BellOff className="size-3 text-muted-foreground" />}
+                        </button>
+                        <div className="flex items-center gap-1">
                           <Button
                             variant="ghost"
                             size="icon"
                             className="h-4 w-4"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              toggleChannelFavorite(channel.id)
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              void handleToggleFavorite(channel)
                             }}
                           >
-                            <Star className={cn("size-3", channel.isFavorite && "fill-current")} />
+                            <Star className={cn('size-3', channel.isFavorite && 'fill-current')} />
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon"
                             className="h-4 w-4"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              toggleChannelMute(channel.id)
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              void handleToggleMute(channel)
                             }}
                           >
                             {channel.isMuted ? <BellOff className="size-3" /> : <Bell className="size-3" />}
                           </Button>
+                          <ChannelForm
+                            orgId={currentOrgId}
+                            divisionId={channel.divisionId ?? currentDivisionId}
+                            channel={channel}
+                            onSuccess={() => {
+                              if (liveDataEnabled) {
+                                channelsQuery.refetch()
+                              }
+                            }}
+                          >
+                            <Button variant="ghost" size="icon" className="h-4 w-4 text-muted-foreground">
+                              <Pencil className="size-3" />
+                            </Button>
+                          </ChannelForm>
                         </div>
                       </div>
-                    </div>
-                  )
-                }) : (
+                    )
+                  })
+                ) : (
                   <div className="px-2 py-3 text-sm text-muted-foreground">
                     No channels match this scope yet.
                   </div>
@@ -413,7 +668,6 @@ function ChannelsContent({ className }: ChannelsContentProps) {
             )}
           </div>
 
-          {/* Direct Messages */}
           <div>
             <Button
               variant="ghost"
@@ -430,26 +684,28 @@ function ChannelsContent({ className }: ChannelsContentProps) {
             </Button>
             {expandedSections.includes('dms') && (
               <div className="space-y-1">
-                {dmUsers.length > 0 ? dmUsers.map(user => (
-                  <div
-                    key={user.id}
-                    className="flex items-center justify-between p-2 rounded-lg hover:bg-accent/50 cursor-pointer"
-                    onClick={() => {
-                      markDirectMessageRead(user.id)
-                      router.push(buildScopedPath(`/dm/${user.id}`))
-                    }}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className={cn("size-2 rounded-full", getStatusColor(user.status))} />
-                      <span className="text-sm">{user.name}</span>
+                {dmUsers.length > 0 ? (
+                  dmUsers.map((user) => (
+                    <div
+                      key={user.id}
+                      className="flex items-center justify-between p-2 rounded-lg hover:bg-accent/50 cursor-pointer"
+                      onClick={() => {
+                        markDirectMessageRead(user.id)
+                        router.push(buildScopedPath(`/dm/${user.id}`))
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className={cn('size-2 rounded-full', getStatusColor(user.status))} />
+                        <span className="text-sm">{user.name}</span>
+                      </div>
+                      {(user.unreadCount ?? 0) > 0 && (
+                        <Badge variant="secondary" className="text-xs">
+                          {user.unreadCount}
+                        </Badge>
+                      )}
                     </div>
-                    {(user.unreadCount ?? 0) > 0 && (
-                      <Badge variant="secondary" className="text-xs">
-                        {user.unreadCount}
-                      </Badge>
-                    )}
-                  </div>
-                )) : (
+                  ))
+                ) : (
                   <div className="px-2 py-3 text-sm text-muted-foreground">
                     No teammates linked to this division yet.
                   </div>
@@ -459,12 +715,20 @@ function ChannelsContent({ className }: ChannelsContentProps) {
           </div>
         </div>
       </ScrollArea>
-      
+
       <div className="p-2 border-t border-border space-y-2">
-        <ChannelForm>
+        <ChannelForm
+          orgId={currentOrgId}
+          divisionId={currentDivisionId}
+          onSuccess={() => {
+            if (liveDataEnabled) {
+              channelsQuery.refetch()
+            }
+          }}
+        >
           <Button variant="outline" size="sm" className="w-full">
             <Plus className="size-4 mr-2" />
-            Add Channel
+            Add channel
           </Button>
         </ChannelForm>
         <Button variant="ghost" size="sm" className="w-full">
@@ -531,24 +795,49 @@ function CalendarContent({ className }: CalendarContentProps) {
   )
 }
 
-function WorkspaceContent({ className }: WorkspaceContentProps) {
+function WorkspaceContent({ className, liveDataEnabled, overviewQuery }: WorkspaceContentProps) {
   const [expandedSections, setExpandedSections] = React.useState<string[]>(['projects', 'tasks'])
   const [selectedItem, setSelectedItem] = React.useState<string | null>(null)
   const router = useRouter()
   const { currentOrgId, currentDivision, currentDivisionId } = useScope()
+  const mockProjects = useMockWorkspaceStore((state) => state.projects)
+  const mockTasks = useMockWorkspaceStore((state) => state.tasks)
 
-  const projects = useMockWorkspaceStore((state) => state.projects)
-  const tasks = useMockWorkspaceStore((state) => state.tasks)
+  const shouldUseMockData = !liveDataEnabled
 
-  const scopedProjects = React.useMemo(
-    () => filterProjectsByScope(projects, currentOrgId, currentDivisionId),
-    [projects, currentOrgId, currentDivisionId]
-  )
+  const scopedProjects = React.useMemo(() => {
+    if (overviewQuery.isSuccess) {
+      return filterProjectsByDivision(overviewQuery.data.projects, currentOrgId, currentDivisionId)
+    }
+    if (shouldUseMockData) {
+      return filterProjectsByScope(mockProjects, currentOrgId, currentDivisionId)
+    }
+    return []
+  }, [
+    overviewQuery.isSuccess,
+    overviewQuery.data,
+    shouldUseMockData,
+    mockProjects,
+    currentOrgId,
+    currentDivisionId,
+  ])
 
-  const scopedTasks = React.useMemo(
-    () => filterTasksByScope(tasks, currentOrgId, currentDivisionId),
-    [tasks, currentOrgId, currentDivisionId]
-  )
+  const scopedTasks = React.useMemo(() => {
+    if (overviewQuery.isSuccess) {
+      return filterTasksByDivision(overviewQuery.data.tasks, currentDivisionId)
+    }
+    if (shouldUseMockData) {
+      return filterTasksByScope(mockTasks, currentOrgId, currentDivisionId)
+    }
+    return []
+  }, [
+    overviewQuery.isSuccess,
+    overviewQuery.data,
+    shouldUseMockData,
+    mockTasks,
+    currentOrgId,
+    currentDivisionId,
+  ])
 
   React.useEffect(() => {
     if (scopedProjects.length === 0) {
@@ -579,6 +868,10 @@ function WorkspaceContent({ className }: WorkspaceContentProps) {
       return
     }
     router.push(`${workspaceBasePath}/projects/${projectId}`)
+  }
+
+  const handleTaskSelect = (taskId: string) => {
+    setSelectedItem(taskId)
   }
 
   return (
@@ -616,21 +909,41 @@ function WorkspaceContent({ className }: WorkspaceContentProps) {
             </Button>
             {expandedSections.includes('projects') && (
               <div className="ml-4 space-y-1">
-                {scopedProjects.length > 0 ? (
+                {overviewQuery.isPending && liveDataEnabled ? (
+                  <div className="px-2 py-3 text-sm text-muted-foreground flex items-center gap-2">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Loading projects...
+                  </div>
+                ) : overviewQuery.isError ? (
+                  <div className="flex items-center gap-2 text-xs text-destructive px-2 py-3">
+                    <AlertCircle className="h-3 w-3" /> Unable to load projects.
+                  </div>
+                ) : scopedProjects.length > 0 ? (
                   scopedProjects.map((project) => (
                     <button
                       key={project.id}
                       type="button"
                       className={cn(
-                        "flex w-full items-center justify-between rounded-lg p-2 transition-colors",
-                        selectedItem === project.id ? "bg-accent" : canOpenProjects ? "hover:bg-accent/50" : "cursor-not-allowed opacity-60"
+                        'flex w-full items-center justify-between rounded-lg p-2 transition-colors',
+                        selectedItem === project.id
+                          ? 'bg-accent'
+                          : canOpenProjects
+                          ? 'hover:bg-accent/50'
+                          : 'cursor-not-allowed opacity-60',
                       )}
                       onClick={() => handleProjectSelect(project.id)}
                       disabled={!canOpenProjects || !workspaceBasePath}
                     >
                       <div className="flex items-center gap-2">
-                        <div className={cn("w-2 h-2 rounded-full", project.dotColor)} />
+                        <div className={cn('w-2 h-2 rounded-full', project.dotColor)} />
                         <span className="text-sm">{project.name}</span>
+                        {project.isTemplate && (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] uppercase tracking-wide text-muted-foreground"
+                          >
+                            Sample
+                          </Badge>
+                        )}
                       </div>
                       <Badge variant="outline" className="text-xs">
                         {project.badgeCount}
@@ -663,19 +976,35 @@ function WorkspaceContent({ className }: WorkspaceContentProps) {
             </Button>
             {expandedSections.includes('tasks') && (
               <div className="ml-4 space-y-1">
-                {scopedTasks.length > 0 ? (
+                {overviewQuery.isPending && liveDataEnabled ? (
+                  <div className="px-2 py-3 text-sm text-muted-foreground flex items-center gap-2">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Loading tasks...
+                  </div>
+                ) : overviewQuery.isError ? (
+                  <div className="flex items-center gap-2 text-xs text-destructive px-2 py-3">
+                    <AlertCircle className="h-3 w-3" /> Unable to load tasks.
+                  </div>
+                ) : scopedTasks.length > 0 ? (
                   scopedTasks.map((task) => (
                     <div
                       key={task.id}
                       className={cn(
-                        "flex items-center justify-between p-2 rounded-lg cursor-pointer",
-                        selectedItem === task.id ? "bg-accent" : "hover:bg-accent/50"
+                        'flex items-center justify-between p-2 rounded-lg cursor-pointer',
+                        selectedItem === task.id ? 'bg-accent' : 'hover:bg-accent/50',
                       )}
-                      onClick={() => handleSelect(task.id)}
+                      onClick={() => handleTaskSelect(task.id)}
                     >
                       <div className="flex items-center gap-2">
-                        <div className={cn("w-2 h-2 rounded-full", task.dotColor)} />
+                        <div className={cn('w-2 h-2 rounded-full', task.dotColor)} />
                         <span className="text-sm">{task.name}</span>
+                        {task.isTemplate && (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] uppercase tracking-wide text-muted-foreground"
+                          >
+                            Sample
+                          </Badge>
+                        )}
                       </div>
                       <Badge variant={task.badgeVariant} className="text-xs">
                         {task.priority}
@@ -727,7 +1056,15 @@ function WorkspaceContent({ className }: WorkspaceContentProps) {
       </ScrollArea>
 
       <div className="p-2 border-t border-border space-y-2">
-        <ProjectForm>
+        <ProjectForm
+          orgId={currentOrgId}
+          divisionId={currentDivisionId}
+          onSuccess={() => {
+            if (liveDataEnabled) {
+              overviewQuery.refetch()
+            }
+          }}
+        >
           <Button variant="outline" size="sm" className="w-full">
             <Plus className="size-4 mr-2" />
             New Project
@@ -743,12 +1080,28 @@ function WorkspaceContent({ className }: WorkspaceContentProps) {
 }
 
 function SideBar({ activePanel, className }: SideBarProps) {
+  const { currentOrgId, currentDivisionId } = useScope()
+  const liveDataEnabled = isFeatureEnabled('workspace.liveData', true)
+  const overviewQuery = useWorkspaceOverviewQuery(currentOrgId, currentDivisionId, {
+    enabled: liveDataEnabled && Boolean(currentOrgId),
+  })
+
   const renderContent = () => {
     switch (activePanel) {
       case 'workspace':
-        return <WorkspaceContent />
+        return (
+          <WorkspaceContent
+            overviewQuery={overviewQuery}
+            liveDataEnabled={liveDataEnabled}
+          />
+        )
       case 'explorer':
-        return <ExplorerContent />
+        return (
+          <ExplorerContent
+            overviewQuery={overviewQuery}
+            liveDataEnabled={liveDataEnabled}
+          />
+        )
       case 'channels':
         return <ChannelsContent />
       case 'calendar':

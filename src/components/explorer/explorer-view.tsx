@@ -14,7 +14,7 @@ import { useScope } from '@/contexts/scope-context'
 import {
   useMockExplorerStore,
   selectExplorerTreeForScope
-} from '@/lib/mock-explorer'
+} from '@/mocks/data/explorer'
 
 function ExplorerViewContent() {
   const {

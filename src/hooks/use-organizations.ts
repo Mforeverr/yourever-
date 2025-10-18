@@ -213,6 +213,7 @@ export const useCreateOrganization = () => {
       // Invalidate and refetch organizations
       queryClient.invalidateQueries({ queryKey: ['organizations'] })
       queryClient.invalidateQueries({ queryKey: ['user'] })
+      queryClient.invalidateQueries({ queryKey: ['workspace-hub', 'overview'] })
     },
     onError: (error) => {
       const message = error instanceof ApiError

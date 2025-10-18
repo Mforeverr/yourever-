@@ -12,7 +12,8 @@ principal object downstream so routers can enforce tenant-level permissions.
 
 from functools import lru_cache
 import os
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Any, Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -28,6 +29,19 @@ class CurrentPrincipal(BaseModel):
     id: str
     email: Optional[str] = None
     role: Optional[str] = None
+    claims: Optional["TokenClaims"] = None
+
+
+class TokenClaims(BaseModel):
+    """Normalized snapshot of Supabase JWT claims for downstream consumers."""
+
+    subject: str
+    expires_at: Optional[datetime] = None
+    issued_at: Optional[datetime] = None
+    session_id: Optional[str] = None
+    audience: Optional[str] = None
+    provider: str = "supabase"
+    raw: dict[str, Any] = {}
 
 
 class _SupabaseConfig(BaseModel):
@@ -91,8 +105,27 @@ async def require_current_principal(
             detail="Invalid token payload",
         )
 
+    def _parse_timestamp(value: Any) -> Optional[datetime]:
+        if value is None:
+            return None
+        try:
+            # Supabase emits numeric timestamps in seconds
+            return datetime.fromtimestamp(float(value), tz=timezone.utc)
+        except (TypeError, ValueError):
+            return None
+
+    claims = TokenClaims(
+        subject=str(subject),
+        expires_at=_parse_timestamp(token_payload.get("exp")),
+        issued_at=_parse_timestamp(token_payload.get("iat")),
+        session_id=token_payload.get("session_id") or token_payload.get("sid"),
+        audience=token_payload.get("aud"),
+        raw={key: value for key, value in token_payload.items()},
+    )
+
     return CurrentPrincipal(
         id=str(subject),
         email=token_payload.get("email"),
         role=token_payload.get("role"),
+        claims=claims,
     )

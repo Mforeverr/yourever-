@@ -38,7 +38,7 @@ import {
   selectChannelMessages,
   type ChannelMessage,
   type MockChannel
-} from '@/lib/mock-conversations'
+} from '@/mocks/data/conversations'
 import { useBottomPanel } from "@/hooks/use-bottom-panel"
 import { startChannelHuddle } from "@/lib/huddle-session"
 

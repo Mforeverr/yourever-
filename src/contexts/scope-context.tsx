@@ -6,235 +6,415 @@ import React, {
   useContext,
   useEffect,
   useMemo,
-  useState
+  useRef,
+  useState,
 } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, usePathname, useRouter } from 'next/navigation'
+import type { ApiError } from '@/lib/api/http'
+import { useScopeQuery } from '@/hooks/api/use-scope-query'
 import { useCurrentUser } from '@/hooks/use-auth'
 import { authStorage } from '@/lib/auth-utils'
-import type { Organization, Division } from '@/hooks/use-organizations'
-import { useScopeStore } from "@/state/scope.store"
+import { buildDivisionRoute, buildOrgRoute } from '@/lib/routing'
+import { toast } from '@/hooks/use-toast'
+import type { WorkspaceDivision, WorkspaceOrganization } from '@/modules/auth/types'
+import type { ScopeStatus } from '@/modules/scope/types'
+import type { ScopeState } from '@/modules/scope/types'
+import { useScopeStore } from '@/state/scope.store'
 
 interface ScopeContextValue {
-  organizations: Organization[]
-  currentOrganization: Organization | null
-  currentDivision: Division | null
+  organizations: WorkspaceOrganization[]
+  currentOrganization: WorkspaceOrganization | null
+  currentDivision: WorkspaceDivision | null
   currentOrgId: string | null
   currentDivisionId: string | null
-  setScope: (orgId: string, divisionId?: string) => void
-  setDivision: (divisionId: string) => void
+  status: ScopeStatus
+  error: ApiError | null
   isReady: boolean
+  setScope: (orgId: string, divisionId?: string | null, options?: { reason?: string }) => Promise<void>
+  setDivision: (divisionId: string, options?: { reason?: string }) => Promise<void>
+  refresh: () => Promise<void>
 }
 
 const ScopeContext = createContext<ScopeContextValue | undefined>(undefined)
 
-const fallbackScope: ScopeContextValue = {
+class ScopeMutex {
+  private current: Promise<void> = Promise.resolve()
+
+  async runExclusive<T>(task: () => Promise<T>): Promise<T> {
+    let release: (() => void) | undefined
+    const previous = this.current
+    this.current = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await previous
+    try {
+      return await task()
+    } finally {
+      release?.()
+    }
+  }
+}
+
+const fallbackContext: ScopeContextValue = {
   organizations: [],
   currentOrganization: null,
   currentDivision: null,
   currentOrgId: null,
   currentDivisionId: null,
-  setScope: () => {},
-  setDivision: () => {},
-  isReady: false
+  status: 'idle',
+  error: null,
+  isReady: false,
+  setScope: async () => {},
+  setDivision: async () => {},
+  refresh: async () => {},
 }
 
-const getDefaultDivision = (org: Organization | undefined, prefDivisionId?: string) => {
-  if (!org) return null
-  if (prefDivisionId) {
-    const preferred = org.divisions.find((division) => division.id === prefDivisionId)
-    if (preferred) return preferred
+const normalizeParam = (value: string | string[] | undefined): string | undefined => {
+  if (Array.isArray(value)) {
+    return value[0]
   }
-  return org.divisions[0] ?? null
+  return value
 }
 
-const normalizeParam = (param: string | string[] | undefined): string | undefined => {
-  if (Array.isArray(param)) {
-    return param[0]
+const deriveTrailingPath = (pathname: string | null | undefined): string => {
+  if (!pathname) return '/dashboard'
+  const segments = pathname.split('/').filter(Boolean)
+  if (segments.length <= 2) {
+    return '/dashboard'
   }
-  return param
+  const trailing = segments.slice(2).join('/') || 'dashboard'
+  return `/${trailing.replace(/^\/+/, '')}`
+}
+
+const buildOptimisticState = (
+  previous: ScopeState | undefined,
+  orgId: string,
+  divisionId: string | null,
+): ScopeState | undefined => {
+  if (!previous) return undefined
+  const next: ScopeState = {
+    ...previous,
+    active: previous.active
+      ? {
+          ...previous.active,
+          orgId,
+          divisionId,
+          lastUpdatedAt: new Date().toISOString(),
+        }
+      : {
+          orgId,
+          divisionId,
+          role: null,
+          divisionRole: null,
+          permissions: ['scope:read'],
+          lastUpdatedAt: new Date().toISOString(),
+        },
+    cachedAt: new Date().toISOString(),
+  }
+  return next
 }
 
 export function ScopeProvider({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useCurrentUser()
   const router = useRouter()
+  const pathname = usePathname()
   const params = useParams<{ orgId?: string; divisionId?: string }>()
-
-  const [currentOrgId, setCurrentOrgId] = useState<string | null>(null)
-  const [currentDivisionId, setCurrentDivisionId] = useState<string | null>(null)
-  const [isReady, setIsReady] = useState(false)
+  const { user, isAuthenticated } = useCurrentUser()
+  const { data, status: queryStatus, error: queryError, refetch, isFetching, setScopeCache, mutateScope } = useScopeQuery({
+    enabled: isAuthenticated,
+    retry: (failureCount, error) => {
+      if (error instanceof Error && 'status' in error && (error as ApiError).status === 401) {
+        return false
+      }
+      return failureCount < 1
+    },
+  })
+  const [mutationPending, setMutationPending] = useState(false)
+  const [mutationError, setMutationError] = useState<ApiError | null>(null)
+  const scopeMutexRef = useRef(new ScopeMutex())
 
   useEffect(() => {
-    if (isLoading) return
-
-    if (!user) {
-      setCurrentOrgId(null)
-      setCurrentDivisionId(null)
-      setIsReady(true)
+    if (!isAuthenticated) {
+      setMutationPending(false)
+      setMutationError(null)
       authStorage.clearActiveOrganizationId()
       authStorage.clearActiveDivisionId()
+      useScopeStore.getState().setSnapshot({
+        userId: null,
+        organizations: [],
+        currentOrgId: null,
+        currentDivisionId: null,
+        currentOrganization: null,
+        currentDivision: null,
+        status: 'idle',
+        error: null,
+        isReady: false,
+        lastSyncedAt: null,
+      })
+      return
+    }
+  }, [isAuthenticated])
+
+  const scopeState = data ?? undefined
+  const organizations = scopeState?.organizations ?? []
+  const activeOrgId = scopeState?.active?.orgId ?? null
+  const activeDivisionId = scopeState?.active?.divisionId ?? null
+  const combinedError = useMemo<ApiError | null>(() => {
+    if (mutationError) {
+      return mutationError
+    }
+    return queryStatus === 'error' ? queryError ?? null : null
+  }, [mutationError, queryError, queryStatus])
+
+  const status = useMemo<ScopeStatus>(() => {
+    if (!isAuthenticated) {
+      return 'idle'
+    }
+    if (queryStatus === 'pending' || isFetching) {
+      return 'loading'
+    }
+    if (mutationPending) {
+      return 'loading'
+    }
+    if (mutationError) {
+      return 'error'
+    }
+    if (queryStatus === 'error') {
+      return 'error'
+    }
+    if (queryStatus === 'success') {
+      return 'ready'
+    }
+    return 'idle'
+  }, [isAuthenticated, isFetching, mutationError, mutationPending, queryStatus])
+
+  const currentOrganization = useMemo(() => {
+    if (!activeOrgId) return null
+    return organizations.find((organization) => organization.id === activeOrgId) ?? null
+  }, [activeOrgId, organizations])
+
+  const currentDivision = useMemo(() => {
+    if (!currentOrganization || !activeDivisionId) return null
+    return currentOrganization.divisions.find((division) => division.id === activeDivisionId) ?? null
+  }, [currentOrganization, activeDivisionId])
+
+  const isReady = status === 'ready' && Boolean(scopeState?.active || organizations.length === 0)
+
+  useEffect(() => {
+    if (!isAuthenticated || !isReady) {
+      return
+    }
+
+    if (activeOrgId) {
+      authStorage.setActiveOrganizationId(activeOrgId)
+    } else {
+      authStorage.clearActiveOrganizationId()
+    }
+
+    if (activeDivisionId) {
+      authStorage.setActiveDivisionId(activeDivisionId)
+    } else {
+      authStorage.clearActiveDivisionId()
+    }
+  }, [isAuthenticated, isReady, activeOrgId, activeDivisionId])
+
+  useEffect(() => {
+    useScopeStore.getState().setSnapshot({
+      userId: scopeState?.userId ?? user?.id ?? null,
+      organizations,
+      currentOrgId: activeOrgId,
+      currentDivisionId: activeDivisionId,
+      currentOrganization,
+      currentDivision,
+      status,
+      error: combinedError ? combinedError.message : null,
+      isReady,
+      lastSyncedAt: scopeState?.cachedAt ?? null,
+    })
+  }, [
+    activeDivisionId,
+    activeOrgId,
+    currentDivision,
+    currentOrganization,
+    combinedError,
+    isReady,
+    organizations,
+    scopeState?.cachedAt,
+    scopeState?.userId,
+    status,
+    user?.id,
+  ])
+
+  useEffect(() => {
+    if (!isAuthenticated || !isReady) {
+      return
+    }
+
+    if (!scopeState?.active) {
+      router.replace('/workspace-hub')
       return
     }
 
     const routeOrgId = normalizeParam(params?.orgId)
     const routeDivisionId = normalizeParam(params?.divisionId)
+    const trailing = deriveTrailingPath(pathname)
 
-    const storedOrgId = authStorage.getActiveOrganizationId()
-    let organization = routeOrgId
-      ? user.organizations.find((org) => org.id === routeOrgId)
-      : undefined
-
-    if (!organization && storedOrgId) {
-      organization = user.organizations.find((org) => org.id === storedOrgId)
-    }
-
-    if (!organization) {
-      organization = user.organizations[0]
-      if (organization) {
-        authStorage.setActiveOrganizationId(organization.id)
-      } else {
-        authStorage.clearActiveOrganizationId()
+    const navigateToActive = () => {
+      if (!scopeState.active) {
+        router.replace('/workspace-hub')
+        return
       }
-    } else {
-      authStorage.setActiveOrganizationId(organization.id)
+      if (scopeState.active.divisionId) {
+        router.replace(buildDivisionRoute(scopeState.active.orgId, scopeState.active.divisionId, trailing))
+      } else {
+        router.replace(buildOrgRoute(scopeState.active.orgId, trailing))
+      }
     }
 
-    if (!organization) {
-      authStorage.clearActiveDivisionId()
-      setCurrentOrgId(null)
-      setCurrentDivisionId(null)
-      setIsReady(true)
-      router.replace('/workspace-hub')
+    if (!routeOrgId) {
+      navigateToActive()
       return
     }
 
-    const orgDivisionPreference =
-      organization.id === routeOrgId ? routeDivisionId ?? undefined : authStorage.getActiveDivisionId() ?? undefined
-    const activeDivision = getDefaultDivision(organization, orgDivisionPreference)
-
-    if (activeDivision) {
-      authStorage.setActiveDivisionId(activeDivision.id)
-    } else {
-      authStorage.clearActiveDivisionId()
+    if (routeOrgId === scopeState.active.orgId && (routeDivisionId ?? null) === (scopeState.active.divisionId ?? null)) {
+      return
     }
 
-    setCurrentOrgId(organization ? organization.id : null)
-    setCurrentDivisionId(activeDivision ? activeDivision.id : null)
-    setIsReady(true)
-
-    const hasRouteScope = !!routeOrgId
-    const shouldRedirect =
-      hasRouteScope &&
-      (routeOrgId !== organization.id ||
-      (!!activeDivision && routeDivisionId !== activeDivision.id) ||
-      (!activeDivision && !!routeDivisionId))
-
-    if (shouldRedirect) {
-      if (activeDivision) {
-        router.replace(`/${organization.id}/${activeDivision.id}/dashboard`)
-      } else {
-        router.replace('/workspace-hub')
-      }
+    const candidateOrg = organizations.find((organization) => organization.id === routeOrgId)
+    if (!candidateOrg) {
+      navigateToActive()
+      return
     }
-  }, [isLoading, params, router, user])
+
+    const candidateDivision = routeDivisionId
+      ? candidateOrg.divisions.find((division) => division.id === routeDivisionId) ?? null
+      : candidateOrg.divisions[0] ?? null
+
+    void scopeMutexRef.current.runExclusive(async () => {
+        const optimistic = buildOptimisticState(scopeState, candidateOrg.id, candidateDivision?.id ?? null)
+        if (optimistic) {
+          setScopeCache(optimistic)
+        }
+        setMutationPending(true)
+        try {
+          await mutateScope({
+            orgId: candidateOrg.id,
+            divisionId: candidateDivision?.id ?? null,
+            reason: 'route-sync',
+          })
+          setMutationError(null)
+        } catch (mutationError) {
+          if (scopeState) {
+            setScopeCache(scopeState)
+          }
+          navigateToActive()
+          if (mutationError instanceof Error) {
+            const apiError = mutationError as ApiError
+            setMutationError(apiError)
+          }
+        } finally {
+          setMutationPending(false)
+        }
+      })
+  }, [
+    isAuthenticated,
+    isReady,
+    mutateScope,
+    organizations,
+    params?.divisionId,
+    params?.orgId,
+    pathname,
+    router,
+    scopeState,
+    setScopeCache,
+  ])
 
   const setScope = useCallback(
-    (orgId: string, divisionId?: string) => {
-      if (!user) return
-
-      const organization = user.organizations.find((candidate) => candidate.id === orgId)
-      if (!organization) return
-
-      const division = getDefaultDivision(organization, divisionId)
-
-      setCurrentOrgId(organization.id)
-      setCurrentDivisionId(division ? division.id : null)
-
-      authStorage.setActiveOrganizationId(organization.id)
-      if (division) {
-        authStorage.setActiveDivisionId(division.id)
-      } else {
-        authStorage.clearActiveDivisionId()
-      }
+    async (orgId: string, divisionId?: string | null, options?: { reason?: string }) => {
+      if (!isAuthenticated) return
+      const desiredDivision = divisionId ?? null
+      const optimistic = buildOptimisticState(scopeState, orgId, desiredDivision)
+      const reason = options?.reason ?? 'manual-selection'
+      await scopeMutexRef.current.runExclusive(async () => {
+        if (optimistic) {
+          setScopeCache(optimistic)
+        }
+        setMutationPending(true)
+        const previous = scopeState
+        try {
+          const response = await mutateScope({ orgId, divisionId: desiredDivision, reason })
+          setMutationError(null)
+          if (response.active?.divisionId) {
+            router.replace(buildDivisionRoute(response.active.orgId, response.active.divisionId, deriveTrailingPath(pathname)))
+          } else {
+            router.replace(buildOrgRoute(response.active?.orgId ?? orgId, deriveTrailingPath(pathname)))
+          }
+        } catch (mutationError) {
+          if (previous) {
+            setScopeCache(previous)
+          }
+          if (mutationError instanceof Error) {
+            const apiError = mutationError as ApiError
+            setMutationError(apiError)
+            toast({
+              title: 'Scope switch failed',
+              description: apiError.body?.detail ?? apiError.message,
+              variant: 'destructive',
+            })
+          }
+          throw mutationError
+        } finally {
+          setMutationPending(false)
+        }
+      })
     },
-    [user]
+    [isAuthenticated, mutateScope, pathname, router, scopeState, setScopeCache]
   )
 
   const setDivision = useCallback(
-    (divisionId: string) => {
-      if (!user || !currentOrgId) return
-      const organization = user.organizations.find((candidate) => candidate.id === currentOrgId)
-      if (!organization) return
-
-      const division = organization.divisions.find((candidate) => candidate.id === divisionId)
-      if (!division) return
-
-      setCurrentDivisionId(division.id)
-      authStorage.setActiveDivisionId(division.id)
+    async (divisionId: string, options?: { reason?: string }) => {
+      if (!activeOrgId) {
+        return
+      }
+      await setScope(activeOrgId, divisionId, { reason: options?.reason ?? 'division-selection' })
     },
-    [currentOrgId, user]
+    [activeOrgId, setScope]
   )
 
-  useEffect(() => {
-    if (!isReady || !user) return
+  const refresh = useCallback(() => {
+    return refetch().then(() => {})
+  }, [refetch])
 
-    if (!currentOrgId) {
-      router.replace('/workspace-hub')
-    }
-  }, [currentOrgId, isReady, router, user])
-
-  const currentOrganization = useMemo(() => {
-    if (!user || !currentOrgId) return null
-    return user.organizations.find((organization) => organization.id === currentOrgId) ?? null
-  }, [currentOrgId, user])
-
-  const currentDivision = useMemo(() => {
-    if (!currentOrganization || !currentDivisionId) return null
-    return currentOrganization.divisions.find((division) => division.id === currentDivisionId) ?? null
-  }, [currentDivisionId, currentOrganization])
-
-  const value: ScopeContextValue = useMemo(() => {
-    if (!user) {
-      return { ...fallbackScope, isReady }
+  const value = useMemo<ScopeContextValue>(() => {
+    if (!isAuthenticated) {
+      return fallbackContext
     }
 
     return {
-      organizations: user.organizations,
+      organizations,
       currentOrganization,
       currentDivision,
-      currentOrgId,
-      currentDivisionId,
+      currentOrgId: activeOrgId,
+      currentDivisionId: activeDivisionId,
+      status,
+      error: combinedError,
+      isReady,
       setScope,
       setDivision,
-      isReady
+      refresh,
     }
   }, [
+    activeDivisionId,
+    activeOrgId,
     currentDivision,
-    currentDivisionId,
-    currentOrgId,
     currentOrganization,
+    combinedError,
+    isAuthenticated,
     isReady,
+    organizations,
+    refresh,
     setDivision,
     setScope,
-    user
-  ])
-
-  useEffect(() => {
-    useScopeStore.getState().setSnapshot({
-      userId: user?.id ?? null,
-      organizations: user?.organizations ?? [],
-      currentOrgId,
-      currentDivisionId,
-      currentOrganization,
-      currentDivision,
-      isReady,
-    })
-  }, [
-    currentDivision,
-    currentDivisionId,
-    currentOrganization,
-    currentOrgId,
-    isReady,
-    user,
+    status,
   ])
 
   return <ScopeContext.Provider value={value}>{children}</ScopeContext.Provider>

@@ -386,11 +386,11 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
           currentOrgId={currentOrgId ?? undefined}
           currentDivisionId={currentDivisionId ?? undefined}
           onScopeChange={(orgId, divisionId) => {
-            setScope(orgId, divisionId)
+            void setScope(orgId, divisionId)
             applyScopeToCurrentPath(orgId, divisionId)
           }}
           onDivisionChange={(divisionId) => {
-            setDivision(divisionId)
+            void setDivision(divisionId)
             if (currentOrgId) {
               applyScopeToCurrentPath(currentOrgId, divisionId)
             }

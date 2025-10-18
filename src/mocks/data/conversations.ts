@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import type { OrganizationDivision } from '@/lib/mock-users'
+import type { OrganizationDivision } from '@/mocks/data/users'
 
 const DIVISION_KEYS = ['marketing', 'engineering', 'design', 'product', 'research'] as const
 

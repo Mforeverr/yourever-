@@ -32,6 +32,9 @@ class Settings(BaseModel):
     enable_mock_organization_fallback: bool = Field(
         default=True, alias="enableMockOrganizationFallback"
     )
+    invitation_expiry_interval_seconds: int = Field(
+        default=86_400, alias="invitationExpiryIntervalSeconds"
+    )
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -49,6 +52,9 @@ class Settings(BaseModel):
             supabase_jwt_audience=os.getenv("SUPABASE_JWT_AUDIENCE"),
             enable_mock_organization_fallback=(
                 os.getenv("YOUREVER_ENABLE_MOCK_ORG_FALLBACK", "true").lower() == "true"
+            ),
+            invitation_expiry_interval_seconds=int(
+                os.getenv("YOUREVER_INVITATION_EXPIRY_INTERVAL_SECONDS", "86400")
             ),
         )
 

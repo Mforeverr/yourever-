@@ -2,7 +2,7 @@
 
 import { useExplorer } from '@/contexts/explorer-context'
 import { useScope } from '@/contexts/scope-context'
-import { useMockExplorerStore, selectExplorerCountsForScope } from '@/lib/mock-explorer'
+import { useMockExplorerStore, selectExplorerCountsForScope } from '@/mocks/data/explorer'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Folder, File, FolderKanban, CheckSquare, FileText, Users } from 'lucide-react'

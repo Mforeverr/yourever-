@@ -4,6 +4,7 @@ Repository functions for organization management.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from datetime import datetime
@@ -69,7 +70,7 @@ class OrganizationRepository:
 
         return InvitationResponse(
             id=str(row["id"]),
-            token=str(row.get("token")) if row.get("token") else None,
+            token=None,
             email=row["email"],
             org_id=str(row.get("org_id")) if row.get("org_id") else None,
             division_id=str(row.get("division_id")) if row.get("division_id") else None,
@@ -85,7 +86,13 @@ class OrganizationRepository:
             inviter_name=row.get("inviter_name"),
             org_name=row.get("org_name"),
             division_name=row.get("division_name"),
+            token_hash=row.get("token_hash"),
         )
+
+    @staticmethod
+    def _hash_token(raw_token: str) -> str:
+        digest = hashlib.sha256(raw_token.encode("utf-8"))
+        return digest.hexdigest()
 
     @staticmethod
     def generate_slug(name: str) -> str:
@@ -458,7 +465,6 @@ class OrganizationRepository:
             """
             SELECT
                 i.id,
-                i.token,
                 i.email,
                 i.org_id,
                 i.division_id,
@@ -471,6 +477,7 @@ class OrganizationRepository:
                 i.accepted_at,
                 i.declined_at,
                 i.inviter_id,
+                i.token_hash,
                 o.name AS org_name,
                 d.name AS division_name,
                 u.display_name AS inviter_name
@@ -481,6 +488,8 @@ class OrganizationRepository:
             WHERE LOWER(i.email) = LOWER(:email)
                 AND i.status = 'pending'
                 AND (i.expires_at IS NULL OR i.expires_at > NOW())
+                AND i.deleted_at IS NULL
+                AND (o.id IS NULL OR o.deleted_at IS NULL)
             ORDER BY i.created_at DESC
             """
         )
@@ -488,6 +497,31 @@ class OrganizationRepository:
         rows = result.mappings().all()
 
         return [self._map_invitation(dict(row)) for row in rows]
+
+    async def expire_stale_invitations(self) -> int:
+        """Mark invitations as expired when their deadline passes."""
+
+        query = text(
+            """
+            UPDATE public.invitations
+            SET status = 'expired', updated_at = NOW()
+            WHERE status = 'pending'
+              AND deleted_at IS NULL
+              AND expires_at IS NOT NULL
+              AND expires_at <= NOW()
+            """
+        )
+
+        await self._reset_transaction()
+        await self._session.begin()
+        try:
+            result = await self._session.execute(query)
+            await self._session.commit()
+            return result.rowcount or 0
+        except Exception as error:
+            await self._session.rollback()
+            logger.error("Error expiring invitations", exc_info=error)
+            raise
 
     async def accept_invitation(
         self,
@@ -507,6 +541,7 @@ class OrganizationRepository:
                 FROM public.invitations
                 WHERE id = :invitation_id
                     AND status = 'pending'
+                    AND deleted_at IS NULL
                     AND (expires_at IS NULL OR expires_at > NOW())
                     AND LOWER(email) = LOWER(:email)
                 FOR UPDATE
@@ -592,6 +627,7 @@ class OrganizationRepository:
                 FROM public.invitations
                 WHERE id = :invitation_id
                     AND status = 'pending'
+                    AND deleted_at IS NULL
                     AND LOWER(email) = LOWER(:email)
                 FOR UPDATE
                 """
@@ -612,7 +648,8 @@ class OrganizationRepository:
                 SET status = 'declined', declined_at = NOW(), updated_at = NOW()
                 WHERE id = :invitation_id
                 RETURNING id, token, email, org_id, division_id, role, message, status,
-                          expires_at, created_at, updated_at, accepted_at, declined_at, inviter_id
+                          expires_at, created_at, updated_at, accepted_at, declined_at, inviter_id,
+                          token_hash
                 """
             )
             updated = await self._session.execute(
@@ -673,10 +710,12 @@ class OrganizationRepository:
                 skipped.append(payload.email)
                 continue
 
+            token = str(uuid.uuid4())
             to_insert.append(
                 {
                     "id": str(uuid.uuid4()),
-                    "token": str(uuid.uuid4()),
+                    "token": token,
+                    "token_hash": self._hash_token(token),
                     "email": email,
                     "org_id": org_id,
                     "division_id": payload.division_id,
@@ -693,14 +732,15 @@ class OrganizationRepository:
         insert_query = text(
             """
             INSERT INTO public.invitations (
-                id, token, email, org_id, division_id, role, message, status,
+                id, token, token_hash, email, org_id, division_id, role, message, status,
                 inviter_id, created_at, updated_at, expires_at
             ) VALUES (
-                :id, :token, :email, :org_id, :division_id, :role, :message, 'pending',
+                :id, :token, :token_hash, :email, :org_id, :division_id, :role, :message, 'pending',
                 :inviter_id, NOW(), NOW(), :expires_at
             )
             RETURNING id, token, email, org_id, division_id, role, message, status,
-                      expires_at, created_at, updated_at, accepted_at, declined_at, inviter_id
+                      expires_at, created_at, updated_at, accepted_at, declined_at, inviter_id,
+                      token_hash
             """
         )
 

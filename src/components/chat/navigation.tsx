@@ -11,7 +11,7 @@ import {
   selectChannelsForScope,
   selectDirectMessageUsersForScope,
   getChannelMessages,
-} from "@/lib/mock-conversations"
+} from "@/mocks/data/conversations"
 import { startChannelHuddle } from "@/lib/huddle-session"
 import { useBottomPanel } from "@/hooks/use-bottom-panel"
 

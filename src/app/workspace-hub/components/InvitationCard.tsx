@@ -5,26 +5,38 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Mail, Clock, Check, X, ExternalLink, AlertTriangle, UserPlus } from 'lucide-react'
-import { type Invitation, type Organization } from '@/hooks/use-organizations'
-import { useAcceptInvitation, useDeclineInvitation } from '@/hooks/use-organizations'
+import type { HubInvitation, HubOrganization } from '@/modules/organizations/types'
+import {
+  useAcceptHubInvitationMutation,
+  useDeclineHubInvitationMutation,
+} from '@/hooks/api/use-workspace-hub-query'
 import { formatDistanceToNow } from 'date-fns'
 import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface InvitationCardProps {
-  invitation: Invitation
-  onAccept?: (invitation: Invitation, organization: Organization) => void
+  invitation: HubInvitation
+  onAccept?: (invitation: HubInvitation, organization: HubOrganization) => void
   compact?: boolean
-  onDecline?: (invitation: Invitation) => void
+  onDecline?: (invitation: HubInvitation) => void
 }
 
 export function InvitationCard({ invitation, onAccept, onDecline, compact = false }: InvitationCardProps) {
-  const acceptInvitationMutation = useAcceptInvitation()
-  const declineInvitationMutation = useDeclineInvitation()
+  const acceptInvitationMutation = useAcceptHubInvitationMutation()
+  const declineInvitationMutation = useDeclineHubInvitationMutation()
+
+  const targetOrgId = invitation.orgId ?? ''
+  const canMutate = Boolean(targetOrgId)
 
   const handleAccept = async () => {
     try {
-      const organization = await acceptInvitationMutation.mutateAsync(invitation.id)
+      if (!canMutate) {
+        return
+      }
+      const organization = await acceptInvitationMutation.mutateAsync({
+        orgId: targetOrgId,
+        invitationId: invitation.id,
+      })
       onAccept?.(invitation, organization)
     } catch (error) {
       // Error is handled by the mutation hook
@@ -33,7 +45,13 @@ export function InvitationCard({ invitation, onAccept, onDecline, compact = fals
 
   const handleDecline = async () => {
     try {
-      await declineInvitationMutation.mutateAsync(invitation.id)
+      if (!canMutate) {
+        return
+      }
+      await declineInvitationMutation.mutateAsync({
+        orgId: targetOrgId,
+        invitationId: invitation.id,
+      })
       onDecline?.(invitation)
     } catch (error) {
       // Error is handled by the mutation hook
@@ -181,7 +199,7 @@ export function InvitationCard({ invitation, onAccept, onDecline, compact = fals
                 <Button
                   variant="outline"
                   className="w-full sm:w-auto"
-                  disabled={isProcessing}
+                  disabled={isProcessing || !canMutate}
                   onClick={handleDecline}
                 >
                   {isDeclining ? (
@@ -198,7 +216,7 @@ export function InvitationCard({ invitation, onAccept, onDecline, compact = fals
                 </Button>
                 <Button
                   onClick={handleAccept}
-                  disabled={isProcessing}
+                  disabled={isProcessing || !canMutate}
                   className="w-full sm:w-auto"
                 >
                   {isProcessing ? (

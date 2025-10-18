@@ -30,7 +30,7 @@ import {
   useProjectMembers,
   useRemoveProjectMember,
 } from "@/modules/projects"
-import { mockUsers } from "@/lib/mock-users"
+import { mockUsers } from "@/mocks/data/users"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Trash2 } from "lucide-react"

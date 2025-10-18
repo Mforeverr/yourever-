@@ -11,6 +11,7 @@ from ...core import get_settings
 from ...dependencies import CurrentPrincipal
 from ..users.schemas import WorkspaceDivision, WorkspaceOrganization
 from ..users.service import UserService
+from ..workspace.service import WorkspaceTemplateService
 from .mock_data import build_fallback_organizations
 from .repository import (
     DivisionDuplicateError,
@@ -44,10 +45,12 @@ class OrganizationService:
         self,
         user_service: UserService,
         repository: OrganizationRepository,
+        workspace_template_service: WorkspaceTemplateService | None = None,
     ) -> None:
         self._user_service = user_service
         self._repository = repository
         self._settings = get_settings()
+        self._workspace_template_service = workspace_template_service
 
     async def create(
         self,
@@ -126,6 +129,23 @@ class OrganizationService:
                     extra={
                         "org_id": organization.id,
                         "user_id": user.id,
+                    },
+                )
+
+        if self._workspace_template_service:
+            try:
+                await self._workspace_template_service.seed_for_organization(
+                    organization=organization,
+                    divisions=divisions,
+                    seeded_by=user.id if user else None,
+                )
+            except Exception as error:  # pragma: no cover - safety log
+                logger.warning(
+                    "organizations.create.workspace_seed_failed",
+                    exc_info=error,
+                    extra={
+                        "org_id": organization.id,
+                        "user_id": user.id if user else None,
                     },
                 )
 

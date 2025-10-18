@@ -23,7 +23,7 @@ import {
   selectDirectMessages,
   type DirectMessage,
   type MockDMUser
-} from '@/lib/mock-conversations'
+} from '@/mocks/data/conversations'
 import { useBottomPanel } from "@/hooks/use-bottom-panel"
 import { buildParticipant, buildCurrentUserParticipant, startHuddle } from "@/lib/huddle-session"
 

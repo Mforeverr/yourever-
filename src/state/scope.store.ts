@@ -1,17 +1,20 @@
 import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
-import type { Organization, OrganizationDivision } from "@/lib/mock-users"
+import type { WorkspaceOrganization, WorkspaceDivision } from "@/modules/auth/types"
 import { localStorageService } from "@/lib/storage"
 import { withOptionalDevtools } from "@/state/store-utils"
 
 export interface ScopeSnapshot {
   userId: string | null
-  organizations: Organization[]
+  organizations: WorkspaceOrganization[]
   currentOrgId: string | null
   currentDivisionId: string | null
-  currentOrganization: Organization | null
-  currentDivision: OrganizationDivision | null
+  currentOrganization: WorkspaceOrganization | null
+  currentDivision: WorkspaceDivision | null
   isReady: boolean
+  status: import("@/modules/scope/types").ScopeStatus
+  error: string | null
+  lastSyncedAt: string | null
 }
 
 interface ScopeStoreState extends ScopeSnapshot {
@@ -27,6 +30,9 @@ const initialSnapshot: ScopeSnapshot = {
   currentOrganization: null,
   currentDivision: null,
   isReady: false,
+  status: 'idle',
+  error: null,
+  lastSyncedAt: null,
 }
 
 const computeWorkspaceBasePath = (snapshot: ScopeSnapshot) => {
@@ -78,6 +84,9 @@ export const useScopeStore = create<ScopeStoreState>()(
               currentDivision: null,
               userId: state.userId ?? null,
               isReady: state.isReady ?? false,
+              status: state.status ?? 'idle',
+              error: state.error ?? null,
+              lastSyncedAt: state.lastSyncedAt ?? null,
             }),
           }
 

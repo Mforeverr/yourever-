@@ -3,15 +3,15 @@
 import { useCallback } from 'react'
 import { useQuery, useQueryClient, type UseQueryOptions } from '@tanstack/react-query'
 import { resolveAuthToken } from '@/lib/api/client'
-import { fetchCurrentUser } from '@/lib/api/users'
+import { fetchCurrentUserSession } from '@/lib/api/users'
 import { ApiError } from '@/lib/api/http'
-import type { WorkspaceUser } from '@/modules/auth/types'
+import type { AuthSessionSnapshot } from '@/modules/auth/types'
 
 export type CurrentUserQueryKey = ['user']
 
 export const CURRENT_USER_QUERY_KEY: CurrentUserQueryKey = ['user']
 
-export type CurrentUserQueryData = WorkspaceUser | null
+export type CurrentUserQueryData = AuthSessionSnapshot
 
 export const useCurrentUserQuery = (
   options?: Omit<
@@ -28,7 +28,7 @@ export const useCurrentUserQuery = (
       if (!token) {
         throw new ApiError('Unauthorized', 401)
       }
-      return fetchCurrentUser(token)
+      return fetchCurrentUserSession(token)
     },
     ...options,
   })

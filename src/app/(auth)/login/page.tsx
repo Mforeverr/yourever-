@@ -17,7 +17,7 @@ import { MagicLinkForm } from '@/components/auth/magic-link-form'
 import { useAuth } from '@/contexts/auth-context'
 import { authToasts, getAuthErrorToast } from '@/components/auth/auth-toasts'
 import { authStorage } from '@/lib/auth-utils'
-import { mockUsers, type MockUser } from '@/lib/mock-users'
+import { mockUsers, type MockUser } from '@/mocks/data/users'
 import { getFirstIncompleteStep } from '@/lib/onboarding'
 import type { WorkspaceUser } from '@/modules/auth/types'
 

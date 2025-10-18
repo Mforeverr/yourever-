@@ -1,4 +1,4 @@
-import type { MockDMUser, ChannelMessage, MockChannel } from "@/lib/mock-conversations"
+import type { MockDMUser, ChannelMessage, MockChannel } from "@/mocks/data/conversations"
 import type { HuddleParticipantState, HuddleSessionState, HuddleMetadata } from "@/state/ui.store"
 
 interface BuildSessionOptions {

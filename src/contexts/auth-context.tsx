@@ -4,7 +4,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { useRouter } from 'next/navigation'
 import type { Session } from '@supabase/supabase-js'
 import { useQueryClient } from '@tanstack/react-query'
-import { getDevUser, mockUsers } from '@/lib/mock-users'
+import { getDevUser, mockUsers } from '@/mocks/data/users'
 import { authStorage, type StoredOnboardingStatus } from '@/lib/auth-utils'
 import { localStorageService, sessionStorageService } from '@/lib/storage'
 import { useOnboardingManifest } from '@/hooks/use-onboarding-manifest'
@@ -20,7 +20,7 @@ import {
 } from '@/lib/onboarding-version'
 import { createSupabaseAuthGateway, type SupabaseAuthGateway } from '@/modules/auth/supabase-gateway'
 import { clearAuthTokenResolver, setAuthTokenResolver } from '@/lib/api/client'
-import type { WorkspaceUser } from '@/modules/auth/types'
+import type { AuthSessionSnapshot, WorkspaceUser } from '@/modules/auth/types'
 import { fetchOrCreateOnboardingSession, persistOnboardingStatus } from '@/modules/onboarding/session'
 import { useOnboardingStore } from '@/state/onboarding.store'
 import { ApiError } from '@/lib/api/http'
@@ -30,6 +30,7 @@ import {
 } from '@/hooks/api/use-current-user-query'
 import { clearUnauthorizedHandler, setUnauthorizedHandler } from '@/lib/api/unauthorized-handler'
 import { toast } from '@/hooks/use-toast'
+import { postAuthLogout } from '@/lib/api/auth'
 import {
   trackOnboardingResume,
   trackOnboardingSaveFailed,
@@ -67,6 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isCheckingSession, setIsCheckingSession] = useState(false)
   const [shouldFetchUser, setShouldFetchUser] = useState(false)
   const [onboardingFeatureFlags, setOnboardingFeatureFlags] = useState<Record<string, boolean>>({})
+  const [remoteFeatureFlags, setRemoteFeatureFlags] = useState<Record<string, boolean>>({})
   const userIdRef = React.useRef<string | null>(null)
   const strategyRef = React.useRef<AuthStrategy>('mock')
   const supabaseSessionRef = React.useRef<Session | null>(null)
@@ -75,6 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const onboardingStatusRef = React.useRef<StoredOnboardingStatus | null>(null)
   const appliedFeatureFlagsRef = React.useRef<Record<string, boolean>>({})
   const legacyResetVersionRef = React.useRef<number | null>(null)
+  const sessionSnapshotRef = React.useRef<AuthSessionSnapshot | null>(null)
   const isDevMode = process.env.NODE_ENV === 'development'
   const queryClient = useQueryClient()
   const router = useRouter()
@@ -102,22 +105,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   useEffect(() => {
-    const nextFlags: Record<string, boolean> = {}
-
+    const nextFlags = remoteFeatureFlags
     if (featureFlagsEqual(appliedFeatureFlagsRef.current, nextFlags)) {
       if (!featureFlagsEqual(onboardingFeatureFlags, nextFlags)) {
-        setOnboardingFeatureFlags(nextFlags)
+        setOnboardingFeatureFlags({ ...nextFlags })
       }
       return
     }
 
     appliedFeatureFlagsRef.current = { ...nextFlags }
-    setOnboardingFeatureFlags(nextFlags)
-    useOnboardingStore.getState().setFeatureFlags(nextFlags)
-  }, [featureFlagsEqual, onboardingFeatureFlags])
+    setOnboardingFeatureFlags({ ...nextFlags })
+    useOnboardingStore.getState().setFeatureFlags({ ...nextFlags })
+  }, [featureFlagsEqual, onboardingFeatureFlags, remoteFeatureFlags])
 
   const {
-    data: fetchedUser,
+    data: sessionSnapshot,
     status: userStatus,
     error: userError,
     isFetching,
@@ -131,6 +133,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return failureCount < 1
     },
   })
+
+  useEffect(() => {
+    if (strategy !== 'supabase') {
+      setRemoteFeatureFlags({})
+      sessionSnapshotRef.current = null
+      return
+    }
+
+    if (userStatus === 'success' && sessionSnapshot) {
+      sessionSnapshotRef.current = sessionSnapshot
+      setRemoteFeatureFlags({ ...sessionSnapshot.featureFlags })
+      return
+    }
+
+    if (userStatus === 'success' && !sessionSnapshot) {
+      setRemoteFeatureFlags({})
+      sessionSnapshotRef.current = null
+    }
+  }, [sessionSnapshot, strategy, userStatus])
 
   const loadOnboardingStatus = useCallback(
     async (userId: string, mode: AuthStrategy, session: Session | null) => {
@@ -265,6 +286,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     legacyResetVersionRef.current = null
     setOnboardingFeatureFlags({})
     appliedFeatureFlagsRef.current = {}
+    setRemoteFeatureFlags({})
+    sessionSnapshotRef.current = null
   }, [queryClient])
 
   const applyUser = useCallback(
@@ -398,14 +421,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (strategy !== 'supabase') return
     if (userStatus !== 'success') return
 
-    if (fetchedUser) {
-      applyUser(fetchedUser)
+    if (sessionSnapshot?.user) {
+      applyUser(sessionSnapshot.user)
       return
     }
 
     setShouldFetchUser(false)
     clearUserState()
-  }, [applyUser, clearUserState, fetchedUser, strategy, userStatus])
+  }, [applyUser, clearUserState, sessionSnapshot, strategy, userStatus])
 
   useEffect(() => {
     if (strategy !== 'supabase') return
@@ -456,11 +479,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(() => {
     const supabaseGateway = supabaseGatewayRef.current
-    if (supabaseGateway) {
-      void supabaseGateway.signOut()
-    }
-    setShouldFetchUser(false)
-    clearUserState()
+    void (async () => {
+      if (supabaseGateway) {
+        try {
+          const token = await supabaseGateway.getAccessToken()
+          if (token) {
+            try {
+              await postAuthLogout(token)
+            } catch (error) {
+              console.error('[auth] failed to record logout event', error)
+            }
+          }
+        } catch (error) {
+          console.error('[auth] failed to resolve access token before logout', error)
+        }
+
+        try {
+          await supabaseGateway.signOut()
+        } catch (error) {
+          console.error('[auth] supabase sign-out failed', error)
+        }
+      }
+
+      setShouldFetchUser(false)
+      clearUserState()
+    })()
   }, [clearUserState])
 
   const getAccessToken = useCallback(async () => {

@@ -6,7 +6,7 @@ import { useScope } from '@/contexts/scope-context'
 import {
   useMockConversationStore,
   selectChannelsForScope
-} from '@/lib/mock-conversations'
+} from '@/mocks/data/conversations'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'

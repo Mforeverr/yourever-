@@ -25,14 +25,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type { Division } from '@/hooks/use-organizations'
+import type { HubDivision } from '@/modules/organizations/types'
 
 export interface OrganizationCardData {
   id: string
   name: string
   slug: string
   role: string
-  divisions: Division[]
+  divisions: HubDivision[]
   tagline?: string
   industry?: string
   location?: string

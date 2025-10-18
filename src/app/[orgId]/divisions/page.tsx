@@ -7,7 +7,7 @@ import { Search } from 'lucide-react'
 import { useProtectedRoute } from '@/hooks/use-protected-route'
 import { useCurrentUser } from '@/hooks/use-auth'
 import { authStorage } from '@/lib/auth-utils'
-import { fetchDivisionOverviews } from '@/lib/mock-divisions'
+import { fetchDivisionOverviews } from '@/mocks/data/divisions'
 import {
   DivisionCard,
   DivisionCardSkeleton,

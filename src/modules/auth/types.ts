@@ -33,3 +33,20 @@ export interface WorkspaceUser {
   createdAt?: string | null
   updatedAt?: string | null
 }
+
+export interface AuthSessionMetadata {
+  userId: string
+  sessionId?: string | null
+  issuedAt?: string | null
+  expiresAt?: string | null
+  provider: string
+  audience?: string | null
+  roles: MembershipRole[]
+  claims: Record<string, unknown>
+}
+
+export interface AuthSessionSnapshot {
+  user: WorkspaceUser | null
+  session: AuthSessionMetadata
+  featureFlags: Record<string, boolean>
+}

@@ -1,3 +1,6 @@
 export * from "./http"
 export * from "./palette"
 export * from "./users"
+export * from "./scope"
+export * from "./workspace"
+export * from "./organizations"
