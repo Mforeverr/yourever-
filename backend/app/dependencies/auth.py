@@ -13,23 +13,14 @@ principal object downstream so routers can enforce tenant-level permissions.
 from functools import lru_cache
 import os
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import jwt
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 http_bearer = HTTPBearer(auto_error=False)
-
-
-class CurrentPrincipal(BaseModel):
-    """Represents the authenticated Supabase user hitting the API."""
-
-    id: str
-    email: Optional[str] = None
-    role: Optional[str] = None
-    claims: Optional["TokenClaims"] = None
 
 
 class TokenClaims(BaseModel):
@@ -42,6 +33,33 @@ class TokenClaims(BaseModel):
     audience: Optional[str] = None
     provider: str = "supabase"
     raw: dict[str, Any] = {}
+
+
+class CurrentPrincipal(BaseModel):
+    """Represents the authenticated Supabase user hitting the API."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    email: Optional[str] = None
+    role: Optional[str] = None
+    claims: Optional[TokenClaims] = None
+    active_org_id: Optional[str] = Field(
+        default=None, description="Organization scope supplied via JWT claims."
+    )
+    active_division_id: Optional[str] = Field(
+        default=None, description="Division scope supplied via JWT claims."
+    )
+    org_ids: List[str] = Field(
+        default_factory=list, description="All organization identifiers scoped to the principal."
+    )
+    division_ids: Dict[str, List[str]] = Field(
+        default_factory=dict,
+        description="Division identifiers keyed by organization id for downstream enforcement.",
+    )
+    scope_claims: Dict[str, Any] = Field(
+        default_factory=dict, description="Raw scope claim payload preserved for auditing."
+    )
 
 
 class _SupabaseConfig(BaseModel):
@@ -81,6 +99,105 @@ def _decode_token(token: str) -> dict:
         ) from error
 
 
+def _get_first(mapping: Dict[str, Any], keys: List[str]) -> Any:
+    for key in keys:
+        if key in mapping:
+            return mapping[key]
+    return None
+
+
+def _coerce_optional_str(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        trimmed = value.strip()
+        return trimmed or None
+    try:
+        text = str(value)
+    except Exception:
+        return None
+    trimmed = text.strip()
+    return trimmed or None
+
+
+def _to_string_list(value: Any) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        candidate = value.strip()
+        return [candidate] if candidate else []
+    if isinstance(value, (list, tuple, set)):
+        results: List[str] = []
+        for item in value:
+            coerced = _coerce_optional_str(item)
+            if coerced:
+                results.append(coerced)
+        return results
+    coerced = _coerce_optional_str(value)
+    return [coerced] if coerced else []
+
+
+def _normalize_division_ids(value: Any) -> Dict[str, List[str]]:
+    if not isinstance(value, dict):
+        return {}
+
+    normalized: Dict[str, List[str]] = {}
+    for org_key, divisions in value.items():
+        key = _coerce_optional_str(org_key)
+        if not key:
+            continue
+
+        normalized_divisions = _to_string_list(divisions)
+        if normalized_divisions:
+            normalized[key] = normalized_divisions
+    return normalized
+
+
+def _collect_scope_candidates(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    containers: List[Dict[str, Any]] = []
+    seen: set[int] = set()
+
+    def enqueue(candidate: Any) -> None:
+        if not isinstance(candidate, dict):
+            return
+        candidate_id = id(candidate)
+        if candidate_id in seen:
+            return
+        seen.add(candidate_id)
+        containers.append(candidate)
+        nested = candidate.get("yourever")
+        if isinstance(nested, dict):
+            enqueue(nested)
+
+    enqueue(payload)
+    enqueue(payload.get("app_metadata"))
+    enqueue(payload.get("user_metadata"))
+
+    return containers
+
+
+def _extract_scope_claims(token_payload: Dict[str, Any]) -> Dict[str, Any]:
+    scope_payload: Dict[str, Any] = {}
+    for container in _collect_scope_candidates(token_payload):
+        for key in ("yourever_scope", "scope", "claims"):
+            scoped = container.get(key)
+            if isinstance(scoped, dict):
+                scope_payload.update(scoped)
+        for key in (
+            "org_id",
+            "orgId",
+            "division_id",
+            "divisionId",
+            "org_ids",
+            "orgIds",
+            "division_ids",
+            "divisionIds",
+        ):
+            if key in container and key not in scope_payload:
+                scope_payload[key] = container[key]
+    return scope_payload
+
+
 async def require_current_principal(
     credentials: HTTPAuthorizationCredentials = Depends(http_bearer),
 ) -> CurrentPrincipal:
@@ -105,7 +222,7 @@ async def require_current_principal(
             detail="Invalid token payload",
         )
 
-    def _parse_timestamp(value: Any) -> Optional[datetime]:
+def _parse_timestamp(value: Any) -> Optional[datetime]:
         if value is None:
             return None
         try:
@@ -113,6 +230,21 @@ async def require_current_principal(
             return datetime.fromtimestamp(float(value), tz=timezone.utc)
         except (TypeError, ValueError):
             return None
+
+    scope_claims = _extract_scope_claims(token_payload)
+    active_org_id = _coerce_optional_str(
+        _get_first(scope_claims, ["org_id", "orgId", "active_org_id", "activeOrgId"])
+    )
+    active_division_id = _coerce_optional_str(
+        _get_first(
+            scope_claims,
+            ["division_id", "divisionId", "active_division_id", "activeDivisionId"],
+        )
+    )
+    org_ids = _to_string_list(_get_first(scope_claims, ["org_ids", "orgIds"]))
+    division_ids = _normalize_division_ids(
+        _get_first(scope_claims, ["division_ids", "divisionIds"])
+    )
 
     claims = TokenClaims(
         subject=str(subject),
@@ -127,5 +259,10 @@ async def require_current_principal(
         id=str(subject),
         email=token_payload.get("email"),
         role=token_payload.get("role"),
-        claims=claims,
+      claims=claims,
+        active_org_id=active_org_id,
+        active_division_id=active_division_id,
+        org_ids=org_ids,
+        division_ids=division_ids,
+        scope_claims=scope_claims,
     )

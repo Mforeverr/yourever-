@@ -78,8 +78,11 @@ class UserService:
     async def _ensure_user(self, principal: CurrentPrincipal) -> WorkspaceUser:
         user = await self._repository.get_user(principal.id)
         if user:
+            await self._repository.record_scope_snapshot(principal)
             return user
-        return await self._repository.create_user(principal)
+        user = await self._repository.create_user(principal)
+        await self._repository.record_scope_snapshot(principal)
+        return user
 
     async def get_current_user(self, principal: CurrentPrincipal) -> WorkspaceUser:
         return await self._ensure_user(principal)

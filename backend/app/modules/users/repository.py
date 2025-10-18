@@ -13,6 +13,7 @@ import logging
 from typing import Any, Dict, List, Mapping, Optional
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...dependencies import CurrentPrincipal
@@ -58,6 +59,79 @@ class UserRepository:
         if isinstance(value, Mapping):
             return dict(value)
         return {}
+
+    async def record_scope_snapshot(self, principal: CurrentPrincipal) -> None:
+        """
+        Persist the latest organization/division scope claims for auditing and downstream enforcement.
+        """
+
+        claims_payload: Dict[str, Any] = {}
+        if principal.scope_claims:
+            try:
+                claims_payload = dict(principal.scope_claims)
+            except Exception:  # pragma: no cover - defensive
+                logger.warning(
+                    "users.scope_claims.serialize_failed",
+                    extra={"user_id": principal.id},
+                )
+                claims_payload = {}
+
+        try:
+            claims_json = json.dumps(claims_payload)
+        except (TypeError, ValueError):
+            logger.warning(
+                "users.scope_claims.json_encoding_failed",
+                extra={"user_id": principal.id},
+            )
+            claims_json = "{}"
+
+        upsert_query = text(
+            """
+            INSERT INTO public.user_scope_snapshots (
+                user_id,
+                active_org_id,
+                active_division_id,
+                claims,
+                updated_at
+            )
+            VALUES (
+                :user_id,
+                :active_org_id,
+                :active_division_id,
+                CAST(:claims AS jsonb),
+                NOW()
+            )
+            ON CONFLICT (user_id) DO UPDATE
+            SET
+                active_org_id = EXCLUDED.active_org_id,
+                active_division_id = EXCLUDED.active_division_id,
+                claims = EXCLUDED.claims,
+                updated_at = NOW()
+            """
+        )
+
+        try:
+            await self._session.execute(
+                upsert_query,
+                {
+                    "user_id": principal.id,
+                    "active_org_id": principal.active_org_id,
+                    "active_division_id": principal.active_division_id,
+                    "claims": claims_json,
+                },
+            )
+            await self._session.commit()
+        except SQLAlchemyError as error:
+            await self._session.rollback()
+            logger.warning(
+                "users.scope_claims.persist_failed",
+                extra={
+                    "user_id": principal.id,
+                    "active_org_id": principal.active_org_id,
+                    "active_division_id": principal.active_division_id,
+                },
+                exc_info=error,
+            )
 
     def _serialize_status(self, status: StoredOnboardingStatus) -> tuple[dict, str]:
         status_payload = status.model_dump()
