@@ -37,7 +37,6 @@ Replace mock workspace, activity, and conversation data sources with production-
 - Update components (`SidebarWorkspace`, `ActivitySidebar`, `ConversationList`) to read from hooks/context instead of mocks.
 - Implement skeleton loaders and empty states when data is unavailable.
 - Ensure components derive URLs using `ScopeContext` to avoid duplication.
-- Maintain direct message roster via `src/mocks/data/conversations` until the DM API ships, and surface helper copy so users know items are editable examples.
 
 ### 4. Real-time & Synchronization
 - Evaluate websocket/SSE integration for live updates (e.g., channel updates, new activities).
