@@ -658,9 +658,9 @@ class WorkspacePermissionRepository:
         stmt = text(
             """
             SELECT 1
-              FROM public.user_organizations
+              FROM public.org_memberships
              WHERE user_id = :user_id
-               AND organization_id = :org_id
+               AND org_id = :org_id
              LIMIT 1
             """
         )
@@ -679,10 +679,11 @@ class WorkspacePermissionRepository:
         stmt = text(
             """
             SELECT 1
-              FROM public.user_divisions
-             WHERE user_id = :user_id
-               AND division_id = :division_id
-               AND organization_id = :org_id
+              FROM public.division_memberships AS dm
+              JOIN public.divisions AS d ON dm.division_id = d.id
+             WHERE dm.user_id = :user_id
+               AND dm.division_id = :division_id
+               AND d.org_id = :org_id
              LIMIT 1
             """
         )
