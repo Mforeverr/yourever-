@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Sequence
+from datetime import datetime, timedelta, timezone
+from typing import Sequence
 
 from ..organizations.schemas import OrganizationResponse, OrganizationDivision
 
@@ -63,6 +64,8 @@ def build_template_payload(
             palette_cycle = iter(COLOR_PALETTE)
             return next(palette_cycle)
 
+    now = datetime.now(timezone.utc)
+
     projects: list[dict[str, object]] = [
         {
             "name": f"{organization.name} Launch Hub",
@@ -80,6 +83,7 @@ def build_template_payload(
             "dot_color": "bg-sky-500",
             "division_id": None,
             "project_name": f"{organization.name} Launch Hub",
+            "due_at": (now + timedelta(days=3)).isoformat(),
         }
     ]
     docs: list[dict[str, object]] = [
@@ -130,6 +134,7 @@ def build_template_payload(
                 "division_id": division.id,
             }
         )
+        due_offset = -1 if index == 0 else index + 2
         tasks.append(
             {
                 "name": f"Meet your {division.name} collaborators",
@@ -138,6 +143,7 @@ def build_template_payload(
                 "dot_color": color,
                 "division_id": division.id,
                 "project_name": f"{division.name} Kickoff",
+                "due_at": (now + timedelta(days=due_offset)).isoformat(),
             }
         )
         docs.append(

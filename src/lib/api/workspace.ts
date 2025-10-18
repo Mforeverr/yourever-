@@ -2,6 +2,7 @@ import { httpRequest } from '@/lib/api/http'
 import type {
   ActivityFeedResponse,
   ChannelListResponse,
+  DashboardSummary,
   CreateChannelPayload,
   CreateProjectPayload,
   UpdateChannelPayload,
@@ -22,6 +23,21 @@ export const fetchWorkspaceOverview = (
   if (options?.divisionId) params.set('divisionId', options.divisionId)
   params.set('includeTemplates', `${options?.includeTemplates ?? true}`)
   const endpoint = `${WORKSPACE_ENDPOINT}/${orgId}/overview?${params.toString()}`
+  return httpRequest('GET', endpoint, {
+    signal,
+    meta: { endpoint, method: 'GET', scope: { orgId, divisionId: options?.divisionId ?? undefined } },
+  })
+}
+
+export const fetchWorkspaceDashboardSummary = (
+  orgId: string,
+  options?: { divisionId?: string | null; includeTemplates?: boolean },
+  signal?: AbortSignal,
+): Promise<DashboardSummary> => {
+  const params = new URLSearchParams()
+  if (options?.divisionId) params.set('divisionId', options.divisionId)
+  params.set('includeTemplates', `${options?.includeTemplates ?? true}`)
+  const endpoint = `${WORKSPACE_ENDPOINT}/${orgId}/dashboard?${params.toString()}`
   return httpRequest('GET', endpoint, {
     signal,
     meta: { endpoint, method: 'GET', scope: { orgId, divisionId: options?.divisionId ?? undefined } },

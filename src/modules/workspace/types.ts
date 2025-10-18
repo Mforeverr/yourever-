@@ -87,6 +87,36 @@ export interface WorkspaceOverview {
   hasTemplates: boolean
 }
 
+export type DashboardKpiTrend = 'up' | 'down' | 'flat'
+
+export interface DashboardKpi {
+  id: 'onTrack' | 'stuck' | 'overdue'
+  label: string
+  count: number
+  delta?: number | null
+  deltaDirection: DashboardKpiTrend
+}
+
+export interface DashboardPresenceMember {
+  id: string
+  name: string
+  avatar?: string | null
+  role?: string | null
+  status?: 'online' | 'away' | 'offline'
+}
+
+export interface DashboardSummary {
+  orgId: string
+  divisionId: string | null
+  generatedAt: string
+  kpis: DashboardKpi[]
+  projects: WorkspaceProject[]
+  docs: WorkspaceDoc[]
+  activity: WorkspaceActivity[]
+  presence: DashboardPresenceMember[]
+  hasTemplates: boolean
+}
+
 export interface ChannelListResponse {
   items: WorkspaceChannel[]
   total: number

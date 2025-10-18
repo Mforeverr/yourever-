@@ -19,6 +19,7 @@ from .onboarding.router import router as onboarding_router
 from .organizations.router import router as organizations_router
 from .scope.router import router as scope_router
 from .workspace.router import router as workspace_router
+from .workspace_dashboard.router import router as workspace_dashboard_router
 
 MODULE_ROUTERS: tuple[APIRouter, ...] = (
     health_router,
@@ -30,6 +31,7 @@ MODULE_ROUTERS: tuple[APIRouter, ...] = (
     organizations_router,
     scope_router,
     workspace_router,
+    workspace_dashboard_router,
     onboarding_router,
     users_router,
 )
