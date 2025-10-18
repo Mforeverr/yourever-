@@ -168,7 +168,12 @@ export function logApiError({
   body?: ApiErrorBody
   meta?: RequestMeta
 }) {
-  console.error("[API] request failed", {
+  // [author: Codex | date: 2025-10-18 | role: Frontend] Avoid dev-time console.error to prevent Next.js from throwing overlay exceptions while still surfacing errors in production and on the server.
+  const shouldUseError =
+    typeof window === "undefined" || process.env.NODE_ENV === "production"
+  const logger = shouldUseError ? console.error : console.warn
+
+  logger("[API] request failed", {
     timestamp: new Date().toISOString(),
     status,
     endpoint,

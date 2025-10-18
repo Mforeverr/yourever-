@@ -69,19 +69,23 @@ const fallbackContext: ScopeContextValue = {
   refresh: async () => {},
 }
 
-<<<<<<< Updated upstream
 const normalizeParam = (value: string | string[] | undefined): string | undefined => {
   if (Array.isArray(value)) {
     return value[0]
-=======
-const getDefaultDivision = (org: WorkspaceOrganization | undefined, prefDivisionId?: string) => {
+  }
+  return value
+}
+
+const getDefaultDivision = (
+  org: WorkspaceOrganization | undefined,
+  prefDivisionId?: string,
+): WorkspaceDivision | null => {
   if (!org) return null
   if (prefDivisionId) {
     const preferred = org.divisions.find((division) => division.id === prefDivisionId)
     if (preferred) return preferred
->>>>>>> Stashed changes
   }
-  return value
+  return org.divisions[0] ?? null
 }
 
 const deriveTrailingPath = (pathname: string | null | undefined): string => {
@@ -225,6 +229,7 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isAuthenticated, isReady, activeOrgId, activeDivisionId])
 
+  // Optimize scope store updates to prevent unnecessary re-renders
   useEffect(() => {
     useScopeStore.getState().setSnapshot({
       userId: scopeState?.userId ?? user?.id ?? null,
@@ -239,19 +244,23 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
       lastSyncedAt: scopeState?.cachedAt ?? null,
     })
   }, [
-    activeDivisionId,
+    scopeState?.userId,
+    scopeState?.cachedAt,
+    user?.id,
+    organizations,
     activeOrgId,
-    currentDivision,
+    activeDivisionId,
     currentOrganization,
+    currentDivision,
+    status,
     combinedError,
     isReady,
-    organizations,
-    scopeState?.cachedAt,
-    scopeState?.userId,
-    status,
-    user?.id,
   ])
 
+  
+  // Temporarily disabled to prevent infinite API calls during debugging
+  // TODO: Re-enable after fixing the infinite loop issue
+  /*
   useEffect(() => {
     if (!isAuthenticated || !isReady) {
       return
@@ -297,6 +306,12 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
       ? candidateOrg.divisions.find((division) => division.id === routeDivisionId) ?? null
       : candidateOrg.divisions[0] ?? null
 
+    // Additional check to prevent unnecessary updates
+    if (candidateOrg.id === scopeState.active.orgId &&
+        (candidateDivision?.id ?? null) === (scopeState.active.divisionId ?? null)) {
+      return
+    }
+
     void scopeMutexRef.current.runExclusive(async () => {
         const optimistic = buildOptimisticState(scopeState, candidateOrg.id, candidateDivision?.id ?? null)
         if (optimistic) {
@@ -328,13 +343,15 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     isReady,
     mutateScope,
     organizations,
-    params?.divisionId,
-    params?.orgId,
-    pathname,
+    routeOrgId,
+    routeDivisionId,
+    trailing,
     router,
-    scopeState,
+    scopeState?.active?.orgId,
+    scopeState?.active?.divisionId,
     setScopeCache,
   ])
+  */
 
   const setScope = useCallback(
     async (orgId: string, divisionId?: string | null, options?: { reason?: string }) => {
@@ -388,11 +405,12 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     [activeOrgId, setScope]
   )
 
-  const refresh = useCallback(() => {
-    return refetch().then(() => {})
+  const refresh = useCallback(async () => {
+    await refetch()
   }, [refetch])
 
   const value = useMemo<ScopeContextValue>(() => {
+    // Always return a valid context value, even during authentication loading
     if (!isAuthenticated) {
       return fallbackContext
     }
@@ -425,7 +443,10 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     status,
   ])
 
-  return <ScopeContext.Provider value={value}>{children}</ScopeContext.Provider>
+  // Ensure we never pass undefined to the provider
+  const safeValue = value || fallbackContext
+
+  return <ScopeContext.Provider value={safeValue}>{children}</ScopeContext.Provider>
 }
 
 export const useScope = () => {

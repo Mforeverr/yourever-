@@ -18,6 +18,7 @@ import {
 } from './hooks/useWorkspaceHubController'
 import { Loader2, Building2, Users, Mail, Sparkles } from 'lucide-react'
 import type { Invitation, Organization } from '@/hooks/use-organizations'
+import { ScopeProvider } from '@/contexts/scope-context'
 
 function WorkspaceHubContent() {
   const {
@@ -82,9 +83,11 @@ function WorkspaceHubContent() {
 
 export default function WorkspaceHubPage() {
   return (
-    <TutorialProvider tutorials={WORKSPACE_HUB_TUTORIALS}>
-      <WorkspaceHubContent />
-    </TutorialProvider>
+    <ScopeProvider>
+      <TutorialProvider tutorials={WORKSPACE_HUB_TUTORIALS}>
+        <WorkspaceHubContent />
+      </TutorialProvider>
+    </ScopeProvider>
   )
 }
 

@@ -306,6 +306,7 @@ class OrganizationRepository:
         if not org_ids:
             return {}
 
+        # author=Codex, role=CTO Dev Support, date=2025-10-18: align metrics with workspace_* tables.
         metrics_query = text(
             """
             WITH member_counts AS (
@@ -317,9 +318,9 @@ class OrganizationRepository:
             project_stats AS (
                 SELECT
                     org_id,
-                    COUNT(*) FILTER (WHERE status = 'active' AND deleted_at IS NULL) AS active_projects,
+                    COUNT(*) FILTER (WHERE status = 'active' AND archived_at IS NULL) AS active_projects,
                     MAX(updated_at) AS last_project_activity
-                FROM public.projects
+                FROM public.workspace_projects
                 WHERE org_id = ANY(:org_ids)
                 GROUP BY org_id
             ),
@@ -327,8 +328,9 @@ class OrganizationRepository:
                 SELECT
                     org_id,
                     MAX(updated_at) AS last_channel_activity
-                FROM public.channels
+                FROM public.workspace_channels
                 WHERE org_id = ANY(:org_ids)
+                  AND archived_at IS NULL
                 GROUP BY org_id
             )
             SELECT
@@ -346,8 +348,9 @@ class OrganizationRepository:
             LEFT JOIN channel_stats cs ON cs.org_id = o.id
             WHERE o.id = ANY(:org_ids)
             """
-        ).bindparams(bindparam("org_ids", expanding=True))
+        )
 
+        # Convert org_ids to array for PostgreSQL ANY operator
         result = await self._session.execute(metrics_query, {"org_ids": org_ids})
         metrics: Dict[str, Dict[str, Any]] = {}
         for row in result.mappings():
@@ -765,9 +768,10 @@ class OrganizationRepository:
             """
         ).bindparams(bindparam("emails", expanding=True))
         emails_array = list(normalized.keys())
+        # Convert emails to tuple for proper SQL array expansion
         result = await self._session.execute(
             existing_query,
-            {"org_id": org_id, "emails": emails_array},
+            {"org_id": org_id, "emails": tuple(emails_array)},
         )
         existing = {row["email"].lower() for row in result}
 

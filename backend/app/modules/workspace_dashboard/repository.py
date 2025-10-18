@@ -61,7 +61,7 @@ class DashboardRepository:
                   FROM public.workspace_tasks
                  WHERE org_id = :org_id
                    AND archived_at IS NULL
-                   AND (:division_id IS NULL OR division_id IS NULL OR division_id = :division_id)
+                   AND (CAST(:division_id AS UUID) IS NULL OR division_id IS NULL OR division_id = CAST(:division_id AS UUID))
                    AND (:include_templates OR is_template = FALSE)
             )
             SELECT
@@ -116,7 +116,7 @@ class DashboardRepository:
               FROM public.workspace_projects
              WHERE org_id = :org_id
                AND archived_at IS NULL
-               AND (:division_id IS NULL OR division_id IS NULL OR division_id = :division_id)
+               AND (CAST(:division_id AS UUID) IS NULL OR division_id IS NULL OR division_id = CAST(:division_id AS UUID))
                AND (:include_templates OR is_template = FALSE)
              ORDER BY is_template DESC, updated_at DESC
              LIMIT :limit
@@ -170,7 +170,7 @@ class DashboardRepository:
               FROM public.workspace_docs
              WHERE org_id = :org_id
                AND archived_at IS NULL
-               AND (:division_id IS NULL OR division_id IS NULL OR division_id = :division_id)
+               AND (CAST(:division_id AS UUID) IS NULL OR division_id IS NULL OR division_id = CAST(:division_id AS UUID))
                AND (:include_templates OR is_template = FALSE)
              ORDER BY is_template DESC, updated_at DESC
              LIMIT :limit
@@ -223,7 +223,7 @@ class DashboardRepository:
                    is_template
               FROM public.workspace_activities
              WHERE org_id = :org_id
-               AND (:division_id IS NULL OR division_id IS NULL OR division_id = :division_id)
+               AND (CAST(:division_id AS UUID) IS NULL OR division_id IS NULL OR division_id = CAST(:division_id AS UUID))
                AND (:include_templates OR is_template = FALSE)
              ORDER BY occurred_at DESC
              LIMIT :limit

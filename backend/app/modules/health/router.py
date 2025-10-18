@@ -13,6 +13,13 @@ from ...dependencies import CurrentPrincipal, require_current_principal
 router = APIRouter(prefix="/api/health", tags=["health"])
 
 
+@router.get("")
+async def root_probe() -> dict:
+    """Compatibility health endpoint for legacy probes."""
+
+    return {"status": "ok"}
+
+
 @router.get("/live")
 async def live_probe() -> dict:
     """Simple liveness check without authentication."""

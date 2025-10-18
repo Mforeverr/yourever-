@@ -4,6 +4,20 @@ import type { StoredOnboardingStatus } from '@/lib/auth-utils'
 import { getCachedOnboardingSteps, type OnboardingStepId } from '@/lib/onboarding'
 import { emitTelemetryEvent } from './telemetry'
 
+// Memoization cache for status metrics
+const statusMetricsCache = new WeakMap<StoredOnboardingStatus, ReturnType<typeof memoizedBuildStatusMetrics>>()
+
+// Memoized version of memoizedBuildStatusMetrics to prevent object reference instability
+const memoizedBuildStatusMetrics = (status: StoredOnboardingStatus) => {
+  if (statusMetricsCache.has(status)) {
+    return statusMetricsCache.get(status)!
+  }
+
+  const metrics = buildStatusMetrics(status)
+  statusMetricsCache.set(status, metrics)
+  return metrics
+}
+
 type OnboardingSaveIntent = 'complete-step' | 'skip-step' | 'version-reset'
 
 interface OnboardingSavePayload {
@@ -69,6 +83,7 @@ interface OnboardingResumePayload {
 
 const getTotalSteps = () => Math.max(getCachedOnboardingSteps().length, 1)
 
+// Original buildStatusMetrics function - renamed for clarity
 const buildStatusMetrics = (status: StoredOnboardingStatus) => {
   const completedCount = status.completedSteps.length
   const skippedCount = status.skippedSteps.length
@@ -90,7 +105,7 @@ export const trackOnboardingSaveStarted = ({ status, stepId, intent }: Onboardin
     name: 'onboarding_save_started',
     category: 'onboarding',
     properties: {
-      ...buildStatusMetrics(status),
+      ...memoizedBuildStatusMetrics(status),
       intent,
       stepId,
     },
@@ -109,7 +124,7 @@ export const trackOnboardingSaveSucceeded = ({
     name: 'onboarding_save_succeeded',
     category: 'onboarding',
     properties: {
-      ...buildStatusMetrics(status),
+      ...memoizedBuildStatusMetrics(status),
       intent,
       stepId,
       durationMs: durationMs ?? null,
@@ -134,7 +149,7 @@ export const trackOnboardingSaveFailed = ({
     name: 'onboarding_save_failed',
     category: 'onboarding',
     properties: {
-      ...buildStatusMetrics(status),
+      ...memoizedBuildStatusMetrics(status),
       intent,
       stepId,
       durationMs: durationMs ?? null,
@@ -159,7 +174,7 @@ export const trackOnboardingResume = ({
     name: 'onboarding_session_resumed',
     category: 'onboarding',
     properties: {
-      ...buildStatusMetrics(status),
+      ...memoizedBuildStatusMetrics(status),
       source,
       mode,
       reason: reason ?? null,
@@ -181,7 +196,7 @@ export const trackOnboardingSaveRetried = ({
     name: 'onboarding_save_retry',
     category: 'onboarding',
     properties: {
-      ...buildStatusMetrics(status),
+      ...memoizedBuildStatusMetrics(status),
       intent,
       stepId,
       failureCount,
@@ -206,7 +221,7 @@ export const trackOnboardingStepViewed = ({
     name: 'onboarding_step_viewed',
     category: 'onboarding',
     properties: {
-      ...buildStatusMetrics(status),
+      ...memoizedBuildStatusMetrics(status),
       stepId,
       stepIndex,
       totalSteps,
@@ -241,7 +256,7 @@ export const trackOnboardingValidationBlocked = ({
     name: 'onboarding_validation_blocked',
     category: 'onboarding',
     properties: {
-      ...buildStatusMetrics(status),
+      ...memoizedBuildStatusMetrics(status),
       currentStepId,
       blockingStepId,
       blockingStepTitle: blockingStepTitle ?? null,
@@ -274,7 +289,7 @@ export const trackOnboardingConflictDetected = ({
     name: 'onboarding_conflict_detected',
     category: 'onboarding',
     properties: {
-      ...buildStatusMetrics(status),
+      ...memoizedBuildStatusMetrics(status),
       stepId,
       changedFields: Array.isArray(changedFields) ? changedFields : [],
       changedFieldCount: Array.isArray(changedFields) ? changedFields.length : 0,

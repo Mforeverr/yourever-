@@ -120,19 +120,17 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
   const organizations = hubOverview?.organizations ?? []
   const invitations = hubOverview?.invitations ?? []
 
-  const enrichedOrganizations = useMemo(() => buildOrganizationCards(organizations), [organizations])
+  const organizationsList = useMemo(() => buildOrganizationCards(organizations), [organizations.length, organizations.map(org => org.id).join(',')]) // More stable dependency
 
   const pendingInvitations = useMemo(
     () => invitations.filter((invitation) => invitation.status === 'pending'),
-    [invitations],
+    [invitations.length, invitations.map(inv => inv.id).join(',')], // More stable dependency
   )
 
   const isLoadingOrganizations = hubStatus === 'pending' && !hubOverview
   const isOverviewLoading = isFetchingHub && Boolean(hubOverview)
   const organizationsError = hubError
   const invitationsLoading = isFetchingHub && !hubOverview
-
-  const watchJoinOrganizationId = watch('joinOrganizationId')
 
   useEffect(() => {
     storedOrgIdRef.current = authStorage.getActiveOrganizationId()
@@ -144,8 +142,14 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
     }
   }, [])
 
+  const organizationsListRef = useRef(organizationsList)
+
   useEffect(() => {
-    if (!enrichedOrganizations.length) {
+    organizationsListRef.current = organizationsList
+  }, [organizationsList])
+
+  useEffect(() => {
+    if (!organizationsListRef.current.length) {
       setDivisionSelections({})
       return
     }
@@ -154,7 +158,7 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
       const next: Record<string, string | null> = { ...previous }
       let hasChanged = false
 
-      for (const organization of enrichedOrganizations) {
+      for (const organization of organizationsListRef.current) {
         const storedDivision =
           storedOrgIdRef.current === organization.id ? storedDivisionIdRef.current : null
         const existingSelection = next[organization.id]
@@ -181,43 +185,61 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
 
       return hasChanged ? next : previous
     })
-  }, [enrichedOrganizations])
+  }, [organizations.length]) // Only depend on organizations count, not the whole array
 
   useEffect(() => {
-    if (!selectedOrgId && enrichedOrganizations.length === 1) {
-      const onlyOrganization = enrichedOrganizations[0]
+    if (!selectedOrgId && organizationsList.length === 1) {
+      const onlyOrganization = organizationsList[0]
       setSelectedOrgId(onlyOrganization.id)
-      setDivisionSelections((previous) => ({
-        ...previous,
-        [onlyOrganization.id]: previous[onlyOrganization.id] ?? onlyOrganization.divisions[0]?.id ?? null,
-      }))
+      setDivisionSelections((previous) => {
+        const existingSelection = previous[onlyOrganization.id]
+        const newSelection = existingSelection ?? onlyOrganization.divisions[0]?.id ?? null
+
+        if (existingSelection !== newSelection) {
+          return {
+            ...previous,
+            [onlyOrganization.id]: newSelection,
+          }
+        }
+        return previous
+      })
     }
-  }, [enrichedOrganizations, selectedOrgId])
+  }, [organizationsList.length, selectedOrgId]) // Depend on length, not the whole array
+
+  const currentFormValueRef = useRef<string>('')
 
   useEffect(() => {
     if (!selectedOrgId) {
       return
     }
 
-    const currentValue = (watchJoinOrganizationId ?? '').trim()
+    const currentValue = (getValues('joinOrganizationId') ?? '').trim()
+    currentFormValueRef.current = currentValue
+
     if (currentValue !== selectedOrgId) {
       setValue('joinOrganizationId', selectedOrgId, {
         shouldDirty: false,
         shouldValidate: false,
       })
     }
-  }, [selectedOrgId, watchJoinOrganizationId, setValue])
+  }, [selectedOrgId, setValue])
 
   const resetProcessing = useCallback(() => {
     setIsProcessing(false)
     setProcessingOrgId(null)
   }, [])
 
+  const organizationsListRefForCallback = useRef(organizationsList)
+
+  useEffect(() => {
+    organizationsListRefForCallback.current = organizationsList
+  }, [organizationsList])
+
   const openOrganization = useCallback<
     UseWorkspaceHubControllerResult['organizations']['openOrganization']
   >(
     (organizationId, divisionId, fallbackOrganization) => {
-      const organization = enrichedOrganizations.find((candidate) => candidate.id === organizationId)
+      const organization = organizationsListRefForCallback.current.find((candidate) => candidate.id === organizationId)
       const divisions = organization?.divisions ?? fallbackOrganization?.divisions ?? []
       const organizationName = organization?.name ?? fallbackOrganization?.name ?? 'organization'
 
@@ -278,7 +300,7 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
         })
         .finally(resetProcessing)
     },
-    [enrichedOrganizations, toast, resetProcessing, router, setScope],
+    [toast, resetProcessing, router, setScope],
   )
 
   const handleOrgCreationSuccess = useCallback(
@@ -340,7 +362,7 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
 
     const { joinOrganizationId } = getValues()
     const trimmedId = joinOrganizationId.trim()
-    const organization = enrichedOrganizations.find((candidate) => candidate.id === trimmedId)
+    const organization = organizationsList.find((candidate) => candidate.id === trimmedId)
 
     if (!organization) {
       toast({
@@ -358,7 +380,7 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
     return true
   }, [
     divisionSelections,
-    enrichedOrganizations,
+    organizationsList,
     getValues,
     isProcessing,
     openOrganization,
@@ -377,7 +399,11 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
 
   const handleOrgSelection = useCallback(
     (organizationId: string, divisionId: string | null) => {
-      setSelectedOrgId(organizationId)
+      // Avoid redundant update
+      if (selectedOrgId !== organizationId) {
+        setSelectedOrgId(organizationId)
+      }
+
       setValue('joinOrganizationId', organizationId, {
         shouldDirty: true,
         shouldTouch: true,
@@ -385,15 +411,21 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
       })
 
       if (divisionId) {
-        setDivisionSelections((previous) => ({
-          ...previous,
-          [organizationId]: divisionId,
-        }))
+        setDivisionSelections((previous) => {
+          const currentSelection = previous[organizationId]
+          if (currentSelection !== divisionId) {
+            return {
+              ...previous,
+              [organizationId]: divisionId,
+            }
+          }
+          return previous
+        })
       }
 
       resetProcessing()
     },
-    [resetProcessing, setValue],
+    [selectedOrgId, resetProcessing, setValue],
   )
 
   const handleDivisionSelect = useCallback((organizationId: string, divisionId: string | null) => {
@@ -402,8 +434,10 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
       [organizationId]: divisionId,
     }))
 
+    // Avoid redundant state update
     if (selectedOrgId === organizationId) {
-      setSelectedOrgId(organizationId)
+      // Only update if necessary to prevent unnecessary re-renders
+      // The selectedOrgId is already correct, so no update needed
     }
   }, [selectedOrgId])
 
@@ -430,10 +464,10 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
     return (
       (isLoadingOrganizations && !hasOverview) ||
       (invitationsLoading && !hasInvitations) ||
-      (isOverviewLoading && enrichedOrganizations.length === 0)
+      (isOverviewLoading && organizationsList.length === 0)
     )
   }, [
-    enrichedOrganizations.length,
+    organizationsList.length,
     invitations,
     invitationsLoading,
     isLoadingOrganizations,
@@ -446,7 +480,7 @@ export function useWorkspaceHubController(): UseWorkspaceHubControllerResult {
     isProtecting,
     tutorial,
     organizations: {
-      list: enrichedOrganizations,
+      list: organizationsList,
       isOverviewLoading,
       isLoadingOrganizations,
       selectedId: selectedOrgId,

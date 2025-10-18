@@ -198,6 +198,16 @@ def _extract_scope_claims(token_payload: Dict[str, Any]) -> Dict[str, Any]:
     return scope_payload
 
 
+def _parse_timestamp(value: Any) -> Optional[datetime]:
+    if value is None:
+        return None
+    try:
+        # Supabase emits numeric timestamps in seconds
+        return datetime.fromtimestamp(float(value), tz=timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
 async def require_current_principal(
     credentials: HTTPAuthorizationCredentials = Depends(http_bearer),
 ) -> CurrentPrincipal:
@@ -221,15 +231,6 @@ async def require_current_principal(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token payload",
         )
-
-def _parse_timestamp(value: Any) -> Optional[datetime]:
-        if value is None:
-            return None
-        try:
-            # Supabase emits numeric timestamps in seconds
-            return datetime.fromtimestamp(float(value), tz=timezone.utc)
-        except (TypeError, ValueError):
-            return None
 
     scope_claims = _extract_scope_claims(token_payload)
     active_org_id = _coerce_optional_str(
@@ -259,7 +260,7 @@ def _parse_timestamp(value: Any) -> Optional[datetime]:
         id=str(subject),
         email=token_payload.get("email"),
         role=token_payload.get("role"),
-      claims=claims,
+        claims=claims,
         active_org_id=active_org_id,
         active_division_id=active_division_id,
         org_ids=org_ids,

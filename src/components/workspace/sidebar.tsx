@@ -34,6 +34,51 @@ import type { UseQueryResult } from "@tanstack/react-query"
 import type { WorkspaceOverview, WorkspaceChannel, WorkspaceProject } from "@/modules/workspace/types"
 import { toast } from "@/hooks/use-toast"
 
+// Error boundary component for catching rendering errors
+class SidebarErrorBoundary extends React.Component<
+  { children: React.ReactNode; fallback?: React.ReactNode },
+  { hasError: boolean; error?: Error }
+> {
+  constructor(props: { children: React.ReactNode; fallback?: React.ReactNode }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Sidebar Error Boundary caught an error:', error, errorInfo)
+    toast({
+      title: 'Sidebar Error',
+      description: 'There was an error loading the sidebar content.',
+      variant: 'destructive',
+    })
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || (
+        <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+          <AlertCircle className="h-8 w-8 text-destructive mb-2" />
+          <p className="text-sm text-muted-foreground">Unable to load sidebar content</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            onClick={() => this.setState({ hasError: false, error: undefined })}
+          >
+            Retry
+          </Button>
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
+}
+
 interface SideBarProps {
   activePanel: string
   className?: string
@@ -106,12 +151,14 @@ const filterTasksByDivision = (
 function ExplorerContent({ className, liveDataEnabled, overviewQuery }: ExplorerContentProps) {
   const [expandedSections, setExpandedSections] = React.useState<string[]>(['divisions', 'projects'])
   const router = useRouter()
-  const bannerState = useWorkspaceStore((state) => ({
-    showBanner: state.showTemplatesBanner,
-    dismiss: state.dismissTemplatesBanner,
-  }))
+
+  // Fix: Use individual selectors to prevent infinite re-renders caused by object creation
+  const shouldShowTemplatesBanner = useWorkspaceStore((state) => state.showTemplatesBanner)
+  const dismissTemplatesBanner = useWorkspaceStore((state) => state.dismissTemplatesBanner)
+
   const { currentOrganization, currentOrgId, currentDivision, currentDivisionId, setScope, setDivision } = useScope()
 
+  // ALL hooks must be called at the top level before any conditional returns
   const mockProjects = useMockWorkspaceStore((state) => state.projects)
   const mockDocs = useMockWorkspaceStore((state) => state.docs)
   const mockTasks = useMockWorkspaceStore((state) => state.tasks)
@@ -119,16 +166,16 @@ function ExplorerContent({ className, liveDataEnabled, overviewQuery }: Explorer
   const shouldUseMockData = !liveDataEnabled
 
   const projects: WorkspaceProject[] = React.useMemo(() => {
-    if (overviewQuery.isSuccess) {
-      return overviewQuery.data.projects
+    if (overviewQuery?.isSuccess && overviewQuery?.data) {
+      return overviewQuery.data.projects || []
     }
     if (shouldUseMockData) {
       return filterProjectsByScope(mockProjects, currentOrgId, currentDivisionId)
     }
     return []
   }, [
-    overviewQuery.isSuccess,
-    overviewQuery.data,
+    overviewQuery?.isSuccess,
+    overviewQuery?.data,
     shouldUseMockData,
     mockProjects,
     currentOrgId,
@@ -136,16 +183,16 @@ function ExplorerContent({ className, liveDataEnabled, overviewQuery }: Explorer
   ])
 
   const docs = React.useMemo(() => {
-    if (overviewQuery.isSuccess) {
-      return filterDocsByDivision(overviewQuery.data.docs, currentDivisionId)
+    if (overviewQuery?.isSuccess && overviewQuery?.data) {
+      return filterDocsByDivision(overviewQuery.data.docs || [], currentDivisionId)
     }
     if (shouldUseMockData) {
       return filterDocsByScope(mockDocs, currentOrgId, currentDivisionId)
     }
     return []
   }, [
-    overviewQuery.isSuccess,
-    overviewQuery.data,
+    overviewQuery?.isSuccess,
+    overviewQuery?.data,
     shouldUseMockData,
     mockDocs,
     currentOrgId,
@@ -153,16 +200,16 @@ function ExplorerContent({ className, liveDataEnabled, overviewQuery }: Explorer
   ])
 
   const tasks = React.useMemo(() => {
-    if (overviewQuery.isSuccess) {
-      return filterTasksByDivision(overviewQuery.data.tasks, currentDivisionId)
+    if (overviewQuery?.isSuccess && overviewQuery?.data) {
+      return filterTasksByDivision(overviewQuery.data.tasks || [], currentDivisionId)
     }
     if (shouldUseMockData) {
       return filterTasksByScope(mockTasks, currentOrgId, currentDivisionId)
     }
     return []
   }, [
-    overviewQuery.isSuccess,
-    overviewQuery.data,
+    overviewQuery?.isSuccess,
+    overviewQuery?.data,
     shouldUseMockData,
     mockTasks,
     currentOrgId,
@@ -172,41 +219,66 @@ function ExplorerContent({ className, liveDataEnabled, overviewQuery }: Explorer
   const canOpenProjects = isFeatureEnabled('projects.detail', process.env.NODE_ENV !== 'production')
   const workspaceBasePath = currentOrgId && currentDivisionId ? `/${currentOrgId}/${currentDivisionId}` : null
 
-  const handleProjectOpen = (projectId: string) => {
+  const handleProjectOpen = React.useCallback((projectId: string) => {
     if (!workspaceBasePath || !canOpenProjects) {
       return
     }
     router.push(`${workspaceBasePath}/projects/${projectId}`)
-  }
+  }, [workspaceBasePath, canOpenProjects, router])
 
-  const toggleSection = (section: string) => {
+  const toggleSection = React.useCallback((section: string) => {
     setExpandedSections((prev) =>
       prev.includes(section) ? prev.filter((s) => s !== section) : [...prev, section]
     )
-  }
+  }, [])
 
-  const handleDivisionSelect = (orgId: string, divisionId: string) => {
+  const handleDivisionSelect = React.useCallback((orgId: string, divisionId: string) => {
     if (currentOrganization?.id === orgId) {
       void setDivision(divisionId)
     } else {
       void setScope(orgId, divisionId)
     }
-  }
+  }, [currentOrganization?.id, setDivision, setScope])
 
   const projectCountForDivision = React.useCallback(
     (divisionId: string) => {
-      if (overviewQuery.isSuccess) {
-        return countProjectsForDivisionLive(overviewQuery.data.projects, divisionId)
+      if (overviewQuery?.isSuccess && overviewQuery?.data) {
+        return countProjectsForDivisionLive(overviewQuery.data.projects || [], divisionId)
       }
       if (shouldUseMockData) {
         return countProjectsForDivision(mockProjects, currentOrgId, divisionId)
       }
       return 0
     },
-    [overviewQuery.isSuccess, overviewQuery.data, shouldUseMockData, mockProjects, currentOrgId],
+    [overviewQuery?.isSuccess, overviewQuery?.data, shouldUseMockData, mockProjects, currentOrgId],
   )
 
-  const showTemplatesBanner = overviewQuery.isSuccess && overviewQuery.data.hasTemplates && bannerState.showBanner
+  const showTemplatesBanner = overviewQuery?.isSuccess && overviewQuery.data?.hasTemplates && shouldShowTemplatesBanner
+
+  // Safety check: ensure overviewQuery is defined
+  if (!overviewQuery) {
+    return (
+      <div className="flex flex-col h-full p-4">
+        <div className="flex items-center justify-center h-full">
+          <Loader2 className="h-6 w-6 animate-spin mr-2" />
+          <span className="text-sm text-muted-foreground">Loading...</span>
+        </div>
+      </div>
+    )
+  }
+
+  // Safety check: ensure scope context values are defined
+  if (!setScope || !setDivision) {
+    console.error('ExplorerContent: Critical scope functions are undefined')
+    return (
+      <div className="flex flex-col h-full p-4">
+        <div className="flex items-center justify-center h-full">
+          <AlertCircle className="h-6 w-6 text-destructive mr-2" />
+          <span className="text-sm text-destructive">Scope context error</span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className={cn('flex flex-col h-full', className)}>
@@ -218,7 +290,7 @@ function ExplorerContent({ className, liveDataEnabled, overviewQuery }: Explorer
         {showTemplatesBanner && (
           <div className="rounded-lg border border-dashed border-brand/40 bg-brand/10 px-3 py-2 text-xs text-brand-foreground flex items-center justify-between">
             <span>Sample projects are ready to customise. Edit or delete them to make this workspace yours.</span>
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={bannerState.dismiss}>
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={dismissTemplatesBanner}>
               <X className="h-3 w-3" />
             </Button>
           </div>
@@ -418,10 +490,11 @@ function ChannelsContent({ className }: ChannelsContentProps) {
   const router = useRouter()
   const [expandedSections, setExpandedSections] = React.useState<string[]>(['channels', 'dms'])
   const { currentOrgId, currentDivisionId } = useScope()
-  const store = useWorkspaceStore((state) => ({
-    search: state.channelSearch,
-    setSearch: state.setChannelSearch,
-  }))
+
+  // Fix: Use individual selectors to prevent infinite re-renders caused by object creation
+  const channelSearch = useWorkspaceStore((state) => state.channelSearch)
+  const setChannelSearch = useWorkspaceStore((state) => state.setChannelSearch)
+
   const liveDataEnabled = isFeatureEnabled('workspace.liveData', true)
 
   const channelsQuery = useDivisionChannelsQuery(currentOrgId, currentDivisionId, {
@@ -460,7 +533,7 @@ function ChannelsContent({ className }: ChannelsContentProps) {
   }, [channelsQuery.isSuccess, channelsQuery.data, shouldUseMockChannels, mockChannels])
 
   const filteredChannels = channels.filter((channel) =>
-    channel.name.toLowerCase().includes(store.search.toLowerCase()),
+    channel.name.toLowerCase().includes(channelSearch.toLowerCase()),
   )
 
   const buildScopedPath = React.useCallback(
@@ -473,11 +546,11 @@ function ChannelsContent({ className }: ChannelsContentProps) {
     [currentDivisionId, currentOrgId],
   )
 
-  const toggleSection = (section: string) => {
+  const toggleSection = React.useCallback((section: string) => {
     setExpandedSections((prev) =>
       prev.includes(section) ? prev.filter((s) => s !== section) : [...prev, section],
     )
-  }
+  }, [])
 
   const handleToggleFavorite = async (channel: WorkspaceChannel) => {
     if (!liveDataEnabled || !currentOrgId) {
@@ -560,8 +633,8 @@ function ChannelsContent({ className }: ChannelsContentProps) {
           <Input
             placeholder="Search channels..."
             className="pl-9 h-8 bg-surface-elevated border-border"
-            value={store.search}
-            onChange={(event) => store.setSearch(event.target.value)}
+            value={channelSearch}
+            onChange={(event) => setChannelSearch(event.target.value)}
           />
         </div>
       </div>
@@ -800,22 +873,24 @@ function WorkspaceContent({ className, liveDataEnabled, overviewQuery }: Workspa
   const [selectedItem, setSelectedItem] = React.useState<string | null>(null)
   const router = useRouter()
   const { currentOrgId, currentDivision, currentDivisionId } = useScope()
+
+  // ALL hooks must be called at the top level before any conditional returns
   const mockProjects = useMockWorkspaceStore((state) => state.projects)
   const mockTasks = useMockWorkspaceStore((state) => state.tasks)
 
   const shouldUseMockData = !liveDataEnabled
 
   const scopedProjects = React.useMemo(() => {
-    if (overviewQuery.isSuccess) {
-      return filterProjectsByDivision(overviewQuery.data.projects, currentOrgId, currentDivisionId)
+    if (overviewQuery?.isSuccess && overviewQuery?.data) {
+      return filterProjectsByDivision(overviewQuery.data.projects || [], currentOrgId, currentDivisionId)
     }
     if (shouldUseMockData) {
       return filterProjectsByScope(mockProjects, currentOrgId, currentDivisionId)
     }
     return []
   }, [
-    overviewQuery.isSuccess,
-    overviewQuery.data,
+    overviewQuery?.isSuccess,
+    overviewQuery?.data,
     shouldUseMockData,
     mockProjects,
     currentOrgId,
@@ -823,16 +898,16 @@ function WorkspaceContent({ className, liveDataEnabled, overviewQuery }: Workspa
   ])
 
   const scopedTasks = React.useMemo(() => {
-    if (overviewQuery.isSuccess) {
-      return filterTasksByDivision(overviewQuery.data.tasks, currentDivisionId)
+    if (overviewQuery?.isSuccess && overviewQuery?.data) {
+      return filterTasksByDivision(overviewQuery.data.tasks || [], currentDivisionId)
     }
     if (shouldUseMockData) {
       return filterTasksByScope(mockTasks, currentOrgId, currentDivisionId)
     }
     return []
   }, [
-    overviewQuery.isSuccess,
-    overviewQuery.data,
+    overviewQuery?.isSuccess,
+    overviewQuery?.data,
     shouldUseMockData,
     mockTasks,
     currentOrgId,
@@ -856,26 +931,38 @@ function WorkspaceContent({ className, liveDataEnabled, overviewQuery }: Workspa
   const workspaceBasePath =
     currentOrgId && currentDivisionId ? `/${currentOrgId}/${currentDivisionId}` : null
 
-  const toggleSection = (section: string) => {
+  const toggleSection = React.useCallback((section: string) => {
     setExpandedSections((prev) =>
       prev.includes(section) ? prev.filter((s) => s !== section) : [...prev, section]
     )
-  }
+  }, [])
 
-  const handleProjectSelect = (projectId: string) => {
+  const handleProjectSelect = React.useCallback((projectId: string) => {
     setSelectedItem(projectId)
     if (!workspaceBasePath || !canOpenProjects) {
       return
     }
     router.push(`${workspaceBasePath}/projects/${projectId}`)
-  }
+  }, [workspaceBasePath, canOpenProjects, router])
 
-const handleTaskSelect = (taskId: string) => {
+const handleTaskSelect = React.useCallback((taskId: string) => {
     setSelectedItem(taskId)
     if (!workspaceBasePath) {
       return
     }
     router.push(`${workspaceBasePath}/tasks/${taskId}`)
+  }, [workspaceBasePath, router])
+
+  // Safety check: ensure overviewQuery is defined
+  if (!overviewQuery) {
+    return (
+      <div className="flex flex-col h-full p-4">
+        <div className="flex items-center justify-center h-full">
+          <Loader2 className="h-6 w-6 animate-spin mr-2" />
+          <span className="text-sm text-muted-foreground">Loading...</span>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -1115,17 +1202,24 @@ function SideBar({ activePanel, className }: SideBarProps) {
       case 'admin':
         return <AdminSidebar />
       default:
-        return <ExplorerContent />
+        return (
+          <ExplorerContent
+            overviewQuery={overviewQuery}
+            liveDataEnabled={liveDataEnabled}
+          />
+        )
     }
   }
 
   return (
-    <div className={cn(
-      "w-64 h-full bg-surface-panel border-r border-border flex flex-col",
-      className
-    )}>
-      {renderContent()}
-    </div>
+    <SidebarErrorBoundary>
+      <div className={cn(
+        "w-64 h-full bg-surface-panel border-r border-border flex flex-col",
+        className
+      )}>
+        {renderContent()}
+      </div>
+    </SidebarErrorBoundary>
   )
 }
 

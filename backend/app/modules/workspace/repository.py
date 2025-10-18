@@ -82,7 +82,7 @@ class WorkspaceRepository:
               FROM public.workspace_projects
              WHERE org_id = :org_id
                AND archived_at IS NULL
-               AND (:division_id IS NULL OR division_id IS NULL OR division_id = :division_id)
+               AND (CAST(:division_id AS UUID) IS NULL OR division_id IS NULL OR division_id = CAST(:division_id AS UUID))
                AND (:include_templates OR is_template = FALSE)
              ORDER BY is_template DESC, updated_at DESC
             """
@@ -131,7 +131,7 @@ class WorkspaceRepository:
               FROM public.workspace_tasks
              WHERE org_id = :org_id
                AND archived_at IS NULL
-               AND (:division_id IS NULL OR division_id IS NULL OR division_id = :division_id)
+               AND (CAST(:division_id AS UUID) IS NULL OR division_id IS NULL OR division_id = CAST(:division_id AS UUID))
                AND (:include_templates OR is_template = FALSE)
              ORDER BY is_template DESC, updated_at DESC
             """
@@ -177,7 +177,7 @@ class WorkspaceRepository:
               FROM public.workspace_docs
              WHERE org_id = :org_id
                AND archived_at IS NULL
-               AND (:division_id IS NULL OR division_id IS NULL OR division_id = :division_id)
+               AND (CAST(:division_id AS UUID) IS NULL OR division_id IS NULL OR division_id = CAST(:division_id AS UUID))
                AND (:include_templates OR is_template = FALSE)
              ORDER BY is_template DESC, updated_at DESC
             """
@@ -230,7 +230,7 @@ class WorkspaceRepository:
               FROM public.workspace_channels
              WHERE org_id = :org_id
                AND archived_at IS NULL
-               AND (:division_id IS NULL OR division_id IS NULL OR division_id = :division_id)
+               AND (CAST(:division_id AS UUID) IS NULL OR division_id IS NULL OR division_id = CAST(:division_id AS UUID))
                AND (:include_templates OR is_template = FALSE)
              ORDER BY is_template DESC, name ASC
              LIMIT :limit OFFSET :offset
@@ -242,7 +242,7 @@ class WorkspaceRepository:
               FROM public.workspace_channels
              WHERE org_id = :org_id
                AND archived_at IS NULL
-               AND (:division_id IS NULL OR division_id IS NULL OR division_id = :division_id)
+               AND (CAST(:division_id AS UUID) IS NULL OR division_id IS NULL OR division_id = CAST(:division_id AS UUID))
                AND (:include_templates OR is_template = FALSE)
             """
         )
@@ -326,7 +326,7 @@ class WorkspaceRepository:
                    actor_role
               FROM public.workspace_activities
              WHERE org_id = :org_id
-               AND (:division_id IS NULL OR division_id IS NULL OR division_id = :division_id)
+               AND (CAST(:division_id AS UUID) IS NULL OR division_id IS NULL OR division_id = CAST(:division_id AS UUID))
                AND (:include_templates OR is_template = FALSE)
                AND (:cursor_ts IS NULL OR occurred_at < :cursor_ts)
              ORDER BY occurred_at DESC
