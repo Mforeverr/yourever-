@@ -103,6 +103,9 @@ class OrganizationHubService:
                 logoUrl=organization.logo_url,
                 createdAt=organization.created_at,
                 userRole=organization.user_role,
+                memberCount=organization.member_count,
+                activeProjects=organization.active_projects,
+                lastActiveAt=organization.last_active_at,
                 divisions=[
                     OrganizationDivision.model_validate(
                         division.model_dump(by_alias=True)
@@ -185,6 +188,9 @@ class OrganizationHubService:
             logoUrl=organization.logo_url,
             createdAt=organization.created_at,
             userRole=organization.user_role,
+            memberCount=organization.member_count,
+            activeProjects=organization.active_projects,
+            lastActiveAt=organization.last_active_at,
             divisions=[
                 OrganizationDivision.model_validate(division.model_dump())
                 for division in organization.divisions

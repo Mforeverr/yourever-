@@ -46,7 +46,14 @@ class OrganizationSummary(BaseModel):
 class OrganizationResponse(OrganizationSummary):
     """Detailed organization payload returned after mutations."""
 
-    pass
+    industry: Optional[str] = None
+    location: Optional[str] = None
+    timezone: Optional[str] = None
+    member_count: Optional[int] = Field(default=None, alias="memberCount")
+    active_projects: Optional[int] = Field(default=None, alias="activeProjects")
+    last_active_at: Optional[datetime] = Field(default=None, alias="lastActiveAt")
+    tags: Optional[List[str]] = None
+    accent_color: Optional[str] = Field(default=None, alias="accentColor")
 
 
 class DivisionCreate(BaseModel):
@@ -196,14 +203,9 @@ class SlugAvailability(BaseModel):
 class HubOrganization(OrganizationResponse):
     """Hub representation of an organization with optional analytics fields."""
 
-    industry: Optional[str] = None
-    location: Optional[str] = None
-    timezone: Optional[str] = None
-    member_count: Optional[int] = Field(default=None, alias="memberCount")
-    active_projects: Optional[int] = Field(default=None, alias="activeProjects")
-    last_active_at: Optional[datetime] = Field(default=None, alias="lastActiveAt")
-    tags: Optional[List[str]] = None
-    accent_color: Optional[str] = Field(default=None, alias="accentColor")
+    # Intentionally inherits optional analytics fields from OrganizationResponse to
+    # keep hub payloads aligned with the core organization contract.
+    pass
 
 
 class HubStats(BaseModel):

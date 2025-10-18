@@ -42,6 +42,9 @@ class _StubRepository:
                     )
                 ],
                 userRole="owner",
+                member_count=8,
+                active_projects=3,
+                last_active_at=datetime.now(timezone.utc),
             ),
             OrganizationResponse(
                 id="org-2",
@@ -52,6 +55,9 @@ class _StubRepository:
                 createdAt=None,
                 divisions=[],
                 userRole="member",
+                member_count=2,
+                active_projects=1,
+                last_active_at=datetime.now(timezone.utc),
             ),
         ]
         self.invitations: list[InvitationResponse] = [
@@ -106,6 +112,9 @@ class _StubInvitationService:
             createdAt=None,
             divisions=[],
             userRole="owner",
+            member_count=8,
+            active_projects=3,
+            last_active_at=datetime.now(timezone.utc),
         )
         self.decline_response = InvitationResponse(
             id="inv-1",
@@ -167,6 +176,9 @@ async def test_get_overview_combines_data() -> None:
     assert isinstance(overview, HubOverview)
     assert [org.id for org in overview.organizations] == ["org-1", "org-2"]
     assert overview.invitations[0].token_hash == "abc"
+    assert overview.organizations[0].member_count == 8
+    assert overview.organizations[0].active_projects == 3
+    assert overview.organizations[0].last_active_at is not None
     assert repository.expire_calls == 1
 
 
@@ -191,6 +203,7 @@ async def test_accept_invitation_emits_event() -> None:
     )
 
     assert result.id == "org-1"
+    assert result.member_count == 8
     assert invitation_service.accepted == ["inv-1"]
     assert events.accepted == ["inv-1"]
 

@@ -13,6 +13,8 @@ import {
 import { formatDistanceToNow } from 'date-fns'
 import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useToast } from '@/hooks/use-toast'
+import { ApiError } from '@/lib/api/http'
 
 interface InvitationCardProps {
   invitation: HubInvitation
@@ -24,37 +26,65 @@ interface InvitationCardProps {
 export function InvitationCard({ invitation, onAccept, onDecline, compact = false }: InvitationCardProps) {
   const acceptInvitationMutation = useAcceptHubInvitationMutation()
   const declineInvitationMutation = useDeclineHubInvitationMutation()
+  const { toast } = useToast()
 
   const targetOrgId = invitation.orgId ?? ''
   const canMutate = Boolean(targetOrgId)
 
+  const resolveErrorMessage = (error: unknown) => {
+    if (error instanceof ApiError) {
+      return typeof error.body?.detail === 'string'
+        ? error.body.detail
+        : (error.body?.detail?.message as string) ?? error.message
+    }
+    return error instanceof Error ? error.message : 'Something went wrong. Please try again.'
+  }
+
   const handleAccept = async () => {
+    if (!canMutate) {
+      return
+    }
+
     try {
-      if (!canMutate) {
-        return
-      }
       const organization = await acceptInvitationMutation.mutateAsync({
         orgId: targetOrgId,
         invitationId: invitation.id,
       })
+      toast({
+        title: 'Invitation accepted',
+        description: `Welcome to ${organization.name}. We've set your workspace to this organization.`,
+      })
       onAccept?.(invitation, organization)
     } catch (error) {
-      // Error is handled by the mutation hook
+      toast({
+        title: 'Unable to accept invitation',
+        description: resolveErrorMessage(error),
+        variant: 'destructive',
+      })
     }
   }
 
   const handleDecline = async () => {
+    if (!canMutate) {
+      return
+    }
+
     try {
-      if (!canMutate) {
-        return
-      }
       await declineInvitationMutation.mutateAsync({
         orgId: targetOrgId,
         invitationId: invitation.id,
       })
+      toast({
+        title: 'Invitation declined',
+        description: "We'll hide this workspace from your hub overview.",
+      })
       onDecline?.(invitation)
     } catch (error) {
-      // Error is handled by the mutation hook
+      toast({
+        title: 'Unable to decline invitation',
+        description: resolveErrorMessage(error),
+        variant: 'destructive',
+      })
     }
   }
 

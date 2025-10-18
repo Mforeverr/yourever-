@@ -237,21 +237,31 @@ class OrganizationRepository:
         result = await self._session.execute(query, {"user_id": user_id})
         rows = result.mappings().all()
 
+        org_ids = [str(row["id"]) for row in rows]
+        metrics_by_org = await self._load_hub_metrics(org_ids)
+
         organizations = []
         for row in rows:
             # Get divisions for this organization
             divisions = await self._get_organization_divisions(row["id"], user_id)
 
-            organizations.append(OrganizationResponse(
-                id=str(row["id"]),
-                name=row["name"],
-                slug=row["slug"],
-                description=row["description"],
-                logo_url=row["logo_url"],
-                created_at=row["created_at"],
-                divisions=divisions,
-                user_role=row["user_role"]
-            ))
+            metrics = metrics_by_org.get(str(row["id"]), {})
+
+            organizations.append(
+                OrganizationResponse(
+                    id=str(row["id"]),
+                    name=row["name"],
+                    slug=row["slug"],
+                    description=row["description"],
+                    logo_url=row["logo_url"],
+                    created_at=row["created_at"],
+                    divisions=divisions,
+                    user_role=row["user_role"],
+                    member_count=metrics.get("member_count"),
+                    active_projects=metrics.get("active_projects"),
+                    last_active_at=metrics.get("last_active_at"),
+                )
+            )
 
         return organizations
 
@@ -289,6 +299,65 @@ class OrganizationRepository:
             )
             for row in rows
         ]
+
+    async def _load_hub_metrics(self, org_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+        """Load aggregated metrics used by the workspace hub."""
+
+        if not org_ids:
+            return {}
+
+        metrics_query = text(
+            """
+            WITH member_counts AS (
+                SELECT org_id, COUNT(*) AS member_count
+                FROM public.org_memberships
+                WHERE org_id = ANY(:org_ids)
+                GROUP BY org_id
+            ),
+            project_stats AS (
+                SELECT
+                    org_id,
+                    COUNT(*) FILTER (WHERE status = 'active' AND deleted_at IS NULL) AS active_projects,
+                    MAX(updated_at) AS last_project_activity
+                FROM public.projects
+                WHERE org_id = ANY(:org_ids)
+                GROUP BY org_id
+            ),
+            channel_stats AS (
+                SELECT
+                    org_id,
+                    MAX(updated_at) AS last_channel_activity
+                FROM public.channels
+                WHERE org_id = ANY(:org_ids)
+                GROUP BY org_id
+            )
+            SELECT
+                o.id,
+                COALESCE(mc.member_count, 0) AS member_count,
+                COALESCE(ps.active_projects, 0) AS active_projects,
+                GREATEST(
+                    COALESCE(ps.last_project_activity, to_timestamp(0)),
+                    COALESCE(cs.last_channel_activity, to_timestamp(0)),
+                    COALESCE(o.updated_at, to_timestamp(0))
+                ) AS last_active_at
+            FROM public.organizations o
+            LEFT JOIN member_counts mc ON mc.org_id = o.id
+            LEFT JOIN project_stats ps ON ps.org_id = o.id
+            LEFT JOIN channel_stats cs ON cs.org_id = o.id
+            WHERE o.id = ANY(:org_ids)
+            """
+        ).bindparams(bindparam("org_ids", expanding=True))
+
+        result = await self._session.execute(metrics_query, {"org_ids": org_ids})
+        metrics: Dict[str, Dict[str, Any]] = {}
+        for row in result.mappings():
+            metrics[str(row["id"])] = {
+                "member_count": row["member_count"],
+                "active_projects": row["active_projects"],
+                "last_active_at": row["last_active_at"],
+            }
+
+        return metrics
 
     async def create_organization(
         self,
