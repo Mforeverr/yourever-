@@ -49,7 +49,7 @@ export default function ChannelsDirectoryPage() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             {channels.map((channel) => {
-              const Icon = channel.type === 'private' ? Lock : Hash
+              const Icon = channel.channelType === 'private' ? Lock : Hash
               const memberCount = channel.memberCount ?? 0
               return (
                 <Card key={channel.id} className="transition-shadow hover:shadow-md">
@@ -68,7 +68,7 @@ export default function ChannelsDirectoryPage() {
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Users className="h-3.5 w-3.5" />
                         <span>
-                          {channel.type === 'private' ? 'Private' : 'Public'} channel
+                          {channel.channelType === 'private' ? 'Private' : 'Public'} channel
                         </span>
                       </div>
                       <Button asChild size="sm">

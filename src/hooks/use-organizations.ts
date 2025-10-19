@@ -10,42 +10,50 @@ import { toast } from '@/hooks/use-toast'
 export interface Organization {
   id: string
   name: string
-  slug: string
-  description?: string
-  logo_url?: string
-  created_at: string
+  slug?: string | null
+  description?: string | null
+  logoUrl?: string | null
+  createdAt?: string | null
   divisions: Division[]
-  user_role: string
+  userRole?: string | null
+  memberCount?: number | null
+  activeProjects?: number | null
+  lastActiveAt?: string | null
+  tags?: string[] | null
+  accentColor?: string | null
+  industry?: string | null
+  location?: string | null
+  timezone?: string | null
 }
 
 export interface Division {
   id: string
   name: string
-  key?: string
-  description?: string
-  org_id: string
-  created_at: string
-  user_role?: string
+  key?: string | null
+  description?: string | null
+  orgId: string
+  createdAt?: string | null
+  userRole?: string | null
 }
 
 export interface Invitation {
   id: string
   email: string
-  org_id?: string
-  division_id?: string
-  org_name?: string
-  division_name?: string
+  orgId?: string | null
+  divisionId?: string | null
+  orgName?: string | null
+  divisionName?: string | null
   role: string
-  message?: string
+  message?: string | null
   status: string
-  expires_at?: string
-  created_at: string
-  updated_at?: string
-  accepted_at?: string
-  declined_at?: string
-  token?: string
-  inviter_id?: string
-  inviter_name?: string
+  expiresAt?: string | null
+  createdAt: string
+  updatedAt?: string | null
+  acceptedAt?: string | null
+  declinedAt?: string | null
+  token?: string | null
+  inviterId?: string | null
+  inviterName?: string | null
 }
 
 export interface InvitationEnvelope {
@@ -322,8 +330,8 @@ export const useDeclineInvitation = () => {
     onSuccess: (invitation) => {
       toast({
         title: 'Invitation declined',
-        description: invitation?.org_name
-          ? `We'll let ${invitation.org_name} know you passed.`
+        description: invitation?.orgName
+          ? `We'll let ${invitation.orgName} know you passed.`
           : 'The invitation has been declined.',
       })
 

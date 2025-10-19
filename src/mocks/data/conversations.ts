@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { OrganizationDivision } from '@/mocks/data/users'
+import type { WorkspaceChannel, ChannelVisibility } from '@/modules/workspace/types'
 
 const DIVISION_KEYS = ['marketing', 'engineering', 'design', 'product', 'research'] as const
 
@@ -8,17 +9,10 @@ export type DivisionKey = typeof DIVISION_KEYS[number]
 export type DivisionScope = DivisionKey | 'all'
 export type PresenceStatus = 'online' | 'away' | 'offline'
 
-export interface MockChannel {
-  id: string
-  name: string
-  type: 'public' | 'private'
-  topic: string
-  memberCount: number
+export interface MockChannel extends WorkspaceChannel {
+  // Additional mock-specific fields for filtering
   orgIds: Array<string> | 'all'
   divisions: DivisionScope[]
-  isMuted: boolean
-  isFavorite: boolean
-  unreadCount: number
 }
 
 export interface ChannelAttachment {
@@ -137,74 +131,116 @@ const createSeedData = (): MockConversationState => {
     {
       id: 'general',
       name: 'general',
-      type: 'public',
+      slug: 'general',
+      channelType: 'public',
       topic: 'Company-wide announcements and discussions',
       memberCount: 48,
       orgIds: 'all',
       divisions: ['all'],
       unreadCount: 5,
       isFavorite: true,
-      isMuted: false
+      isMuted: false,
+      // WorkspaceChannel required fields
+      orgId: 'mock-org-id',
+      divisionId: null,
+      description: 'Company-wide announcements and discussions',
+      isTemplate: false,
+      updatedAt: new Date().toISOString()
     },
     {
       id: 'development',
       name: 'development',
-      type: 'public',
+      slug: 'development',
+      channelType: 'public',
       topic: 'Development team discussions and code reviews',
       memberCount: 22,
       orgIds: 'all',
       divisions: ['engineering', 'product'],
       unreadCount: 3,
       isFavorite: true,
-      isMuted: false
+      isMuted: false,
+      // WorkspaceChannel required fields
+      orgId: 'mock-org-id',
+      divisionId: 'engineering',
+      description: 'Development team discussions and code reviews',
+      isTemplate: false,
+      updatedAt: new Date().toISOString()
     },
     {
       id: 'design-crits',
       name: 'design-crits',
-      type: 'public',
+      slug: 'design-crits',
+      channelType: 'public',
       topic: 'Design collaboration and weekly crits',
       memberCount: 18,
       orgIds: 'all',
       divisions: ['design'],
       unreadCount: 0,
       isFavorite: false,
-      isMuted: true
+      isMuted: true,
+      // WorkspaceChannel required fields
+      orgId: 'mock-org-id',
+      divisionId: 'design',
+      description: 'Design collaboration and weekly crits',
+      isTemplate: false,
+      updatedAt: new Date().toISOString()
     },
     {
       id: 'launch-lab',
       name: 'launch-lab',
-      type: 'private',
+      slug: 'launch-lab',
+      channelType: 'private',
       topic: 'Campaign planning and GTM experiments',
       memberCount: 14,
       orgIds: 'all',
       divisions: ['marketing'],
       unreadCount: 2,
       isFavorite: true,
-      isMuted: false
+      isMuted: false,
+      // WorkspaceChannel required fields
+      orgId: 'mock-org-id',
+      divisionId: 'marketing',
+      description: 'Campaign planning and GTM experiments',
+      isTemplate: false,
+      updatedAt: new Date().toISOString()
     },
     {
       id: 'research-desk',
       name: 'research-desk',
-      type: 'private',
+      slug: 'research-desk',
+      channelType: 'private',
       topic: 'User interview insights and lab updates',
       memberCount: 8,
       orgIds: 'all',
       divisions: ['research'],
       unreadCount: 1,
       isFavorite: false,
-      isMuted: false
+      isMuted: false,
+      // WorkspaceChannel required fields
+      orgId: 'mock-org-id',
+      divisionId: 'research',
+      description: 'User interview insights and lab updates',
+      isTemplate: false,
+      updatedAt: new Date().toISOString()
     },
     {
       id: 'product-strategy',
       name: 'product-strategy',
-      type: 'public',
+      slug: 'product-strategy',
+      channelType: 'public',
       topic: 'Product roadmap alignment and priorities',
       memberCount: 26,
       orgIds: 'all',
       divisions: ['product'],
       unreadCount: 4,
       isFavorite: true,
-      isMuted: false
+      isMuted: false,
+      // WorkspaceChannel required fields
+      orgId: 'mock-org-id',
+      divisionId: 'product',
+      description: 'Product roadmap alignment and priorities',
+      isTemplate: false,
+      updatedAt: new Date().toISOString()
     }
   ]
 

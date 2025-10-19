@@ -158,7 +158,7 @@ export default function ChannelPage() {
       {/* Header */}
       <div className="h-14 border-b border-border bg-background px-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          {channel.type === 'private' ? (
+          {channel.channelType === 'private' ? (
             <Lock className="h-5 w-5 text-muted-foreground" />
           ) : (
             <Hash className="h-5 w-5 text-muted-foreground" />

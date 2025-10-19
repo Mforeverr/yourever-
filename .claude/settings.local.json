@@ -43,7 +43,8 @@
       "Read(//home/eldrie/Yourever1/yourever/**)",
       "mcp__supabase__list_extensions",
       "Bash(npx eslint:*)",
-      "Bash(timeout 10s npm run dev:*)"
+      "Bash(timeout 10s npm run dev:*)",
+      "Bash(find:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

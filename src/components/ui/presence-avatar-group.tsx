@@ -6,7 +6,7 @@ interface PresenceAvatarGroupProps {
   users: Array<{
     id: string
     name: string
-    avatar?: string
+    avatar?: string | null
     status?: 'online' | 'away' | 'offline'
   }>
   max?: number
@@ -22,7 +22,7 @@ function PresenceAvatarGroup({ users, max = 5, className }: PresenceAvatarGroupP
       {visibleUsers.map((user, index) => (
         <div key={user.id} className="relative" style={{ zIndex: max - index }}>
           <Avatar className="size-8 border-2 border-background">
-            <AvatarImage src={user.avatar} alt={user.name} />
+            <AvatarImage src={user.avatar || undefined} alt={user.name} />
             <AvatarFallback className="text-xs">
               {user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
             </AvatarFallback>

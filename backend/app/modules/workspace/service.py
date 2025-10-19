@@ -1,4 +1,14 @@
-"""Workspace service orchestrating data retrieval, caching, and templates."""
+# Author: Eldrie (CTO Dev)
+# Date: 2025-10-20
+# Role: Backend
+
+"""
+Workspace service with comprehensive scope validation and security.
+
+This service implements secure workspace management operations that respect
+organization and division boundaries while following the Open/Closed Principle.
+All operations are scoped to prevent cross-tenant data access.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +22,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...dependencies import CurrentPrincipal
+from ...core.scope_integration import ScopedService
+from ...core.scope import ScopeContext
 from ..organizations.schemas import OrganizationDivision, OrganizationResponse
 from .repository import WorkspacePermissionRepository, WorkspaceRepository
 from .schemas import (
@@ -60,8 +72,14 @@ class WorkspaceCache:
                 self._store.pop(key, None)
 
 
-class WorkspaceService:
-    """Facilitates workspace API operations with caching and validation."""
+class WorkspaceService(ScopedService):
+    """
+    Encapsulates secure workspace domain behaviors with scope validation.
+
+    This service extends ScopedService to automatically integrate with the
+    scope guard system, ensuring all workspace operations respect organization
+    and division boundaries.
+    """
 
     def __init__(
         self,
@@ -69,10 +87,50 @@ class WorkspaceService:
         permission_repository: WorkspacePermissionRepository,
         cache: Optional[WorkspaceCache] = None,
     ) -> None:
+        super().__init__()
         self._repository = repository
         self._permission_repository = permission_repository
         self._cache = cache or WorkspaceCache()
 
+    # Organization-scoped methods
+    async def get_overview_for_organization(
+        self,
+        *,
+        principal: CurrentPrincipal,
+        org_id: str,
+        division_id: Optional[str],
+        include_templates: bool,
+    ) -> WorkspaceOverview:
+        """
+        Get workspace overview for an organization with scope validation.
+
+        This method validates organization access and optionally division access
+        before returning the overview.
+        """
+        # Base validation for organization access
+        scope_ctx = await self.validate_organization_access(
+            principal, org_id, {"workspace:read"}
+        )
+
+        # Additional validation if division is specified
+        if division_id:
+            scope_ctx = await self.validate_division_access(
+                principal, org_id, division_id, {"workspace:read"}
+            )
+
+        cache_key = f"overview:{org_id}:{division_id or 'all'}:{'templates' if include_templates else 'live'}:{principal.id}"
+        cached = await self._cache.get(cache_key)
+        if cached:
+            return cached  # type: ignore[return-value]
+        overview = await self._repository.fetch_overview(
+            org_id=org_id,
+            division_id=division_id,
+            include_templates=include_templates,
+        )
+        await self._cache.set(cache_key, overview)
+        return overview
+
+    # Legacy method for backward compatibility
     async def get_overview(
         self,
         *,
@@ -81,6 +139,11 @@ class WorkspaceService:
         division_id: Optional[str],
         include_templates: bool,
     ) -> WorkspaceOverview:
+        """
+        Legacy method - get overview with old permission validation.
+
+        DEPRECATED: Use get_overview_for_organization instead for better security.
+        """
         await self._permission_repository.ensure_membership(principal, org_id)
         await self._permission_repository.ensure_division_membership(principal, org_id, division_id)
         cache_key = f"overview:{org_id}:{division_id or 'all'}:{'templates' if include_templates else 'live'}:{principal.id}"
@@ -95,6 +158,39 @@ class WorkspaceService:
         await self._cache.set(cache_key, overview)
         return overview
 
+    async def list_channels_for_organization(
+        self,
+        *,
+        principal: CurrentPrincipal,
+        org_id: str,
+        division_id: Optional[str],
+        include_templates: bool,
+        page: int,
+        page_size: int,
+    ) -> ChannelListResponse:
+        """
+        List channels for an organization with scope validation.
+        """
+        # Base validation for organization access
+        scope_ctx = await self.validate_organization_access(
+            principal, org_id, {"channel:read"}
+        )
+
+        # Additional validation if division is specified
+        if division_id:
+            scope_ctx = await self.validate_division_access(
+                principal, org_id, division_id, {"channel:read"}
+            )
+
+        return await self._repository.list_channels(
+            org_id=org_id,
+            division_id=division_id,
+            include_templates=include_templates,
+            page=page,
+            page_size=page_size,
+        )
+
+    # Legacy method for backward compatibility
     async def list_channels(
         self,
         *,
@@ -115,6 +211,177 @@ class WorkspaceService:
             page_size=page_size,
         )
 
+    async def fetch_activity_feed_for_organization(
+        self,
+        *,
+        principal: CurrentPrincipal,
+        org_id: str,
+        division_id: Optional[str],
+        include_templates: bool,
+        limit: int,
+        cursor: Optional[str],
+    ) -> ActivityFeedResponse:
+        """
+        Fetch activity feed for an organization with scope validation.
+        """
+        # Base validation for organization access
+        scope_ctx = await self.validate_organization_access(
+            principal, org_id, {"activity:read"}
+        )
+
+        # Additional validation if division is specified
+        if division_id:
+            scope_ctx = await self.validate_division_access(
+                principal, org_id, division_id, {"activity:read"}
+            )
+
+        return await self._repository.fetch_activity_feed(
+            org_id=org_id,
+            division_id=division_id,
+            include_templates=include_templates,
+            limit=limit,
+            cursor=cursor,
+        )
+
+    async def create_project_for_organization(
+        self,
+        *,
+        principal: CurrentPrincipal,
+        org_id: str,
+        payload: ProjectCreatePayload,
+    ) -> WorkspaceProject:
+        """
+        Create a project for an organization with scope validation.
+        """
+        # Base validation for organization access
+        scope_ctx = await self.validate_organization_access(
+            principal, org_id, {"project:create"}
+        )
+
+        # Additional validation if division is specified
+        if payload.division_id:
+            scope_ctx = await self.validate_division_access(
+                principal, org_id, payload.division_id, {"project:create"}
+            )
+
+        project = await self._repository.create_project(org_id=org_id, payload=payload)
+        await self._cache.clear_scope(org_id)
+        return project
+
+    async def update_project_for_organization(
+        self,
+        *,
+        principal: CurrentPrincipal,
+        project_id: str,
+        org_id: str,
+        payload: ProjectUpdatePayload,
+    ) -> WorkspaceProject:
+        """
+        Update a project for an organization with scope validation.
+        """
+        # Base validation for organization access
+        scope_ctx = await self.validate_organization_access(
+            principal, org_id, {"project:update"}
+        )
+
+        # Additional validation if division is specified
+        if payload.division_id:
+            scope_ctx = await self.validate_division_access(
+                principal, org_id, payload.division_id, {"project:update"}
+            )
+
+        project = await self._repository.update_project(project_id=project_id, payload=payload)
+        await self._cache.clear_scope(org_id)
+        return project
+
+    async def delete_project_for_organization(
+        self,
+        *,
+        principal: CurrentPrincipal,
+        project_id: str,
+        org_id: str,
+    ) -> None:
+        """
+        Delete a project for an organization with scope validation.
+        """
+        # Validate organization access
+        scope_ctx = await self.validate_organization_access(
+            principal, org_id, {"project:delete"}
+        )
+
+        await self._repository.delete_project(project_id=project_id)
+        await self._cache.clear_scope(org_id)
+
+    async def create_channel_for_organization(
+        self,
+        *,
+        principal: CurrentPrincipal,
+        org_id: str,
+        payload: ChannelCreatePayload,
+    ) -> WorkspaceChannel:
+        """
+        Create a channel for an organization with scope validation.
+        """
+        # Base validation for organization access
+        scope_ctx = await self.validate_organization_access(
+            principal, org_id, {"channel:create"}
+        )
+
+        # Additional validation if division is specified
+        if payload.division_id:
+            scope_ctx = await self.validate_division_access(
+                principal, org_id, payload.division_id, {"channel:create"}
+            )
+
+        channel = await self._repository.create_channel(org_id=org_id, payload=payload)
+        await self._cache.clear_scope(org_id)
+        return channel
+
+    async def update_channel_for_organization(
+        self,
+        *,
+        principal: CurrentPrincipal,
+        channel_id: str,
+        org_id: str,
+        payload: ChannelUpdatePayload,
+    ) -> WorkspaceChannel:
+        """
+        Update a channel for an organization with scope validation.
+        """
+        # Base validation for organization access
+        scope_ctx = await self.validate_organization_access(
+            principal, org_id, {"channel:update"}
+        )
+
+        # Additional validation if division is specified
+        if payload.division_id:
+            scope_ctx = await self.validate_division_access(
+                principal, org_id, payload.division_id, {"channel:update"}
+            )
+
+        channel = await self._repository.update_channel(channel_id=channel_id, payload=payload)
+        await self._cache.clear_scope(org_id)
+        return channel
+
+    async def delete_channel_for_organization(
+        self,
+        *,
+        principal: CurrentPrincipal,
+        channel_id: str,
+        org_id: str,
+    ) -> None:
+        """
+        Delete a channel for an organization with scope validation.
+        """
+        # Validate organization access
+        scope_ctx = await self.validate_organization_access(
+            principal, org_id, {"channel:delete"}
+        )
+
+        await self._repository.delete_channel(channel_id=channel_id)
+        await self._cache.clear_scope(org_id)
+
+    # Legacy methods for backward compatibility
     async def fetch_activity_feed(
         self,
         *,
@@ -212,10 +479,17 @@ class WorkspaceService:
         await self._cache.clear_scope(org_id)
 
 
-class WorkspaceTemplateService:
-    """Seeds template data for newly created workspaces."""
+class WorkspaceTemplateService(ScopedService):
+    """
+    Encapsulates secure workspace template behaviors with scope validation.
+
+    This service extends ScopedService to automatically integrate with the
+    scope guard system, ensuring all template operations respect organization
+    and division boundaries.
+    """
 
     def __init__(self, session: AsyncSession) -> None:
+        super().__init__()
         self._session = session
 
     async def _should_seed(self, org_id: str) -> bool:
@@ -235,10 +509,21 @@ class WorkspaceTemplateService:
     async def seed_for_organization(
         self,
         *,
+        principal: CurrentPrincipal,
         organization: OrganizationResponse,
         divisions: Sequence[OrganizationDivision],
-        seeded_by: Optional[str],
+        seeded_by: Optional[str] = None,
     ) -> None:
+        """
+        Seed template data for an organization with scope validation.
+
+        This method validates that the principal has admin access to the organization
+        before seeding template data.
+        """
+        # Validate organization admin access
+        scope_ctx = await self.validate_organization_access(
+            principal, organization.id, {"workspace:admin"}
+        )
         if not await self._should_seed(organization.id):
             logger.info(
                 "workspace.templates.skip", extra={"org_id": organization.id, "reason": "already-populated"}
@@ -449,7 +734,7 @@ class WorkspaceTemplateService:
                     "activities": activities_json,
                     "template_source": template_source,
                     "timestamp": timestamp,
-                    "seeded_by": seeded_by,
+                    "seeded_by": seeded_by or principal.id,
                     "seeded_by_name": organization.name,
                 },
             )

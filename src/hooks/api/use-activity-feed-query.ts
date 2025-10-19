@@ -1,6 +1,6 @@
 'use client'
 
-import { useInfiniteQuery, type UseInfiniteQueryOptions } from '@tanstack/react-query'
+import { useQuery, type UseQueryOptions } from '@tanstack/react-query'
 import { fetchActivityFeed } from '@/lib/api/workspace'
 import type { ActivityFeedResponse } from '@/modules/workspace/types'
 
@@ -14,8 +14,8 @@ export const buildActivityFeedKey = (
 
 interface UseActivityFeedOptions
   extends Omit<
-    UseInfiniteQueryOptions<ActivityFeedResponse, unknown, ActivityFeedResponse, ActivityFeedResponse, ActivityFeedKey>,
-    'queryKey' | 'queryFn' | 'initialPageParam'
+    UseQueryOptions<ActivityFeedResponse, unknown, ActivityFeedResponse, ActivityFeedKey>,
+    'queryKey' | 'queryFn'
   > {
   includeTemplates?: boolean
   limit?: number
@@ -29,18 +29,16 @@ export const useActivityFeedQuery = (
   const includeTemplates = options?.includeTemplates ?? true
   const limit = options?.limit ?? 20
 
-  return useInfiniteQuery({
+  return useQuery({
     enabled: Boolean(orgId && divisionId),
     queryKey: buildActivityFeedKey(orgId ?? 'unknown', divisionId ?? 'unknown', includeTemplates),
-    queryFn: ({ pageParam, signal }) =>
+    queryFn: ({ signal }) =>
       fetchActivityFeed(
         orgId as string,
         divisionId as string,
-        { includeTemplates, limit, cursor: pageParam as string | undefined },
+        { includeTemplates, limit, cursor: undefined },
         signal,
       ),
-    initialPageParam: undefined,
-    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     ...options,
   })
 }

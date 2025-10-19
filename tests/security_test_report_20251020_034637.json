@@ -1,0 +1,182 @@
+{
+  "test_run": {
+    "timestamp": "2025-10-19T20:46:37.832532+00:00",
+    "duration_seconds": 0.06358599662780762,
+    "python_version": "3.13.3 (main, Aug 14 2025, 11:53:40) [GCC 14.2.0]",
+    "platform": "posix"
+  },
+  "summary": {
+    "total_tests": 0,
+    "passed_tests": 0,
+    "failed_tests": 0,
+    "skipped_tests": 0,
+    "error_tests": 0,
+    "success_rate": 0.0
+  },
+  "categories": {
+    "cross_tenant_security": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "tests": [],
+      "duration_seconds": 0.010857343673706055
+    },
+    "division_scope_security": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "tests": [],
+      "duration_seconds": 0.009958267211914062
+    },
+    "api_endpoint_security": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "tests": [],
+      "duration_seconds": 0.010122060775756836
+    },
+    "service_layer_security": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "tests": [],
+      "duration_seconds": 0.010848045349121094
+    },
+    "url_manipulation_security": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "tests": [],
+      "duration_seconds": 0.010353326797485352
+    },
+    "session_management_security": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "tests": [],
+      "duration_seconds": 0.01060938835144043
+    }
+  },
+  "security_violations": [],
+  "performance_metrics": {},
+  "recommendations": [
+    {
+      "priority": "MEDIUM",
+      "category": "coverage",
+      "title": "Incomplete Security Coverage",
+      "description": "Security test success rate is 0.0%. Aim for 100% security test coverage.",
+      "action": "Address all security test failures to ensure comprehensive protection."
+    }
+  ],
+  "detailed_results": [
+    {
+      "category": "cross_tenant_security",
+      "duration_seconds": 0.010857343673706055,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "/usr/bin/python3: No module named pytest\n",
+      "test_results": {
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "errors": 0
+      }
+    },
+    {
+      "category": "division_scope_security",
+      "duration_seconds": 0.009958267211914062,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "/usr/bin/python3: No module named pytest\n",
+      "test_results": {
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "errors": 0
+      }
+    },
+    {
+      "category": "api_endpoint_security",
+      "duration_seconds": 0.010122060775756836,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "/usr/bin/python3: No module named pytest\n",
+      "test_results": {
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "errors": 0
+      }
+    },
+    {
+      "category": "service_layer_security",
+      "duration_seconds": 0.010848045349121094,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "/usr/bin/python3: No module named pytest\n",
+      "test_results": {
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "errors": 0
+      }
+    },
+    {
+      "category": "url_manipulation_security",
+      "duration_seconds": 0.010353326797485352,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "/usr/bin/python3: No module named pytest\n",
+      "test_results": {
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "errors": 0
+      }
+    },
+    {
+      "category": "session_management_security",
+      "duration_seconds": 0.01060938835144043,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "/usr/bin/python3: No module named pytest\n",
+      "test_results": {
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "errors": 0
+      }
+    }
+  ],
+  "security_validation": {
+    "p0_fixes_validated": {
+      "multi_tenant_isolation": false,
+      "division_level_enforcement": false,
+      "api_endpoint_security": false,
+      "service_layer_validation": false,
+      "url_manipulation_protection": false,
+      "session_management_security": false
+    },
+    "overall_security_status": "NEEDS_ATTENTION",
+    "critical_issues": 0,
+    "security_coverage": "0.0%"
+  }
+}

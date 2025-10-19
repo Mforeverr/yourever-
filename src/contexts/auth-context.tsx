@@ -51,7 +51,7 @@ interface AuthContextValue {
   markOnboardingComplete: () => void
   onboardingFeatureFlags: Record<string, boolean>
   isOnboardingFeatureEnabled: (flag: string) => boolean
-  userStatus: ReturnType<typeof useCurrentUserQuery>['status']
+  userStatus: 'pending' | 'error' | 'success'
   userError: ReturnType<typeof useCurrentUserQuery>['error']
   refetchUser: () => Promise<void>
 }
@@ -141,13 +141,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
-    if (userStatus === 'success' && sessionSnapshot) {
+    if (userStatus !== 'error' && userStatus !== 'pending' && sessionSnapshot) {
       sessionSnapshotRef.current = sessionSnapshot
       setRemoteFeatureFlags({ ...sessionSnapshot.featureFlags })
       return
     }
 
-    if (userStatus === 'success' && !sessionSnapshot) {
+    if (strategy === 'supabase' && (userStatus === 'error' || userStatus === 'pending') && !sessionSnapshot) {
       setRemoteFeatureFlags({})
       sessionSnapshotRef.current = null
     }

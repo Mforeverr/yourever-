@@ -35,7 +35,7 @@ export function InvitationCard({ invitation, onAccept, onDecline, compact = fals
     if (error instanceof ApiError) {
       return typeof error.body?.detail === 'string'
         ? error.body.detail
-        : (error.body?.detail?.message as string) ?? error.message
+        : error.message
     }
     return error instanceof Error ? error.message : 'Something went wrong. Please try again.'
   }
@@ -88,8 +88,8 @@ export function InvitationCard({ invitation, onAccept, onDecline, compact = fals
     }
   }
 
-  const isExpired = invitation.expires_at
-    ? new Date(invitation.expires_at) < new Date()
+  const isExpired = invitation.expiresAt
+    ? new Date(invitation.expiresAt) < new Date()
     : false
 
   const isPending = invitation.status === 'pending'
@@ -106,14 +106,14 @@ export function InvitationCard({ invitation, onAccept, onDecline, compact = fals
           ? 'Member access'
           : invitation.role
 
-  const inviterName = invitation.inviter_name || 'A teammate'
-  const organizationName = invitation.org_name || 'this organization'
-  const invitedAgo = formatDistanceToNow(new Date(invitation.created_at), { addSuffix: true })
-  const expiresIn = invitation.expires_at
-    ? formatDistanceToNow(new Date(invitation.expires_at), { addSuffix: true })
+  const inviterName = invitation.inviterName || 'A teammate'
+  const organizationName = invitation.orgName || 'this organization'
+  const invitedAgo = formatDistanceToNow(new Date(invitation.createdAt), { addSuffix: true })
+  const expiresIn = invitation.expiresAt
+    ? formatDistanceToNow(new Date(invitation.expiresAt), { addSuffix: true })
     : null
 
-  const divisionLabel = invitation.division_name ?? 'Any division'
+  const divisionLabel = invitation.divisionName ?? 'Any division'
 
   if (compact) {
     return (
@@ -156,7 +156,7 @@ export function InvitationCard({ invitation, onAccept, onDecline, compact = fals
                   {isExpired ? 'Expired invitation' : 'Workspace invitation'}
                 </p>
                 <h3 className="text-lg font-semibold text-foreground">
-                  {invitation.org_name ?? 'Pending workspace'}
+                  {invitation.orgName ?? 'Pending workspace'}
                 </h3>
                 <p className="text-sm text-muted-foreground">
                   {inviterName} is inviting you to "{organizationName}".
@@ -176,7 +176,7 @@ export function InvitationCard({ invitation, onAccept, onDecline, compact = fals
               <div className="mt-2 flex items-center gap-2 text-foreground">
                 <Avatar className="h-6 w-6">
                   <AvatarFallback className="text-xs">
-                    {invitation.inviter_name?.charAt(0) || '?'}
+                    {invitation.inviterName?.charAt(0) || '?'}
                   </AvatarFallback>
                 </Avatar>
                 <span className="truncate text-sm">{inviterName}</span>
@@ -313,8 +313,8 @@ export function InvitationCard({ invitation, onAccept, onDecline, compact = fals
                 {isExpired ? 'Expired Invitation' : 'Join Team'}
               </CardTitle>
               <CardDescription>
-                You've been invited to join {invitation.org_name}
-                {invitation.division_name && ` (${invitation.division_name})`}
+                You've been invited to join {invitation.orgName}
+                {invitation.divisionName && ` (${invitation.divisionName})`}
               </CardDescription>
             </div>
           </div>
@@ -332,19 +332,19 @@ export function InvitationCard({ invitation, onAccept, onDecline, compact = fals
             <div className="flex items-center space-x-2">
               <Avatar className="h-5 w-5">
                 <AvatarFallback className="text-xs">
-                  {invitation.inviter_name?.charAt(0) || '?'}
+                  {invitation.inviterName?.charAt(0) || '?'}
                 </AvatarFallback>
               </Avatar>
-              <span>{invitation.inviter_name || 'Someone'}</span>
+              <span>{invitation.inviterName || 'Someone'}</span>
             </div>
           </div>
 
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Invited:</span>
-            <span>{formatDistanceToNow(new Date(invitation.created_at), { addSuffix: true })}</span>
+            <span>{formatDistanceToNow(new Date(invitation.createdAt), { addSuffix: true })}</span>
           </div>
 
-          {invitation.expires_at && (
+          {invitation.expiresAt && (
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Expires:</span>
               <div className="flex items-center space-x-1">
@@ -352,7 +352,7 @@ export function InvitationCard({ invitation, onAccept, onDecline, compact = fals
                 <span className={cn(
                   isExpired ? "text-orange-600" : "text-muted-foreground"
                 )}>
-                  {formatDistanceToNow(new Date(invitation.expires_at), { addSuffix: true })}
+                  {formatDistanceToNow(new Date(invitation.expiresAt), { addSuffix: true })}
                 </span>
               </div>
             </div>

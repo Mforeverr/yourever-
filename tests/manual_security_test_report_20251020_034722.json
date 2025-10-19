@@ -1,0 +1,77 @@
+{
+  "test_run": {
+    "timestamp": "2025-10-19T20:47:22.073088+00:00",
+    "duration_seconds": 0.005318641662597656,
+    "python_version": "3.13.3 (main, Aug 14 2025, 11:53:40) [GCC 14.2.0]"
+  },
+  "summary": {
+    "total_tests": 6,
+    "passed_tests": 0,
+    "failed_tests": 6,
+    "error_tests": 0,
+    "success_rate": 0.0
+  },
+  "categories": {
+    "core_scope_guard": {
+      "total": 5,
+      "passed": 0,
+      "failed": 5,
+      "errors": 0,
+      "tests": []
+    },
+    "service_layer_security": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "errors": 0,
+      "tests": []
+    }
+  },
+  "security_validations": {},
+  "recommendations": [
+    {
+      "priority": "HIGH",
+      "title": "Security Test Failures",
+      "description": "6 security tests failed.",
+      "action": "Review and fix all failed security tests."
+    }
+  ],
+  "errors": [
+    {
+      "test_name": "Organization Access Validation",
+      "error": "No module named 'pydantic'",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/eldrie/Yourever)/tests/manual_security_tests.py\", line 57, in run_test\n    result = test_func(*args, **kwargs)\n  File \"/home/eldrie/Yourever)/tests/manual_security_tests.py\", line 97, in test_scope_guard_organization_access\n    from backend.app.core.scope import ScopeGuard, ScopeDecision, ScopeViolationType\n  File \"/home/eldrie/Yourever)/backend/app/core/__init__.py\", line 3, in <module>\n    from .config import Settings, get_settings\n  File \"/home/eldrie/Yourever)/backend/app/core/config.py\", line 16, in <module>\n    from pydantic import BaseModel, Field\nModuleNotFoundError: No module named 'pydantic'\n",
+      "timestamp": "2025-10-19T20:47:22.075666+00:00"
+    },
+    {
+      "test_name": "Division Access Validation",
+      "error": "No module named 'pydantic'",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/eldrie/Yourever)/tests/manual_security_tests.py\", line 57, in run_test\n    result = test_func(*args, **kwargs)\n  File \"/home/eldrie/Yourever)/tests/manual_security_tests.py\", line 153, in test_scope_guard_division_access\n    from backend.app.core.scope import ScopeGuard, ScopeDecision\n  File \"/home/eldrie/Yourever)/backend/app/core/__init__.py\", line 3, in <module>\n    from .config import Settings, get_settings\n  File \"/home/eldrie/Yourever)/backend/app/core/config.py\", line 16, in <module>\n    from pydantic import BaseModel, Field\nModuleNotFoundError: No module named 'pydantic'\n",
+      "timestamp": "2025-10-19T20:47:22.076271+00:00"
+    },
+    {
+      "test_name": "Cross-Organization Blocking",
+      "error": "No module named 'pydantic'",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/eldrie/Yourever)/tests/manual_security_tests.py\", line 57, in run_test\n    result = test_func(*args, **kwargs)\n  File \"/home/eldrie/Yourever)/tests/manual_security_tests.py\", line 196, in test_cross_organization_blocking\n    from backend.app.core.scope import ScopeGuard\n  File \"/home/eldrie/Yourever)/backend/app/core/__init__.py\", line 3, in <module>\n    from .config import Settings, get_settings\n  File \"/home/eldrie/Yourever)/backend/app/core/config.py\", line 16, in <module>\n    from pydantic import BaseModel, Field\nModuleNotFoundError: No module named 'pydantic'\n",
+      "timestamp": "2025-10-19T20:47:22.076842+00:00"
+    },
+    {
+      "test_name": "Scope Cache Isolation",
+      "error": "No module named 'pydantic'",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/eldrie/Yourever)/tests/manual_security_tests.py\", line 57, in run_test\n    result = test_func(*args, **kwargs)\n  File \"/home/eldrie/Yourever)/tests/manual_security_tests.py\", line 273, in test_scope_cache_isolation\n    from backend.app.core.scope import ScopeGuard, ScopeContext, ScopeDecision\n  File \"/home/eldrie/Yourever)/backend/app/core/__init__.py\", line 3, in <module>\n    from .config import Settings, get_settings\n  File \"/home/eldrie/Yourever)/backend/app/core/config.py\", line 16, in <module>\n    from pydantic import BaseModel, Field\nModuleNotFoundError: No module named 'pydantic'\n",
+      "timestamp": "2025-10-19T20:47:22.077358+00:00"
+    },
+    {
+      "test_name": "Rate Limiting",
+      "error": "No module named 'pydantic'",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/eldrie/Yourever)/tests/manual_security_tests.py\", line 57, in run_test\n    result = test_func(*args, **kwargs)\n  File \"/home/eldrie/Yourever)/tests/manual_security_tests.py\", line 313, in test_scope_validation_rate_limiting\n    from backend.app.core.scope import ScopeGuard, ScopeRateLimiter\n  File \"/home/eldrie/Yourever)/backend/app/core/__init__.py\", line 3, in <module>\n    from .config import Settings, get_settings\n  File \"/home/eldrie/Yourever)/backend/app/core/config.py\", line 16, in <module>\n    from pydantic import BaseModel, Field\nModuleNotFoundError: No module named 'pydantic'\n",
+      "timestamp": "2025-10-19T20:47:22.077878+00:00"
+    },
+    {
+      "test_name": "Scoped Service Validation",
+      "error": "No module named 'pydantic'",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/eldrie/Yourever)/tests/manual_security_tests.py\", line 57, in run_test\n    result = test_func(*args, **kwargs)\n  File \"/home/eldrie/Yourever)/tests/manual_security_tests.py\", line 230, in test_scoped_service_validation\n    from backend.app.core.scope_integration import ScopedService\n  File \"/home/eldrie/Yourever)/backend/app/core/__init__.py\", line 3, in <module>\n    from .config import Settings, get_settings\n  File \"/home/eldrie/Yourever)/backend/app/core/config.py\", line 16, in <module>\n    from pydantic import BaseModel, Field\nModuleNotFoundError: No module named 'pydantic'\n",
+      "timestamp": "2025-10-19T20:47:22.078411+00:00"
+    }
+  ]
+}

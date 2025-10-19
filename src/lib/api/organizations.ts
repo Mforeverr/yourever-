@@ -21,7 +21,7 @@ export const fetchPendingInvitations = (signal?: AbortSignal): Promise<HubInvita
   return httpRequest('GET', endpoint, {
     signal,
     meta: { endpoint, method: 'GET' },
-  }).then((response) => (response?.invitations ?? []) as HubInvitation[])
+  }).then((response) => (response as { invitations?: HubInvitation[] })?.invitations ?? [])
 }
 
 export const acceptOrganizationInvitation = (

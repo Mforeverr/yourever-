@@ -26,7 +26,26 @@ class SQLAlchemyHuddleRepository:
         self._session = session
 
     async def list_upcoming(self, principal: CurrentPrincipal) -> list[HuddleSummary]:
-        query = select(HuddleModel).order_by(HuddleModel.scheduled_at.asc())
+        """
+        CRITICAL SECURITY FIX: Apply proper scope filtering to prevent multi-tenant data leakage.
+
+        This method was previously returning ALL huddles in the database without filtering
+        by organization or division scope - a critical security vulnerability.
+        """
+        if not principal.org_ids:
+            # User has no organization access - return empty list
+            return []
+
+        # Build query with organization scope filtering
+        query = select(HuddleModel).where(HuddleModel.org_id.in_(principal.org_ids))
+
+        # Apply division scope filtering if active division is set
+        if principal.active_division_id:
+            query = query.where(HuddleModel.division_id == principal.active_division_id)
+
+        # Order by scheduled time
+        query = query.order_by(HuddleModel.scheduled_at.asc())
+
         result = await self._session.execute(query)
         records = result.scalars().all()
         return [self._to_summary(record) for record in records]

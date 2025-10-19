@@ -88,3 +88,55 @@ class OnboardingSessionResponse(BaseModel):
 
 class OnboardingProgressUpdate(BaseModel):
     status: StoredOnboardingStatus
+
+
+class UserResponse(BaseModel):
+    """Response payload for a single user."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    email: str
+    name: Optional[str] = None
+    avatar_url: Optional[str] = Field(None, alias="avatarUrl")
+    created_at: str = Field(..., alias="createdAt")
+    updated_at: Optional[str] = Field(None, alias="updatedAt")
+
+
+class UserProfileResponse(BaseModel):
+    """Response payload for user profile with organizations."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    user: UserResponse
+    organizations: List[WorkspaceDivision]
+
+
+class UserListResponse(BaseModel):
+    """Response payload for a list of users."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    users: List[UserResponse]
+    total: int
+
+
+class UserProfileUpdateRequest(BaseModel):
+    """Request payload for updating user profile."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: Optional[str] = None
+    avatar_url: Optional[str] = Field(None, alias="avatarUrl")
+
+
+class UserInviteRequest(BaseModel):
+    """Request payload for inviting a user."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    email: str
+    name: Optional[str] = None
+    organization_id: str = Field(..., alias="organizationId")
+    division_id: Optional[str] = Field(None, alias="divisionId")
+    role: str = "member"

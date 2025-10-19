@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import type { WorkspaceProject } from '@/modules/workspace/types'
 
 const noopStorage = (): Storage => {
   const data = new Map<string, string>()
@@ -29,11 +30,8 @@ export type DivisionKey = 'marketing' | 'engineering' | 'design' | 'product' | '
 export type DivisionScope = DivisionKey | 'all'
 export type OrgScope = Array<string> | 'all'
 
-export interface MockWorkspaceProject {
-  id: string
-  name: string
-  badgeCount: number
-  dotColor: string
+export interface MockWorkspaceProject extends WorkspaceProject {
+  // Additional mock-specific fields for filtering
   orgIds: OrgScope
   divisions: DivisionScope[]
 }
@@ -90,13 +88,118 @@ const toArray = <T>(record: Record<string, T>) => Object.values(record)
 
 const seedProjects = (): Record<string, MockWorkspaceProject> => {
   const data: MockWorkspaceProject[] = [
-    { id: 'website-revamp', name: 'Website Revamp', badgeCount: 12, dotColor: 'bg-blue-500', orgIds: 'all', divisions: ['marketing', 'design'] },
-    { id: 'platform-infra', name: 'Platform Infrastructure', badgeCount: 9, dotColor: 'bg-orange-500', orgIds: 'all', divisions: ['engineering'] },
-    { id: 'growth-experiments', name: 'Growth Experiments', badgeCount: 7, dotColor: 'bg-pink-500', orgIds: 'all', divisions: ['marketing', 'product'] },
-    { id: 'design-system', name: 'Design System Refresh', badgeCount: 11, dotColor: 'bg-teal-500', orgIds: 'all', divisions: ['design', 'engineering'] },
-    { id: 'research-labs', name: 'Research Lab Setup', badgeCount: 4, dotColor: 'bg-emerald-500', orgIds: 'all', divisions: ['research'] },
-    { id: 'product-roadmap', name: '2025 Product Roadmap', badgeCount: 6, dotColor: 'bg-indigo-500', orgIds: 'all', divisions: ['product'] },
-    { id: 'company-allhands', name: 'Company All-Hands', badgeCount: 3, dotColor: 'bg-gray-500', orgIds: 'all', divisions: ['all'] }
+    {
+      id: 'website-revamp',
+      name: 'Website Revamp',
+      badgeCount: 12,
+      dotColor: 'bg-blue-500',
+      orgIds: 'all',
+      divisions: ['marketing', 'design'],
+      // WorkspaceProject required fields
+      orgId: 'mock-org-id',
+      divisionId: 'marketing',
+      description: 'Revamp the company website with modern design',
+      status: 'active',
+      defaultView: 'board',
+      isTemplate: false,
+      updatedAt: new Date().toISOString()
+    },
+    {
+      id: 'platform-infra',
+      name: 'Platform Infrastructure',
+      badgeCount: 9,
+      dotColor: 'bg-orange-500',
+      orgIds: 'all',
+      divisions: ['engineering'],
+      // WorkspaceProject required fields
+      orgId: 'mock-org-id',
+      divisionId: 'engineering',
+      description: 'Upgrade platform infrastructure for better performance',
+      status: 'active',
+      defaultView: 'board',
+      isTemplate: false,
+      updatedAt: new Date().toISOString()
+    },
+    {
+      id: 'growth-experiments',
+      name: 'Growth Experiments',
+      badgeCount: 7,
+      dotColor: 'bg-pink-500',
+      orgIds: 'all',
+      divisions: ['marketing', 'product'],
+      // WorkspaceProject required fields
+      orgId: 'mock-org-id',
+      divisionId: 'marketing',
+      description: 'Run growth experiments to improve user acquisition',
+      status: 'active',
+      defaultView: 'board',
+      isTemplate: false,
+      updatedAt: new Date().toISOString()
+    },
+    {
+      id: 'design-system',
+      name: 'Design System Refresh',
+      badgeCount: 11,
+      dotColor: 'bg-teal-500',
+      orgIds: 'all',
+      divisions: ['design', 'engineering'],
+      // WorkspaceProject required fields
+      orgId: 'mock-org-id',
+      divisionId: 'design',
+      description: 'Refresh the design system with new components',
+      status: 'active',
+      defaultView: 'board',
+      isTemplate: false,
+      updatedAt: new Date().toISOString()
+    },
+    {
+      id: 'research-labs',
+      name: 'Research Lab Setup',
+      badgeCount: 4,
+      dotColor: 'bg-emerald-500',
+      orgIds: 'all',
+      divisions: ['research'],
+      // WorkspaceProject required fields
+      orgId: 'mock-org-id',
+      divisionId: 'research',
+      description: 'Set up research lab for user testing',
+      status: 'active',
+      defaultView: 'board',
+      isTemplate: false,
+      updatedAt: new Date().toISOString()
+    },
+    {
+      id: 'product-roadmap',
+      name: '2025 Product Roadmap',
+      badgeCount: 6,
+      dotColor: 'bg-indigo-500',
+      orgIds: 'all',
+      divisions: ['product'],
+      // WorkspaceProject required fields
+      orgId: 'mock-org-id',
+      divisionId: 'product',
+      description: 'Define and execute 2025 product roadmap',
+      status: 'active',
+      defaultView: 'board',
+      isTemplate: false,
+      updatedAt: new Date().toISOString()
+    },
+    {
+      id: 'company-allhands',
+      name: 'Company All-Hands',
+      badgeCount: 3,
+      dotColor: 'bg-gray-500',
+      orgIds: 'all',
+      divisions: ['all'],
+      // WorkspaceProject required fields
+      orgId: 'mock-org-id',
+      divisionId: null,
+      description: 'Company all-hands meeting planning',
+      status: 'active',
+      defaultView: 'board',
+      isTemplate: false,
+      updatedAt: new Date().toISOString()
+    }
   ]
   return Object.fromEntries(data.map((project) => [project.id, project]))
 }

@@ -1,15 +1,21 @@
-# Author: Codex (Senior Backend Scaffold)
-# Date: 2025-10-11
+# Author: Eldrie (CTO Dev)
+# Date: 2025-10-20
 # Role: Backend
 
 """
-User service orchestrating repository access.
+User service with comprehensive scope validation and security.
+
+This service implements secure user management operations that respect
+organization and division boundaries while following the Open/Closed Principle.
+All operations are scoped to prevent cross-tenant data access.
 """
 
 import logging
 from typing import Any, Dict, List, Mapping, Optional
 
 from ...dependencies import CurrentPrincipal
+from ...core.scope_integration import ScopedService
+from ...core.scope import ScopeContext
 from .checksums import compute_status_checksum
 from .repository import UserRepository
 from .schemas import (
@@ -71,11 +77,21 @@ def _collect_changed_fields(
     return changed
 
 
-class UserService:
+class UserService(ScopedService):
+    """
+    Encapsulates secure user domain behaviors with scope validation.
+
+    This service extends ScopedService to automatically integrate with the
+    scope guard system, ensuring all user operations respect organization
+    and division boundaries.
+    """
+
     def __init__(self, repository: UserRepository) -> None:
+        super().__init__()
         self._repository = repository
 
     async def _ensure_user(self, principal: CurrentPrincipal) -> WorkspaceUser:
+        """Ensure user exists with scope validation."""
         user = await self._repository.get_user(principal.id)
         if user:
             await self._repository.record_scope_snapshot(principal)
@@ -85,7 +101,81 @@ class UserService:
         return user
 
     async def get_current_user(self, principal: CurrentPrincipal) -> WorkspaceUser:
+        """
+        Get current user with personal scope validation.
+
+        Users can always access their own profile without additional scope validation.
+        """
         return await self._ensure_user(principal)
+
+    # Organization-scoped methods for user management
+    async def list_users_for_organization(
+        self,
+        principal: CurrentPrincipal,
+        organization_id: str
+    ) -> List[WorkspaceUser]:
+        """
+        List all users within a specific organization.
+
+        This method validates that the principal has access to the specified
+        organization before returning users, preventing cross-organization
+        user data access.
+        """
+        # Validate organization access
+        scope_ctx = await self.validate_organization_access(
+            principal, organization_id, {"user:read"}
+        )
+
+        return await self._repository.list_users_for_organization(organization_id)
+
+    async def get_user_for_organization(
+        self,
+        principal: CurrentPrincipal,
+        organization_id: str,
+        user_id: str
+    ) -> Optional[WorkspaceUser]:
+        """
+        Get a specific user within an organization.
+
+        Validates both organization access and ensures the user belongs
+        to that organization.
+        """
+        # Validate organization access
+        scope_ctx = await self.validate_organization_access(
+            principal, organization_id, {"user:read"}
+        )
+
+        user = await self._repository.get_user(user_id)
+
+        # Ensure user belongs to the validated organization through scope snapshot
+        if user and await self._repository.user_has_organization_access(user_id, organization_id):
+            return user
+
+        return None
+
+    async def update_user_for_organization(
+        self,
+        principal: CurrentPrincipal,
+        organization_id: str,
+        user_id: str,
+        update_data: Dict[str, Any]
+    ) -> Optional[WorkspaceUser]:
+        """
+        Update a user within an organization.
+
+        Validates organization access and ensures the user belongs
+        to that organization before updating.
+        """
+        # Validate organization access
+        scope_ctx = await self.validate_organization_access(
+            principal, organization_id, {"user:update"}
+        )
+
+        # Verify user exists and belongs to organization
+        if not await self._repository.user_has_organization_access(user_id, organization_id):
+            return None
+
+        return await self._repository.update_user(user_id, update_data)
 
     async def get_onboarding_session(self, principal: CurrentPrincipal) -> OnboardingSession:
         await self._ensure_user(principal)
