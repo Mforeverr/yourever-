@@ -18,6 +18,7 @@ from .users.router import router as users_router
 from .onboarding.router import router as onboarding_router
 from .organizations.router import router as organizations_router
 from .scope.router import router as scope_router
+from .tasks.router import router as tasks_router
 from .workspace.router import router as workspace_router
 from .workspace_dashboard.router import router as workspace_dashboard_router
 
@@ -30,6 +31,7 @@ MODULE_ROUTERS: tuple[APIRouter, ...] = (
     shortlinks_router,
     organizations_router,
     scope_router,
+    tasks_router,
     workspace_router,
     workspace_dashboard_router,
     onboarding_router,

@@ -4,6 +4,7 @@
 
 """
 FastAPI application bootstrap that wires core utilities, dependencies, and routers.
+Enhanced with WebSocket support for Phase 2 real-time collaboration.
 """
 
 from fastapi import FastAPI
@@ -11,6 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .api import api_router
 from .core import get_settings, register_exception_handlers, setup_logging
+# Temporarily commented out for Phase 2 testing
+# from .modules.websocket.integration import integrate_websocket_with_app
 
 
 def create_app() -> FastAPI:
@@ -36,6 +39,10 @@ def create_app() -> FastAPI:
 
     register_exception_handlers(app)
     app.include_router(api_router)
+
+    # Integrate WebSocket server for real-time collaboration
+    # app = integrate_websocket_with_app(app)  # Temporarily commented for Phase 2 testing
+
     return app
 
 

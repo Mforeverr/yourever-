@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { DndContext, DragEndEvent, DragOverEvent, DragStartEvent, 
+import { DndContext, DragEndEvent, DragOverEvent, DragStartEvent,
   closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,12 +13,20 @@ import { StatusBadge } from "@/components/ui/status-badge"
 import { formatDate } from "@/lib/date-utils"
 import { PriorityBadge } from "@/components/ui/priority-badge"
 import { WhyNoteEditor } from "@/components/ui/why-note-editor"
-import { AssigneeSelector, type User } from "@/components/ui/assignee-selector"
+import { AssigneeSelector } from "@/components/ui/assignee-selector"
 import { DatePicker } from "@/components/ui/date-picker"
 import { cn } from "@/lib/utils"
 import { isFeatureEnabled } from "@/lib/feature-flags"
 import { useScope } from "@/contexts/scope-context"
-import { 
+import { useKanbanStore, useActiveBoard, useActiveBoardColumns, useActiveBoardTasks } from "@/state/kanban.store"
+import { useBoardQuery, useCreateTaskMutation, useMoveTaskMutation } from "@/hooks/api/use-task-queries"
+import { useKanbanWebSocket, useKanbanCursorTracking } from "@/hooks/use-kanban-websocket"
+import { toast } from "@/hooks/use-toast"
+import type { KanbanTask, KanbanColumn, KanbanUser } from "@/types/kanban"
+import { PresenceIndicators } from "@/components/real-time/presence-indicators"
+import { CollaborationCursors } from "@/components/real-time/collaboration-cursors"
+import { ConnectionStatusBar } from "@/components/real-time/connection-status-bar"
+import {
   Plus,
   MoreHorizontal,
   GripVertical,
@@ -29,118 +37,49 @@ import {
   Edit2,
   X,
   Check,
-  Filter
+  Filter,
+  Loader2,
+  Wifi,
+  WifiOff,
+  Users,
+  AlertCircle
 } from "lucide-react"
 
-interface Task {
-  id: string
-  projectId?: string
-  title: string
-  description?: string
-  status: 'todo' | 'in-progress' | 'review' | 'done'
-  priority: 'low' | 'medium' | 'high' | 'urgent'
-  assignee?: User
-  dueDate?: Date
-  startDate?: Date
-  whyNote?: string
-  tags?: string[]
-  comments?: number
-  attachments?: number
-  createdAt: Date
-  updatedAt: Date
+// Board component props
+interface BoardViewProps {
+  boardId?: string
 }
 
-interface Column {
-  id: string
-  title: string
-  status: Task['status']
-  tasks: Task[]
-  color: string
-}
-
-const mockUsers: User[] = [
-  { id: "1", name: "Alex Chen", avatar: "/avatars/alex.jpg", status: "online" },
-  { id: "2", name: "Sarah Miller", avatar: "/avatars/sarah.jpg", status: "online" },
-  { id: "3", name: "Mike Johnson", avatar: "/avatars/mike.jpg", status: "away" },
-  { id: "4", name: "Emma Davis", status: "offline" }
-]
-
-const initialTasks: Task[] = [
-  {
-    id: "1",
-    projectId: "website-revamp",
-    title: "Setup authentication system",
-    description: "Implement OAuth2 with Google and GitHub providers",
-    status: "in-progress",
-    priority: "high",
-    assignee: mockUsers[0],
-    dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 3),
-    whyNote: "Critical for user onboarding and security compliance",
-    tags: ["backend", "security"],
-    comments: 5,
-    attachments: 2,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24),
-    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 2)
-  },
-  {
-    id: "2", 
-    projectId: "platform-infra",
-    title: "Design new landing page",
-    description: "Create mockups and prototypes for the marketing landing page",
-    status: "todo",
-    priority: "medium",
-    assignee: mockUsers[1],
-    dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
-    tags: ["design", "marketing"],
-    comments: 3,
-    attachments: 4,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48),
-    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 24)
-  },
-  {
-    id: "3",
-    projectId: "website-revamp",
-    title: "Fix navigation bug on mobile",
-    description: "Menu doesn't close properly on iOS devices",
-    status: "review",
-    priority: "urgent",
-    assignee: mockUsers[2],
-    dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24),
-    whyNote: "Affecting 15% of mobile users, high priority fix needed",
-    tags: ["bug", "mobile"],
-    comments: 8,
-    attachments: 1,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 12),
-    updatedAt: new Date(Date.now() - 1000 * 60 * 30)
-  },
-  {
-    id: "4",
-    projectId: "platform-infra",
-    title: "Database optimization",
-    description: "Improve query performance for user dashboard",
-    status: "done",
-    priority: "low",
-    assignee: mockUsers[0],
-    tags: ["backend", "performance"],
-    comments: 2,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5),
-    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2)
-  }
-]
-
-function TaskCard({ task, onEdit, onDelete, onViewProject }: { 
-  task: Task
-  onEdit: (task: Task) => void
+function TaskCard({ task, onEdit, onDelete, onViewProject }: {
+  task: KanbanTask
+  onEdit: (task: KanbanTask) => void
   onDelete: (taskId: string) => void
-  onViewProject?: (task: Task) => void
+  onViewProject?: (task: KanbanTask) => void
 }) {
   const [isEditing, setIsEditing] = React.useState(false)
   const [editTitle, setEditTitle] = React.useState(task.title)
   const [expanded, setExpanded] = React.useState(false)
+  const { updateTask, users, presence, ui } = useKanbanStore()
+  const { currentUser } = useScope()
+
+  // Check if other users are viewing this task
+  const viewingUsers = React.useMemo(() => {
+    return Object.values(presence).filter(p =>
+      p.currentTaskId === task.id &&
+      p.userId !== currentUser?.id
+    )
+  }, [presence, task.id, currentUser?.id])
+
+  // Check if task is being edited by someone else
+  const isBeingEdited = React.useMemo(() => {
+    return ui.draggedTaskId === task.id &&
+           Object.values(presence).some(p => p.userId !== currentUser?.id)
+  }, [ui.draggedTaskId, presence, currentUser?.id])
 
   const handleSave = () => {
-    onEdit({ ...task, title: editTitle })
+    updateTask(task.id, { title: editTitle })
     setIsEditing(false)
+    onEdit({ ...task, title: editTitle })
   }
 
   const handleCancel = () => {
@@ -206,9 +145,9 @@ function TaskCard({ task, onEdit, onDelete, onViewProject }: {
 
         <div className="flex items-center gap-2 mb-3">
           <PriorityBadge priority={task.priority} />
-          {task.tags?.map((tag) => (
-            <Badge key={tag} variant="outline" className="text-xs">
-              {tag}
+          {task.labels?.map((label) => (
+            <Badge key={label.id} variant="outline" className="text-xs" style={{ backgroundColor: label.color + '20', borderColor: label.color }}>
+              {label.name}
             </Badge>
           ))}
         </div>
@@ -221,12 +160,12 @@ function TaskCard({ task, onEdit, onDelete, onViewProject }: {
               <UserIcon className="h-3 w-3 text-muted-foreground" />
               <div className="flex items-center gap-1">
                 <Avatar className="h-5 w-5">
-                  <AvatarImage src={task.assignee.avatar} alt={task.assignee.name} />
+                  <AvatarImage src={task.assignee?.avatar} alt={task.assignee?.name} />
                   <AvatarFallback className="text-[8px]">
-                    {task.assignee.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                    {task.assignee?.name?.split(' ').map(n => n[0]).join('').toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
-                <span className="text-xs">{task.assignee.name}</span>
+                <span className="text-xs">{task.assignee?.name}</span>
               </div>
             </div>
           )}
@@ -236,23 +175,23 @@ function TaskCard({ task, onEdit, onDelete, onViewProject }: {
             <div className="flex items-center gap-2">
               <Calendar className="h-3 w-3 text-muted-foreground" />
               <span className="text-xs">
-                {formatDate(task.dueDate)}
+                {formatDate(new Date(task.dueDate))}
               </span>
             </div>
           )}
 
           {/* Comments and Attachments */}
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            {task.comments && (
+            {(task.commentsCount ?? 0) > 0 && (
               <div className="flex items-center gap-1">
                 <MessageSquare className="h-3 w-3" />
-                <span>{task.comments}</span>
+                <span>{task.commentsCount}</span>
               </div>
             )}
-            {task.attachments && (
+            {(task.attachmentsCount ?? 0) > 0 && (
               <div className="flex items-center gap-1">
                 <Paperclip className="h-3 w-3" />
-                <span>{task.attachments}</span>
+                <span>{task.attachmentsCount}</span>
               </div>
             )}
           </div>
@@ -282,22 +221,32 @@ function TaskCard({ task, onEdit, onDelete, onViewProject }: {
 }
 
 function Column({ column, onTaskEdit, onTaskDelete, onTaskViewProject }: {
-  column: Column
-  onTaskEdit: (task: Task) => void
+  column: KanbanColumn
+  onTaskEdit: (task: KanbanTask) => void
   onTaskDelete: (taskId: string) => void
-  onTaskViewProject?: (task: Task) => void
+  onTaskViewProject?: (task: KanbanTask) => void
 }) {
   const [isAddingTask, setIsAddingTask] = React.useState(false)
   const [newTaskTitle, setNewTaskTitle] = React.useState("")
+  const { getTasksByColumn } = useKanbanStore()
+  const createTaskMutation = useCreateTaskMutation()
 
   const handleAddTask = () => {
     if (newTaskTitle.trim()) {
-      // TODO: Add task logic
-      console.log("Adding task:", newTaskTitle)
+      createTaskMutation.mutate({
+        columnId: column.id,
+        payload: {
+          title: newTaskTitle.trim(),
+          priority: 'medium',
+          position: getTasksByColumn(column.id).length,
+        }
+      })
       setNewTaskTitle("")
       setIsAddingTask(false)
     }
   }
+
+  const columnTasks = getTasksByColumn(column.id)
 
   return (
     <div className="flex-1 min-w-80">
@@ -310,10 +259,10 @@ function Column({ column, onTaskEdit, onTaskDelete, onTaskViewProject }: {
                 style={{ backgroundColor: column.color }}
               />
               <CardTitle className="text-sm font-medium">
-                {column.title}
+                {column.name}
               </CardTitle>
               <Badge variant="secondary" className="text-xs">
-                {column.tasks.length}
+                {columnTasks.length}
               </Badge>
             </div>
             <Button
@@ -360,9 +309,9 @@ function Column({ column, onTaskEdit, onTaskDelete, onTaskViewProject }: {
                 </CardContent>
               </Card>
             )}
-            
-            <SortableContext items={column.tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-              {column.tasks.map((task) => (
+  
+            <SortableContext items={columnTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+              {columnTasks.map((task) => (
                 <TaskCard
                   key={task.id}
                   task={task}
@@ -379,48 +328,97 @@ function Column({ column, onTaskEdit, onTaskDelete, onTaskViewProject }: {
   )
 }
 
-export function BoardView() {
+export function BoardView({ boardId }: BoardViewProps) {
   const router = useRouter()
-  const { currentOrgId, currentDivisionId } = useScope()
+  const { currentOrgId, currentDivisionId, currentUser } = useScope()
   const canOpenProject = isFeatureEnabled("projects.detail", process.env.NODE_ENV !== "production")
+
+  // Ref for collaboration cursors container
+  const boardContainerRef = React.useRef<HTMLDivElement>(null)
+
+  // Store hooks
+  const activeBoard = useActiveBoard()
+  const activeColumns = useActiveBoardColumns()
+  const {
+    setActiveBoard,
+    moveTask: moveTaskInStore,
+    setConnectionStatus,
+    addSyncEvent,
+    addActivityEvent
+  } = useKanbanStore()
+
+  // Real-time hooks
+  const {
+    isConnected,
+    isConnecting,
+    isReconnecting,
+    connectionError,
+    sendEvent,
+    conflictQueue,
+    resolveConflict,
+  } = useKanbanWebSocket({
+    boardId: activeBoard?.id || boardId,
+    onConnected: () => {
+      setConnectionStatus('online')
+      toast({
+        title: "Connected",
+        description: "Real-time collaboration is now active",
+        duration: 2000,
+      })
+    },
+    onDisconnected: () => {
+      setConnectionStatus('offline')
+    },
+    onError: (error) => {
+      console.error('WebSocket connection error:', error)
+      toast({
+        title: "Connection Error",
+        description: "Real-time features may be unavailable",
+        variant: "destructive",
+        duration: 3000,
+      })
+    },
+    onEvent: (event) => {
+      addSyncEvent(event)
+      addActivityEvent({
+        type: event.type,
+        userId: event.userId,
+        data: event.data,
+        timestamp: event.timestamp,
+      })
+    },
+  })
+
+  const cursorTracking = useKanbanCursorTracking(activeBoard?.id || boardId)
+
+  // API hooks
+  const boardQuery = useBoardQuery(boardId || '')
+  const moveTaskMutation = useMoveTaskMutation()
+
+  // Initialize board when data is loaded
+  React.useEffect(() => {
+    if (boardQuery.data && !boardQuery.isLoading) {
+      const { board, columns, tasks, labels, permissions } = boardQuery.data
+      setActiveBoard(board.id)
+
+      // Initialize store with board data
+      const store = useKanbanStore.getState()
+      store.initializeBoard({
+        board,
+        columns,
+        tasks,
+        labels,
+        permissions,
+      })
+    }
+  }, [boardQuery.data, boardQuery.isLoading, setActiveBoard])
+
   const workspaceBasePath = React.useMemo(() => {
     if (!currentOrgId || !currentDivisionId) {
       return null
     }
     return `/${currentOrgId}/${currentDivisionId}`
   }, [currentDivisionId, currentOrgId])
-
-  const [tasks, setTasks] = React.useState<Task[]>(initialTasks)
-  const [columns, setColumns] = React.useState<Column[]>([
-    {
-      id: "todo",
-      title: "To Do",
-      status: "todo",
-      tasks: tasks.filter(t => t.status === "todo"),
-      color: "#94a3b8"
-    },
-    {
-      id: "in-progress",
-      title: "In Progress", 
-      status: "in-progress",
-      tasks: tasks.filter(t => t.status === "in-progress"),
-      color: "#3b82f6"
-    },
-    {
-      id: "review",
-      title: "Review",
-      status: "review", 
-      tasks: tasks.filter(t => t.status === "review"),
-      color: "#f59e0b"
-    },
-    {
-      id: "done",
-      title: "Done",
-      status: "done",
-      tasks: tasks.filter(t => t.status === "done"),
-      color: "#10b981"
-    }
-  ])
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -431,7 +429,7 @@ export function BoardView() {
   )
 
   const onTaskViewProject = React.useCallback(
-    (task: Task) => {
+    (task: KanbanTask) => {
       if (!task.projectId || !workspaceBasePath || !canOpenProject) {
         return
       }
@@ -441,72 +439,264 @@ export function BoardView() {
   )
 
   const handleDragStart = (event: DragStartEvent) => {
-    // Optional: Add visual feedback
+    const { active } = event
+    const taskId = active.id as string
+
+    // Set dragged task in store for UI feedback
+    const store = useKanbanStore.getState()
+    store.setDraggedTask(taskId)
+
+    // Start real-time cursor tracking
+    if (isConnected && currentUser) {
+      const task = store.tasks[taskId]
+      if (task) {
+        cursorTracking.startDrag(taskId, {
+          x: 0,
+          y: 0,
+        })
+
+        // Send drag start event
+        sendEvent('cursor:drag-start', {
+          taskId,
+          taskTitle: task.title,
+          userId: currentUser.id,
+          position: { x: 0, y: 0 },
+        })
+      }
+    }
   }
 
   const handleDragOver = (event: DragOverEvent) => {
-    // Optional: Add visual feedback
+    const { over, active } = event
+    if (over) {
+      // Set hovered column for UI feedback
+      const store = useKanbanStore.getState()
+      store.setHoveredColumn(over.id as string)
+
+      // Update cursor position during drag
+      if (isConnected && currentUser && active) {
+        const position = { x: 0, y: 0 } // Would need actual mouse position
+        cursorTracking.updateDragPosition(position.x, position.y)
+
+        sendEvent('cursor:drag-move', {
+          taskId: active.id as string,
+          userId: currentUser.id,
+          position,
+        })
+      }
+    }
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
+    const taskId = active.id as string
+
+    // End cursor tracking
+    cursorTracking.endDrag({ x: 0, y: 0 })
+
+    // Clear drag state
+    const store = useKanbanStore.getState()
+    store.setDraggedTask(undefined)
+    store.setHoveredColumn(undefined)
+
+    // Send drag end event
+    if (isConnected && currentUser) {
+      sendEvent('cursor:drag-end', {
+        taskId,
+        userId: currentUser.id,
+        position: { x: 0, y: 0 },
+      })
+    }
 
     if (!over) return
 
-    const taskId = active.id as string
-    const newStatus = over.id as Task['status']
+    const targetColumnId = over.id as string
 
-    if (newStatus === taskId) return // Not dragging over a column
+    // Find the target column
+    const targetColumn = activeColumns.find(col => col.id === targetColumnId)
+    if (!targetColumn) return
 
-    setTasks(prevTasks => 
-      prevTasks.map(task => 
-        task.id === taskId 
-          ? { ...task, status: newStatus, updatedAt: new Date() }
-          : task
-      )
-    )
+    // Get current tasks in target column to determine position
+    const { getTasksByColumn } = useKanbanStore.getState()
+    const targetColumnTasks = getTasksByColumn(targetColumnId)
+    const targetPosition = targetColumnTasks.length
 
-    setTasks(prevTasks => {
-      const updatedTasks = prevTasks.map(task => 
-        task.id === taskId 
-          ? { ...task, status: newStatus, updatedAt: new Date() }
-          : task
-      )
+    // Send real-time task move event with optimistic update
+    if (isConnected && currentUser) {
+      sendEvent('task:move', {
+        taskId,
+        targetColumnId,
+        targetPosition,
+        fromColumnId: store.tasks[taskId]?.columnId,
+        userId: currentUser.id,
+      }, { optimistic: true })
+    }
 
-      return updatedTasks
+    // Optimistically update the store
+    moveTaskInStore(taskId, targetColumnId, targetPosition)
+
+    // Call API to move the task
+    moveTaskMutation.mutate({
+      taskId,
+      payload: {
+        targetColumnId,
+        targetPosition,
+      },
     })
   }
 
-  const handleTaskEdit = (updatedTask: Task) => {
-    setTasks(prevTasks =>
-      prevTasks.map(task =>
-        task.id === updatedTask.id ? updatedTask : task
-      )
-    )
+  const handleTaskEdit = (updatedTask: KanbanTask) => {
+    const store = useKanbanStore.getState()
+    const changes = {
+      title: updatedTask.title,
+      description: updatedTask.description,
+      priority: updatedTask.priority,
+      dueDate: updatedTask.dueDate,
+      whyNote: updatedTask.whyNote,
+    }
+
+    // Send real-time update event with optimistic update
+    if (isConnected && currentUser) {
+      sendEvent('task:update', {
+        taskId: updatedTask.id,
+        changes,
+        userId: currentUser.id,
+      }, { optimistic: true })
+    }
+
+    store.updateTask(updatedTask.id, changes)
   }
 
   const handleTaskDelete = (taskId: string) => {
-    setTasks(prevTasks => prevTasks.filter(task => task.id !== taskId))
+    const store = useKanbanStore.getState()
+    store.removeTask(taskId)
   }
 
-  // Update columns when tasks change
-  React.useEffect(() => {
-    setColumns(prevColumns =>
-      prevColumns.map(column => ({
-        ...column,
-        tasks: tasks.filter(task => task.status === column.status)
-      }))
+  // Loading state
+  if (boardQuery.isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="flex flex-col items-center gap-2">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <p className="text-muted-foreground">Loading board...</p>
+        </div>
+      </div>
     )
-  }, [tasks])
+  }
+
+  // Error state
+  if (boardQuery.error) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <h3 className="text-lg font-medium text-destructive mb-2">Failed to load board</h3>
+          <p className="text-muted-foreground mb-4">
+            {boardQuery.error.message || 'An error occurred while loading the board'}
+          </p>
+          <Button onClick={() => boardQuery.refetch()}>
+            Try again
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // No board selected
+  if (!activeBoard) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <h3 className="text-lg font-medium mb-2">No board selected</h3>
+          <p className="text-muted-foreground">
+            Select a board to start managing your tasks
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className="h-full p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-bold">Board View</h2>
-          <p className="text-muted-foreground">Drag and drop tasks to update their status</p>
+    <>
+      {/* Connection Status Bar */}
+      <ConnectionStatusBar
+        status={{
+          connected: isConnected,
+          connecting: isConnecting,
+          reconnecting: isReconnecting,
+          error: connectionError,
+          lastConnected: new Date(), // Would track actual last connected time
+          reconnectAttempts: 0, // Would track actual attempts
+          maxReconnectAttempts: 5,
+          latency: undefined, // Would measure actual latency
+        }}
+        onReconnect={() => {
+          // Trigger reconnection logic
+          window.location.reload()
+        }}
+        onDismissError={() => {
+          // Clear error state
+        }}
+        showDetails={true}
+        position="top"
+      />
+
+      <div className="h-full p-6 pt-20">
+        <div className="flex items-center justify-between mb-6">
+        <div className="flex-1">
+          <div className="flex items-center gap-4 mb-2">
+            <h2 className="text-2xl font-bold">{activeBoard.name}</h2>
+
+            {/* Connection Status */}
+            <div className="flex items-center gap-2">
+              {isConnecting ? (
+                <div className="flex items-center gap-1 text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <span className="text-xs">Connecting...</span>
+                </div>
+              ) : isReconnecting ? (
+                <div className="flex items-center gap-1 text-yellow-600">
+                  <AlertCircle className="h-3 w-3" />
+                  <span className="text-xs">Reconnecting...</span>
+                </div>
+              ) : isConnected ? (
+                <div className="flex items-center gap-1 text-green-600">
+                  <Wifi className="h-3 w-3" />
+                  <span className="text-xs">Live</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1 text-red-600">
+                  <WifiOff className="h-3 w-3" />
+                  <span className="text-xs">Offline</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {activeBoard.description && (
+            <p className="text-muted-foreground mb-1">{activeBoard.description}</p>
+          )}
+
+          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <span>Drag and drop tasks to update their status</span>
+            {isConnected && (
+              <span className="flex items-center gap-1">
+                <Users className="h-3 w-3" />
+                Real-time collaboration active
+              </span>
+            )}
+          </div>
         </div>
+
         <div className="flex items-center gap-2">
+          {/* Presence Indicators */}
+          {activeBoard.id && (
+            <PresenceIndicators
+              boardId={activeBoard.id}
+              showDetails={true}
+              maxVisible={3}
+            />
+          )}
+
           <Button variant="outline">
             <Filter className="h-4 w-4 mr-2" />
             Filter
@@ -518,6 +708,37 @@ export function BoardView() {
         </div>
       </div>
 
+      {/* Conflict Resolution Queue */}
+      {conflictQueue.length > 0 && (
+        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertCircle className="h-4 w-4 text-yellow-600" />
+            <h4 className="text-sm font-medium text-yellow-800">
+              Conflict Detected
+            </h4>
+          </div>
+          <p className="text-xs text-yellow-700 mb-2">
+            Another user made changes to the same task. Which version would you like to keep?
+          </p>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => resolveConflict(conflictQueue[0].id, 'local')}
+            >
+              Keep My Changes
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => resolveConflict(conflictQueue[0].id, 'remote')}
+            >
+              Use Their Changes
+            </Button>
+          </div>
+        </div>
+      )}
+
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -525,8 +746,11 @@ export function BoardView() {
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex gap-6 h-full overflow-x-auto pb-4">
-          {columns.map((column) => (
+        <div
+          ref={boardContainerRef}
+          className="relative flex gap-6 h-full overflow-x-auto pb-4"
+        >
+          {activeColumns.map((column) => (
             <Column
               key={column.id}
               column={column}
@@ -535,8 +759,17 @@ export function BoardView() {
               onTaskViewProject={onTaskViewProject}
             />
           ))}
+
+          {/* Collaboration Cursors Overlay */}
+          {isConnected && (
+            <CollaborationCursors
+              containerRef={boardContainerRef}
+              showUsernames={true}
+            />
+          )}
         </div>
       </DndContext>
     </div>
+    </>
   )
 }

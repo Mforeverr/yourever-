@@ -44,7 +44,10 @@
       "mcp__supabase__list_extensions",
       "Bash(npx eslint:*)",
       "Bash(timeout 10s npm run dev:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(pip install:*)",
+      "Bash(pip3 install:*)",
+      "Bash(xargs:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
