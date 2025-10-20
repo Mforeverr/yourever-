@@ -610,16 +610,16 @@ export type OptionalFields<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, 
 // ============================================================================
 
 /** @deprecated Use CollaborationUser instead */
-export interface User extends CollaborationUser {}
+export type User = CollaborationUser
 
 /** @deprecated Use UserPresence instead */
-export interface Presence extends UserPresence {}
+export type Presence = UserPresence
 
 /** @deprecated Use Comment instead */
-export interface TaskComment extends Comment {}
+export type TaskComment = Comment
 
 /** @deprecated Use Notification instead */
-export interface ToastNotification extends Notification {}
+export type ToastNotification = Notification
 
 /** @deprecated Use ActivityEvent instead */
-export interface BoardActivity extends ActivityEvent {}
+export type BoardActivity = ActivityEvent

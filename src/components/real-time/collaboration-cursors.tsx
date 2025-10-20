@@ -15,6 +15,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { useKanbanStore } from "@/state/kanban.store"
 import { useScope } from "@/contexts/scope-context"
+import { useAuth } from "@/contexts/auth-context"
 import { formatDistanceToNow } from "date-fns"
 import {
   GripVertical,
@@ -336,7 +337,7 @@ export function CollaborationCursors({
   const [containerRect, setContainerRect] = React.useState<DOMRect>()
   const [hoveredUserId, setHoveredUserId] = React.useState<string>()
   const { activeCursors, users } = useKanbanStore()
-  const { currentUser } = useScope()
+  const { user } = useAuth()
 
   // Update container rect when container changes
   React.useEffect(() => {
@@ -359,7 +360,7 @@ export function CollaborationCursors({
   // Filter out current user's cursor and prepare cursor data
   const collaborationCursors = React.useMemo(() => {
     return Object.entries(activeCursors)
-      .filter(([userId]) => userId !== currentUser?.id)
+      .filter(([userId]) => userId !== user?.id)
       .map(([userId, cursorData]) => ({
         userId,
         user: users[userId],
@@ -371,7 +372,7 @@ export function CollaborationCursors({
         direction: cursorData.direction,
       }))
       .filter(cursor => cursor.user && cursor.isActive) // Only show active cursors with valid users
-  }, [activeCursors, users, currentUser])
+  }, [activeCursors, users, user])
 
   const handleCursorHover = React.useCallback((userId: string) => {
     setHoveredUserId(userId)

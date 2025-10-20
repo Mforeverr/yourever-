@@ -413,10 +413,10 @@ export type ColumnOptimisticUpdate = {
 // ============================================================================
 
 /** @deprecated Use KanbanTask instead */
-export interface Task extends KanbanTask {}
+export type Task = KanbanTask
 
 /** @deprecated Use KanbanColumn instead */
-export interface Column extends KanbanColumn {}
+export type Column = KanbanColumn
 
 /** @deprecated Use KanbanUser instead */
-export interface User extends KanbanUser {}
+export type User = KanbanUser

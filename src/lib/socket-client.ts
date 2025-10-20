@@ -63,7 +63,7 @@ export class KanbanSocketClient {
     reconnectAttempts: 0,
   }
   private subscriptions = new Map<string, RoomSubscription>()
-  private eventHandlers = new Map<string, Set<Function>>()
+  private eventHandlers = new Map<string, Set<(...args: any[]) => void>>()
   private statusHandlers = new Set<(status: ConnectionStatus) => void>()
 
   constructor(config: SocketClientConfig = {}) {

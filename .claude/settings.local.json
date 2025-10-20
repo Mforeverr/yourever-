@@ -47,13 +47,24 @@
       "Bash(find:*)",
       "Bash(pip install:*)",
       "Bash(pip3 install:*)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(ls:*)",
+      "mcp__supabase__search_docs",
+      "WebSearch",
+      "mcp__zai-mcp-server__analyze_image",
+      "mcp__playwright__browser_resize",
+      "mcp__playwright__browser_close",
+      "Bash(tail:*)",
+      "Bash(git checkout:*)",
+      "Bash(git commit:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "context7",
-    "zai-mcp-server"
+    "supabase",
+    "playwright",
+    "chrome-devtools"
   ],
   "outputStyle": "Explanatory"
 }

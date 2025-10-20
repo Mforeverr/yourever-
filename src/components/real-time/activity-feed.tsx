@@ -74,13 +74,6 @@ export interface ActivityEvent {
   commentId?: string
   metadata?: Record<string, any>
   timestamp: string
-  metadata?: {
-    previousValues?: Record<string, any>
-    newValues?: Record<string, any>
-    changes?: string[]
-    mentions?: string[]
-    attachments?: string[]
-  }
 }
 
 export interface ActivityFilter {
