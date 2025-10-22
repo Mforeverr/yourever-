@@ -124,7 +124,13 @@ export async function fetchProjectsByScope(
     signal: options?.signal,
   })
 
-  const result = z.array(ProjectSummarySchema).safeParse(response.data)
+  const payload = Array.isArray(response.data)
+    ? response.data
+    : Array.isArray((response.data as any)?.items)
+      ? (response.data as any).items
+      : response.data
+
+  const result = z.array(ProjectSummarySchema).safeParse(payload)
 
   if (!result.success) {
     console.error('Projects API response validation failed:', result.error)

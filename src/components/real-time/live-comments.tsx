@@ -575,17 +575,23 @@ export function LiveComments({
             )}
 
             {/* Typing indicators for replies */}
-            {getTypingUsersForComment(comment.author.id).length > 0 && (
-              <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-                <div className="flex gap-1">
-                  <div className="w-1 h-1 bg-muted-foreground rounded-full animate-bounce" />
-                  <div className="w-1 h-1 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
-                  <div className="w-1 h-1 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+            {(() => {
+              const typingUsers = getTypingUsersForComment(comment.author.id)
+              if (typingUsers.length === 0) return null
+              return (
+                <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                  <div className="flex gap-1">
+                    <div className="w-1 h-1 bg-muted-foreground rounded-full animate-bounce" />
+                    <div className="w-1 h-1 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
+                    <div className="w-1 h-1 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                  </div>
+                  <span>
+                    {typingUsers.map(u => u.userName).join(', ')}{' '}
+                    {typingUsers.length === 1 ? 'is' : 'are'} typing...
+                  </span>
                 </div>
-                {getTypingUsersForComment(comment.author.id).map(u => u.userName).join(', ')}
-                {getTypingUsersForComment(comment.author.id).length === 1 ? 'is' : 'are'} typing...
-              </div>
-            )}
+              )
+            })()}
 
             {/* Thread replies */}
             {comment.thread && comment.thread.length > 0 && (
@@ -636,17 +642,23 @@ export function LiveComments({
         </div>
 
         {/* Global typing indicator */}
-        {getTypingUsersForComment().length > 0 && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground p-2 bg-muted rounded">
-            <div className="flex gap-1">
-              <div className="w-1 h-1 bg-muted-foreground rounded-full animate-bounce" />
-              <div className="w-1 h-1 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
-              <div className="w-1 h-1 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+        {(() => {
+          const typingUsers = getTypingUsersForComment()
+          if (typingUsers.length === 0) return null
+          return (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground p-2 bg-muted rounded">
+              <div className="flex gap-1">
+                <div className="w-1 h-1 bg-muted-foreground rounded-full animate-bounce" />
+                <div className="w-1 h-1 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
+                <div className="w-1 h-1 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+              </div>
+              <span>
+                {typingUsers.map(u => u.userName).join(', ')}{' '}
+                {typingUsers.length === 1 ? 'is' : 'are'} typing...
+              </span>
             </div>
-            {getTypingUsersForComment().map(u => u.userName).join(', ')}
-            {getTypingUsersForComment().length === 1 ? 'is' : 'are'} typing...
-          </div>
-        )}
+          )
+        })()}
 
         {/* New comment form */}
         <div className="space-y-2">
@@ -661,13 +673,24 @@ export function LiveComments({
               <Textarea
                 ref={textareaRef}
                 value={replyingTo ? replyContent : newComment}
-                onChange={(e) => replyingTo ? handleReplyChange(e.target.value) : handleCommentChange(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value
+                  if (replyingTo) {
+                    handleReplyChange(value)
+                  } else {
+                    handleCommentChange(value)
+                  }
+                }}
                 placeholder={replyingTo ? "Write a reply..." : "Write a comment..."}
                 className="min-h-20 resize-none pr-20"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                     e.preventDefault()
-                    replyingTo ? handleReplySubmit(replyingTo) : handleCommentSubmit()
+                    if (replyingTo) {
+                      handleReplySubmit(replyingTo)
+                    } else {
+                      handleCommentSubmit()
+                    }
                   }
                 }}
               />
@@ -715,7 +738,11 @@ export function LiveComments({
                     const cursorPos = textareaRef.current?.selectionStart || 0
                     const text = replyingTo ? replyContent : newComment
                     const newText = text.substring(0, cursorPos) + '@' + text.substring(cursorPos)
-                    replyingTo ? setReplyContent(newText) : setNewComment(newText)
+                    if (replyingTo) {
+                      setReplyContent(newText)
+                    } else {
+                      setNewComment(newText)
+                    }
                     setTimeout(() => {
                       textareaRef.current?.focus()
                       textareaRef.current?.setSelectionRange(cursorPos + 1, cursorPos + 1)

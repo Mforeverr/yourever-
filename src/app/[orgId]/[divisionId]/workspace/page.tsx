@@ -1,100 +1,57 @@
 "use client"
 
 import * as React from "react"
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import { 
-  LayoutGrid,
-  List,
-  GanttChart,
-  Calendar,
-  GitBranch,
-  FileText
-} from "lucide-react"
-
-// Import workspace views
-import { BoardView } from "@/components/workspace/board-view"
-import { ListView } from "@/components/workspace/list-view"
-import { TimelineView } from "@/components/workspace/timeline-view"
-import { CalendarView } from "@/components/workspace/calendar-view"
-import { MindMapView } from "@/components/workspace/mindmap-view"
-import { DocsView } from "@/components/workspace/docs-view"
-
-type ViewType = "board" | "list" | "timeline" | "calendar" | "mindmap" | "docs"
-
-const views = [
-  { id: "board", label: "Board", icon: LayoutGrid },
-  { id: "list", label: "List", icon: List },
-  { id: "timeline", label: "Timeline", icon: GanttChart },
-  { id: "calendar", label: "Calendar", icon: Calendar },
-  { id: "mindmap", label: "Mindmap", icon: GitBranch },
-  { id: "docs", label: "Docs", icon: FileText },
-] as const
+import { useScope } from "@/contexts/scope-context"
+import {
+  FocusWidgetsModule,
+  MentionsApprovalsModule,
+  MyTasksModule,
+  PinnedProjectsModule,
+  TodayPlanModule,
+} from "@/components/workspace/workbench"
+import { Badge } from "@/components/ui/badge"
 
 export default function WorkspacePage() {
-  const [activeView, setActiveView] = React.useState<ViewType>("board")
+  const { currentDivision, currentOrganization } = useScope()
 
-  const renderActiveView = () => {
-    switch (activeView) {
-      case "board":
-        return <BoardView />
-      case "list":
-        return <ListView />
-      case "timeline":
-        return <TimelineView />
-      case "calendar":
-        return <CalendarView />
-      case "mindmap":
-        return <MindMapView />
-      case "docs":
-        return <DocsView />
-      default:
-        return <BoardView />
-    }
-  }
-
-  const currentView = views.find(view => view.id === activeView)
+  const headline = currentDivision
+    ? `${currentDivision.name} workbench`
+    : "My workbench"
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="p-6 border-b border-border">
-        <div className="flex items-center justify-between mb-4">
+    <div className="flex h-full flex-col">
+      <header className="border-b border-border bg-surface-panel/60 p-6">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Workspace</h1>
-            <p className="text-muted-foreground">Manage your projects and tasks</p>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Workspace</p>
+            <h1 className="text-2xl font-bold text-foreground">{headline}</h1>
+            <p className="text-sm text-muted-foreground">
+              Everything assigned to you across {currentOrganization?.name ?? "your organization"}.
+            </p>
+          </div>
+          {currentDivision && (
+            <Badge variant="outline" className="self-start md:self-center">
+              {currentDivision.name}
+            </Badge>
+          )}
+        </div>
+      </header>
+
+      <main className="flex-1 overflow-auto">
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 p-6">
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+            <div className="flex flex-col gap-6">
+              <MyTasksModule />
+              <MentionsApprovalsModule />
+              <FocusWidgetsModule />
+            </div>
+            <div className="flex flex-col gap-6">
+              <PinnedProjectsModule />
+              <TodayPlanModule />
+            </div>
           </div>
         </div>
-
-        {/* View Menu */}
-        <div className="flex items-center gap-2">
-          {views.map((view) => {
-            const Icon = view.icon
-            return (
-              <Button
-                key={view.id}
-                variant={activeView === view.id ? "default" : "ghost"}
-                size="sm"
-                className={cn(
-                  "justify-start gap-2 h-auto p-3",
-                  activeView === view.id && "bg-brand text-brand-foreground"
-                )}
-                onClick={() => setActiveView(view.id as ViewType)}
-              >
-                <Icon className="h-4 w-4" />
-                <div className="text-left">
-                  <div className="font-medium">{view.label}</div>
-                </div>
-              </Button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* View Content */}
-      <div className="flex-1 overflow-hidden">
-        {renderActiveView()}
-      </div>
+      </main>
     </div>
   )
 }
