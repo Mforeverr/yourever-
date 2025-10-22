@@ -11,8 +11,28 @@ import type {
   WorkspaceOverview,
   WorkspaceProject,
 } from '@/modules/workspace/types'
+import { buildMockDashboardSummary } from '@/mocks/data/dashboard'
+import {
+  useMockWorkspaceStore,
+  filterProjectsByScope,
+  filterTasksByScope,
+  filterDocsByScope,
+} from '@/mocks/data/workspace'
 
 const WORKSPACE_ENDPOINT = '/api/workspaces'
+
+const buildMockWorkspaceOverview = (orgId: string, divisionId: string | null): WorkspaceOverview => {
+  const state = useMockWorkspaceStore.getState()
+  return {
+    orgId,
+    divisionId,
+    hasTemplates: true,
+    projects: filterProjectsByScope(state.projects, orgId, divisionId),
+    tasks: filterTasksByScope(state.tasks, orgId, divisionId),
+    docs: filterDocsByScope(state.docs, orgId, divisionId),
+    channels: [],
+  }
+}
 
 export const fetchWorkspaceOverview = (
   orgId: string,
@@ -26,6 +46,9 @@ export const fetchWorkspaceOverview = (
   return httpRequest('GET', endpoint, {
     signal,
     meta: { endpoint, method: 'GET', scope: { orgId, divisionId: options?.divisionId ?? undefined } },
+  }).catch((error) => {
+    console.warn('[workspace] overview request failed, using mock data', error)
+    return buildMockWorkspaceOverview(orgId, options?.divisionId ?? null)
   })
 }
 
@@ -41,6 +64,9 @@ export const fetchWorkspaceDashboardSummary = (
   return httpRequest('GET', endpoint, {
     signal,
     meta: { endpoint, method: 'GET', scope: { orgId, divisionId: options?.divisionId ?? undefined } },
+  }).catch((error) => {
+    console.warn('[workspace] dashboard request failed, using mock data', error)
+    return buildMockDashboardSummary(orgId, options?.divisionId ?? null)
   })
 }
 

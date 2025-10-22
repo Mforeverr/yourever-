@@ -2,7 +2,11 @@ import { z } from 'zod'
 import { createApiClient } from './client'
 import type { ProjectDetailResponse, ProjectSummary } from '@/modules/projects/contracts'
 
-// Project API schemas
+const toArray = <T>(value: T[] | null | undefined): T[] => (Array.isArray(value) ? value : [])
+const toNumber = (value: number | null | undefined, fallback = 0) => (typeof value === 'number' ? value : fallback)
+const toOptionalString = (value: string | null | undefined): string | undefined =>
+  typeof value === 'string' ? value : undefined
+
 export const ProjectSummarySchema = z.object({
   id: z.string(),
   slug: z.string(),
@@ -10,17 +14,17 @@ export const ProjectSummarySchema = z.object({
   description: z.string().optional(),
   status: z.enum(['planning', 'active', 'on_hold', 'completed', 'archived']),
   priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
-  progressPercent: z.number().optional().default(0),
+  progressPercent: z.number().nullable().optional(),
   startDate: z.string().optional(),
   targetDate: z.string().optional(),
   updatedAt: z.string(),
   createdAt: z.string(),
-  ownerId: z.string().optional(),
+  ownerId: z.string().nullable().optional(),
   divisionId: z.string().nullable(),
   organizationId: z.string(),
   visibility: z.enum(['private', 'division', 'organization']),
   badgeCount: z.number().optional(),
-  tags: z.array(z.string()).optional().default([]),
+  tags: z.union([z.array(z.string()), z.null()]).optional(),
 })
 
 export const ProjectMemberSchema = z.object({
@@ -40,40 +44,46 @@ export const ProjectDetailsSchema = z.object({
   description: z.string().optional(),
   status: z.enum(['planning', 'active', 'on_hold', 'completed', 'archived']),
   priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
-  progressPercent: z.number().optional().default(0),
+  progressPercent: z.number().nullable().optional(),
   startDate: z.string().optional(),
   targetDate: z.string().optional(),
   updatedAt: z.string(),
   createdAt: z.string(),
-  ownerId: z.string().optional(),
+  ownerId: z.string().nullable().optional(),
   divisionId: z.string().nullable(),
   organizationId: z.string(),
   visibility: z.enum(['private', 'division', 'organization']),
   badgeCount: z.number().optional(),
-  tags: z.array(z.string()).optional().default([]),
+  tags: z.union([z.array(z.string()), z.null()]).optional(),
   overview: z.object({
-    goals: z.array(z.string()).optional().default([]),
-    outcomes: z.array(z.string()).optional().default([]),
-  }),
-  defaultView: z.enum(['board', 'list', 'timeline']).optional().default('board'),
-  integrations: z.array(z.object({
-    id: z.string(),
-    provider: z.string(),
-    status: z.enum(['connected', 'disconnected']),
-    syncedAt: z.string().optional(),
-  })).optional().default([]),
+    goals: z.union([z.array(z.string()), z.null()]).optional(),
+    outcomes: z.union([z.array(z.string()), z.null()]).optional(),
+  }).optional(),
+  defaultView: z.enum(['board', 'list', 'timeline']).optional(),
+  integrations: z.union([
+    z.array(z.object({
+      id: z.string(),
+      provider: z.string(),
+      status: z.enum(['connected', 'disconnected']),
+      syncedAt: z.string().optional(),
+    })),
+    z.null(),
+  ]).optional(),
   coverImage: z.string().optional(),
   metrics: z.object({
     health: z.enum(['green', 'yellow', 'red']),
     riskNotes: z.string().optional(),
-    budgetUsedPercent: z.number().optional(),
-    scorecards: z.array(z.object({
-      id: z.string(),
-      label: z.string(),
-      value: z.number(),
-      target: z.number().optional(),
-      unit: z.string().optional(),
-    })).optional(),
+    budgetUsedPercent: z.number().nullable().optional(),
+    scorecards: z.union([
+      z.array(z.object({
+        id: z.string(),
+        label: z.string(),
+        value: z.number(),
+        target: z.number().optional(),
+        unit: z.string().optional(),
+      })),
+      z.null(),
+    ]).optional(),
   }).optional(),
 })
 
@@ -88,6 +98,91 @@ export const ProjectDetailResponseSchema = z.object({
   }),
 })
 
+const hydrateProjectSummary = (raw: z.infer<typeof ProjectSummarySchema>): ProjectSummary => ({
+  id: raw.id,
+  slug: raw.slug,
+  name: raw.name,
+  description: raw.description,
+  status: raw.status,
+  priority: raw.priority,
+  progressPercent: toNumber(raw.progressPercent ?? undefined, 0),
+  startDate: raw.startDate,
+  targetDate: raw.targetDate,
+  updatedAt: raw.updatedAt,
+  createdAt: raw.createdAt,
+  ownerId: toOptionalString(raw.ownerId ?? undefined),
+  divisionId: raw.divisionId,
+  organizationId: raw.organizationId,
+  visibility: raw.visibility,
+  badgeCount: raw.badgeCount,
+  tags: toArray(raw.tags ?? []),
+})
+
+const hydrateProjectDetail = (raw: z.infer<typeof ProjectDetailsSchema>) => ({
+  id: raw.id,
+  slug: raw.slug,
+  name: raw.name,
+  description: raw.description,
+  status: raw.status,
+  priority: raw.priority,
+  progressPercent: toNumber(raw.progressPercent ?? undefined, 0),
+  startDate: raw.startDate,
+  targetDate: raw.targetDate,
+  updatedAt: raw.updatedAt,
+  createdAt: raw.createdAt,
+  ownerId: toOptionalString(raw.ownerId ?? undefined),
+  divisionId: raw.divisionId,
+  organizationId: raw.organizationId,
+  visibility: raw.visibility,
+  badgeCount: raw.badgeCount,
+  tags: toArray(raw.tags ?? []),
+  overview: {
+    goals: toArray(raw.overview?.goals ?? []),
+    outcomes: toArray(raw.overview?.outcomes ?? []),
+  },
+  defaultView: raw.defaultView ?? 'board',
+  integrations: toArray(raw.integrations ?? []),
+  coverImage: raw.coverImage,
+  metrics: raw.metrics
+    ? {
+        health: raw.metrics.health,
+        riskNotes: raw.metrics.riskNotes,
+        budgetUsedPercent: raw.metrics.budgetUsedPercent ?? undefined,
+        scorecards: toArray(raw.metrics.scorecards ?? []),
+      }
+    : undefined,
+})
+
+const normalizeProjectDetailResponse = (data: unknown): ProjectDetailResponse => {
+  const parsed = ProjectDetailResponseSchema.safeParse(data)
+  if (!parsed.success) {
+    console.error('Project API response validation failed:', parsed.error)
+    throw new Error('Invalid project data received from server')
+  }
+
+  return {
+    project: hydrateProjectDetail(parsed.data.project),
+    members: parsed.data.members,
+    taskCounts: parsed.data.taskCounts,
+  }
+}
+
+const normalizeProjectListResponse = (data: unknown): ProjectSummary[] => {
+  const payload = Array.isArray(data)
+    ? data
+    : Array.isArray((data as any)?.items)
+      ? (data as any).items
+      : data
+
+  const parsed = z.array(ProjectSummarySchema).safeParse(payload)
+  if (!parsed.success) {
+    console.error('Projects API response validation failed:', parsed.error)
+    throw new Error('Invalid projects data received from server')
+  }
+
+  return parsed.data.map(hydrateProjectSummary)
+}
+
 // API client functions
 export async function fetchProject(
   projectId: string,
@@ -99,14 +194,7 @@ export async function fetchProject(
     signal: options?.signal,
   })
 
-  const result = ProjectDetailResponseSchema.safeParse(response.data)
-
-  if (!result.success) {
-    console.error('Project API response validation failed:', result.error)
-    throw new Error('Invalid project data received from server')
-  }
-
-  return result.data
+  return normalizeProjectDetailResponse(response.data)
 }
 
 export async function fetchProjectsByScope(
@@ -124,20 +212,7 @@ export async function fetchProjectsByScope(
     signal: options?.signal,
   })
 
-  const payload = Array.isArray(response.data)
-    ? response.data
-    : Array.isArray((response.data as any)?.items)
-      ? (response.data as any).items
-      : response.data
-
-  const result = z.array(ProjectSummarySchema).safeParse(payload)
-
-  if (!result.success) {
-    console.error('Projects API response validation failed:', result.error)
-    throw new Error('Invalid projects data received from server')
-  }
-
-  return result.data
+  return normalizeProjectListResponse(response.data)
 }
 
 // Mock projects for fallback when API fails
@@ -240,14 +315,7 @@ export async function createProject(
     signal: options?.signal,
   })
 
-  const result = ProjectDetailResponseSchema.safeParse(response.data)
-
-  if (!result.success) {
-    console.error('Project creation API response validation failed:', result.error)
-    throw new Error('Invalid project data received from server')
-  }
-
-  return result.data
+  return normalizeProjectDetailResponse(response.data)
 }
 
 // Enhanced project update API
@@ -277,14 +345,7 @@ export async function updateProject(
     signal: options?.signal,
   })
 
-  const result = ProjectDetailResponseSchema.safeParse(response.data)
-
-  if (!result.success) {
-    console.error('Project update API response validation failed:', result.error)
-    throw new Error('Invalid project data received from server')
-  }
-
-  return result.data
+  return normalizeProjectDetailResponse(response.data)
 }
 
 // Project deletion API

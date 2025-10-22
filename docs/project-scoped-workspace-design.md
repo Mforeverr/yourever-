@@ -4,28 +4,51 @@
 
 This document outlines a comprehensive design for transforming the current organization/division-scoped workspace into a project-centric workspace system. The design addresses the current "Unable to load projects" issue while creating a more intuitive and focused user experience.
 
+## Implementation Status (October 2025)
+
+| Capability | Current Build | Status | Notes / Next Actions |
+| --- | --- | --- | --- |
+| `/workspace` root | Renders the new **My Workbench** modules (tasks, mentions, pinned projects, today’s plan, focus overview). | ✅ Implemented | Aligns with “Workbench Mode” vision; project list no longer appears here. Consider deep-link back to `/workspace/projects` for discoverability. |
+| Project-first routes | `/[orgId]/[divisionId]/workspace/projects/[projectId]/…` with `ProjectProvider` + `ProjectWorkspaceLayout`. | ✅ Implemented | URLs normalize to view segment (`/board`, `/list`, etc.); breadcrumbs and “Exit to Workspace” work. |
+| Sidebar behaviour | Swaps between workbench mode and project mode using `currentProjectId`. | ⚠️ Partial | Global mode shows compact `ProjectList`, but click handler still logs to console in `/workspace/projects`; wire to `navigateToProject`. |
+| Project data | `fetchProject`/`fetchProjectsByScope` normalize responses and fall back to mock data. | ⚠️ Partial | Backend CRUD + list endpoints still stubbed; project creation uses mocks. |
+| Workspace overview/dashboard API | Requests now fall back to mock builders when 4xx/5xx responses occur. | ⚠️ Partial | Live `/api/workspaces/{org}/overview|dashboard` not implemented (404 in Docker logs). |
+| Project CRUD | UI forms exist; backend persistence pending. | ❌ Not Complete | Finish CRUD + membership endpoints (Phase 1). |
+| Project views (Board/List/etc.) | Layout renders but still mock-powered. | ⚠️ Partial | Need project-scoped queries per view and live data integration. |
+
+**Immediate follow-up work**
+1. Ship backend project CRUD + scope-aware list endpoints; connect `ProjectList` and forms to live queries.
+2. Implement `/api/workspaces/{org}/overview|dashboard` so workbench pulls real data (remove fallback console warnings afterwards).
+3. Wire sidebar/global project list clicks to `navigateToProject(project.id)` and add optimistic loading states.
+4. Replace mock data in workbench modules with user-scoped API once endpoints exist; add telemetry for module usage.
+
 ## Current State Analysis
 
 ### Existing Architecture
-- **URL Structure**: `/[orgId]/[divisionId]/workspace`
-- **Scope Context**: Organization and division-based scoping
-- **Sidebar Content**: Mixed content (Projects, Tasks, Labels, Documentation)
-- **Issue**: "Unable to load projects" due to missing API endpoints vs. live data expectations
+- **URL Structure**: `/[orgId]/[divisionId]/workspace` for the workbench and `/[orgId]/[divisionId]/workspace/projects/[projectId]/…` for project mode (implemented)
+- **Scope Context**: Organization/division scoped; may include `currentProjectId` when a project is active
+- **Sidebar Content**: Workbench mode shows *Projects*, *My Tasks*, *Labels*; project mode swaps to project overview/navigation
+- **Issue**: Live project/workspace APIs still missing; UI relies on mock data fallbacks
 
 ### Current Menu Items in Sidebar
-```
-Board
-Timeline
-Calendar
-Mindmap
-Docs
-```
+
+- **Workbench Mode (no project):**
+  - Projects (division-scoped list)
+  - My Tasks (user-scoped placeholder until API ships)
+  - Labels
+- **Project Mode (inside `/workspace/projects/[projectId]/…`):**
+  - Board
+  - List
+  - Timeline
+  - Calendar
+  - Mindmap
+  - Docs
 
 ### Problem Statement
-1. **Scoping Mismatch**: Current scope is org/division-based, but users need project-focused workspaces
-2. **Content Confusion**: Sidebar shows mixed content without clear project association
-3. **URL Structure**: Current URLs don't reflect project context
-4. **Data Loading**: Live data expectations vs. mock data reality
+1. **Scoping Mismatch** *(partially addressed)*: Project-first routing exists, but many queries still operate at division scope (tasks, sidebar list) until new APIs land.
+2. **Live Data Gap**: Backend workspace/project endpoints are not yet available; UI relies on mock stores and fallbacks.
+3. **Navigation Wiring**: Sidebar project entries in workbench mode are not fully wired to `navigateToProject`, so context switching still feels prototype-level.
+4. **Data Synchronization**: Workbench modules and sidebar "My Tasks" need shared, user-scoped data once APIs are ready.
 
 ### SOLUTION: Unambiguous Project-First Architecture
 
@@ -47,17 +70,9 @@ Docs
 
 We are implementing a **single, canonical project-first routing pattern** to eliminate all ambiguity and ensure every workspace view is explicitly scoped to a project. This decision is final and non-negotiable.
 
-```
-Current:  /[orgId]/[divisionId]/workspace
-FINAL:    /[orgId]/[divisionId]/workspace/projects/[projectId]
-
-Examples:
-- /[orgId]/[divisionId]/workspace/projects/[projectId]/board
-- /[orgId]/[divisionId]/workspace/projects/[projectId]/timeline
-- /[orgId]/[divisionId]/workspace/projects/[projectId]/calendar
-- /[orgId]/[divisionId]/workspace/projects/[projectId]/mindmap
-- /[orgId]/[divisionId]/workspace/projects/[projectId]/docs
-```
+- **Current global workspace:** `/[orgId]/[divisionId]/workspace`
+- **Project workspace root:** `/[orgId]/[divisionId]/workspace/projects/[projectId]`
+- **View examples:** `/board`, `/list`, `/timeline`, `/calendar`, `/mindmap`, `/docs` appended after the project route.
 
 **No alternative URL structures will be considered.** This project-first pattern is the foundation of our workspace architecture.
 
@@ -73,112 +88,38 @@ Think of each project as a dedicated office room with its own:
 - **Filing Cabinet** (Docs) - Project documentation and files
 
 #### Navigation Flow
-```
-1. User enters workspace at /[orgId]/[divisionId]/workspace
-2. Sidebar shows "Available Projects" list
-3. Clicking a project navigates to /[orgId]/[divisionId]/workspace/projects/[projectId]/board
-4. Entire workspace now reflects project context
-5. Sidebar updates to show project-specific menu items
-6. All views (Board, Timeline, etc.) are filtered by project scope
-```
+1. User enters workspace at `/[orgId]/[divisionId]/workspace` (workbench mode).
+2. Workbench modules surface user-centric tasks/mentions (current implementation).
+3. Sidebar still surfaces projects; clicking a project should navigate to `/[orgId]/[divisionId]/workspace/projects/[projectId]/board`.
+4. Entire workspace now reflects project context.
+5. Sidebar updates to show project-specific menu items.
+6. All views (Board, Timeline, etc.) are filtered by project scope.
+
+> **Note:** In the current build the workbench experience is live, but sidebar project clicks still need to invoke `navigateToProject` so the flow above becomes seamless.
 
 ### 3. Component Architecture Design
 
 #### 3.1 Project Context Provider
-```typescript
-interface ProjectContextType {
-  currentProject: Project | null;
-  projectMembers: TeamMember[];
-  projectScope: {
-    orgId: string;
-    divisionId: string;
-    projectId: string;
-  };
-  switchProject: (projectId: string) => void;
-  exitToWorkspace: () => void; // Back to global view
-}
-```
+| Responsibility | Status |
+| --- | --- |
+| Project context provider (`ProjectProvider`) supplies project data, members, permissions. | ✅ Implemented |
+| Scope context (`useScope`) includes `currentProjectId`, `navigateToProject`, `exitProject`. | ✅ Implemented |
 
-#### 3.2 Enhanced Scope Context
-```typescript
-interface EnhancedScopeContextType {
-  // Current org/division scope
-  orgId: string;
-  divisionId: string;
-
-  // Project scope (optional)
-  projectId?: string;
-
-  // Scope switching
-  setOrgScope: (orgId: string, divisionId: string) => void;
-  setProjectScope: (projectId: string) => void;
-  clearProjectScope: () => void;
-
-  // Breadcrumbs
-  scopePath: Array<{name: string, id: string, type: 'org' | 'division' | 'project'}>;
-}
-```
-
-#### 3.3 Project-Scoped Sidebar Components
-```typescript
-// Global Workspace Sidebar
-<GlobalWorkspaceSidebar>
-  <ProjectsList />
-  <QuickActions />
-  <RecentActivity />
-</GlobalWorkspaceSidebar>
-
-// Project Workspace Sidebar
-<ProjectWorkspaceSidebar projectId={projectId}>
-  <ProjectHeader />
-  <ProjectNavigation>
-    <BoardLink />
-    <TimelineLink />
-    <CalendarLink />
-    <MindmapLink />
-    <DocsLink />
-  </ProjectNavigation>
-  <ProjectTeam />
-  <ProjectSettings />
-</ProjectWorkspaceSidebar>
-```
+#### 3.2 Sidebar Behaviours
+| Mode | Sidebar Composition | Status |
+| --- | --- | --- |
+| Workbench (no project) | Projects list, My Tasks placeholder, Labels. | ✅ Implemented (click wiring pending) |
+| Project scope | Project header, navigation links (Board/List/Timeline/Calendar/Mindmap/Docs), overview cards. | ✅ Implemented |
 
 ### 4. Data Flow Architecture
 
 #### 4.1 Project Data Loading Strategy
-```typescript
-// Enhanced workspace overview query
-const useProjectWorkspaceQuery = (projectId: string) => {
-  return useQuery({
-    queryKey: ['project-workspace', orgId, divisionId, projectId],
-    queryFn: () => fetchProjectWorkspace(orgId, divisionId, projectId),
-    // Fallback to filtered mock data
-    fallbackData: filterMockDataByProject(mockData, projectId),
-    // Enhanced error handling
-    retry: false,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-  });
-};
-```
+- `fetchProject` / `fetchProjectsByScope` now normalize payloads and accept object-wrapped responses (`{ items: [...] }`).
+- Workspace overview/dashboard fetchers catch 4xx/5xx responses and return mock data using `useMockWorkspaceStore` / `buildMockDashboardSummary` (temporary until backend endpoints ship).
 
 #### 4.2 Scope-Aware Data Filtering
-```typescript
-// Universal data filtering function
-const filterByScope = (
-  data: any[],
-  scope: {orgId: string, divisionId: string, projectId?: string}
-) => {
-  return data.filter(item => {
-    const orgMatch = item.orgIds?.includes(scope.orgId);
-    const divisionMatch = item.divisionIds?.includes(scope.divisionId);
-    const projectMatch = !scope.projectId ||
-                        item.projectIds?.includes(scope.projectId) ||
-                        item.projectId === scope.projectId;
-
-    return orgMatch && divisionMatch && projectMatch;
-  });
-};
-```
+- Mock stores still provide division-scoped lists; once live APIs arrive, filtering will move server-side.
+- Workbench “My Tasks” + sidebar “My Tasks” will consume a unified user-scoped query (`assignedTo=currentUser`) when delivered.
 
 ### 5. User Experience Flow
 
@@ -189,29 +130,9 @@ const filterByScope = (
 4. **From Search**: Search results include "Enter Workspace" action
 
 #### 5.2 Navigation Patterns
-```
-Global Workspace (/workspace)
-├── Projects List
-│   ├── Project A → /[orgId]/[divisionId]/workspace/projects/[id]/board
-│   ├── Project B → /[orgId]/[divisionId]/workspace/projects/[id]/board
-│   └── Project C → /[orgId]/[divisionId]/workspace/projects/[id]/board
-├── Quick Actions
-└── Recent Activity
-
-Project Workspace (/[orgId]/[divisionId]/workspace/projects/[id]/board)
-├── Project Header
-│   ├── Project Name
-│   ├── Team Members
-│   └── Settings
-├── Project Navigation
-│   ├── Board (active)
-│   ├── Timeline
-│   ├── Calendar
-│   ├── Mindmap
-│   └── Docs
-├── Project-Specific Content
-└── Exit to Workspace (back to global)
-```
+- **Workbench Mode:** `/workspace` shows the user workbench (tasks, mentions, pinned projects, schedule).
+- **Project Selection:** Clicking a project should navigate to `/workspace/projects/[projectId]/board` (wiring pending for sidebar/project list).
+- **Project Mode:** Project header + navigation (Board/List/Timeline/Calendar/Mindmap/Docs) render via `ProjectWorkspaceLayout` with breadcrumbs and exit button.
 
 ### REST API Contract
 
@@ -228,53 +149,8 @@ Project Workspace (/[orgId]/[divisionId]/workspace/projects/[id]/board)
 | Project Doc Pages | `GET /api/orgs/{orgId}/divisions/{divisionId}/projects/{projectId}/docs`<br>`POST /api/orgs/{orgId}/divisions/{divisionId}/projects/{projectId}/docs` | GET, POST | Surface lightweight documentation entries linked to the project. |
 
 #### Sample Contract: Workspace Snapshot
-```http
-GET /api/orgs/{orgId}/divisions/{divisionId}/projects/{projectId}/workspace
-Accept: application/json
-```
-
-**200 OK**
-```json
-{
-  "project": {
-    "id": "proj_123",
-    "name": "Mobile Revamp",
-    "status": "active",
-    "divisionId": "division_45",
-    "orgId": "org_9",
-    "createdAt": "2025-09-01T09:00:00Z",
-    "updatedAt": "2025-10-12T15:34:22Z"
-  },
-  "members": [
-    { "userId": "user_1", "role": "owner" },
-    { "userId": "user_2", "role": "collaborator" }
-  ],
-  "views": [
-    {
-      "id": "view_board_1",
-      "type": "board",
-      "name": "Sprint Board",
-      "isDefault": true,
-      "settings": { "groupBy": "status", "swimlanes": "assignee" }
-    },
-    {
-      "id": "view_calendar_1",
-      "type": "calendar",
-      "name": "Release Calendar",
-      "settings": { "source": "tasks.dueDate" }
-    }
-  ],
-  "capabilities": {
-    "canManageProject": true,
-    "canManageViews": true,
-    "canManageMembers": false
-  },
-  "featureFlags": {
-    "projectWorkspace": true,
-    "enhancedSidebar": false
-  }
-}
-```
+- **Request:** `GET /api/orgs/{orgId}/divisions/{divisionId}/projects/{projectId}/workspace`
+- **Response:** Returns project metadata, member roles, available workspace views (board/list/timeline/etc.), capability flags, and active feature flags.
 
 **Fallbacks**
 - `404 Not Found` when `{projectId}` is invalid within the scoped org/division.
@@ -302,19 +178,10 @@ Accept: application/json
 | `project_documents` | `id (PK)`, `project_id`, `title`, `slug`, `content_richtext`, `created_by`, `updated_by` | `project_id → projects.id`, `created_by → users.id`, `updated_by → users.id` | Maintains docs in a dedicated table; integrate with existing doc tooling later via adapters. |
 | `project_view_telemetry` | `id (PK)`, `view_id`, `opened_at`, `user_id`, `feature_flag_state` | `view_id → project_workspace_views.id` | Collects usage metrics for staged rollout and kill-switch automation. |
 
-**Relationship Diagram (textual)**
-```
-organizations ──┐
-                ├─< divisions ──┐
-                │                └─< projects ──┬─< project_workspace_views ──┬─< board_columns ──┬─< board_column_tasks
-                │                               │                            │                  └─< tasks
-                │                               │                            └─< project_view_telemetry
-                │                               ├─< project_members
-                │                               ├─< tasks ──┬─< task_assignments
-                │                               │           └─< project_events (via source_id)
-                │                               ├─< project_milestones ──┬─> project_events
-                │                               └─< project_documents
-```
+**Relationship Highlights**
+- Organizations own divisions; divisions own projects.
+- Projects connect to workspace views (board/list/etc.), members, tasks, milestones, events, documents.
+- Tasks may have multiple assignees and feed board columns, calendar events, and telemetry.
 
 **Validation & Constraints**
 - Enforce unique `(project_id, view_type, name)` to avoid duplicate view labels.
@@ -383,21 +250,22 @@ organizations ──┐
    - Real-time project collaboration features
 
 **Navigation Flow Summary:**
-```
-User Path:
-1. User at /workspace sees global workspace
-2. Sidebar shows available projects (clickable list)
-3. Clicking project → URL changes to /workspace/projects/[projectId]/board
-4. Workspace content shows project-specific Board view
-5. Sidebar shows project is active/selected
-6. Other views (Timeline, Calendar, etc.) are now project-scoped
-```
+1. User lands on `/workspace` (workbench).
+2. Sidebar project list (division-scoped) offers entry points; selecting one should navigate to `/workspace/projects/[projectId]/board` with project mode UI.
+3. Breadcrumbs and “Exit to Workspace” support returning to workbench.
 
 **Key Design Principle:**
 - **Sidebar Navigation**: Projects are always accessible from sidebar
 - **Seamless Transitions**: Clicking project immediately switches context (like tabs)
 - **URL Persistence**: Direct URLs work for bookmarking and sharing
 - **Context Awareness**: All workspace content respects project scope
+
+**Workload Synchronization Intent:** Once the user-scoped task API is delivered, both the sidebar “My Tasks” section and the workbench “My Tasks” module will consume the same data source (tasks assigned to the signed-in user across the current division’s projects). The implementation plan is:
+1. Deliver a live task endpoint that supports `assignedTo=currentUser` with org/division/project scoping.
+2. Replace the sidebar placeholder with the same hook used by the workbench module.
+3. Keep the project list division-scoped (expected), while all task feeds become user-scoped so both surfaces stay in sync.
+
+Until those endpoints ship, both areas rely on mock data; wiring will be switched once the backend is live.
 
 ### 6.4 Current Workspace Foundation Integration
 
@@ -422,11 +290,7 @@ User Path:
 #### Implementation Approach
 **Leverage Existing Foundation**: Rather than rebuilding, we'll enhance the current workspace:
 
-1. **Route Enhancement**:
-   ```
-   Current: /[orgId]/[divisionId]/workspace (global view)
-   Enhanced: /[orgId]/[divisionId]/workspace/projects/[projectId]/board (project view)
-   ```
+1. **Route Enhancement:** clarify global view (`/[orgId]/[divisionId]/workspace`) versus project view (`/[orgId]/[divisionId]/workspace/projects/[projectId]/board`).
 
 2. **Workspace Component Enhancement**:
    - Add `projectId` parameter to workspace page
@@ -471,15 +335,10 @@ User Path:
 - Provide clear migration path for users
 
 #### 8.2 Feature Flags
-```typescript
-// New feature flags for gradual rollout
-const features = {
-  'project-workspace.enabled': true,
-  'project-workspace.default-view': false, // Start with global workspace as default
-  'project-workspace.enhanced-sidebar': true,
-  'workspace.liveData': true,
-};
-```
+- `project-workspace.enabled`: governs access to the project workspace experience.
+- `project-workspace.default-view`: toggles whether project mode becomes the default landing view.
+- `project-workspace.enhanced-sidebar`: controls rollout of the new sidebar transitions.
+- `workspace.liveData`: flips between live API calls and mock data during rollout.
 
 ### 9. Success Metrics
 
@@ -505,6 +364,24 @@ const features = {
 - **Real-time Collaboration**: Project-specific real-time updates
 - **External Integrations**: Project-specific third-party integrations
 - **Mobile Optimization**: Project workspace mobile experience
+
+## Delivery Checklist (Working Draft)
+
+### Backend
+- [ ] Ship `/api/projects` CRUD + membership endpoints; ensure responses conform to `ProjectSummary`/`ProjectDetail` (nullable fields allowed).
+- [ ] Implement `/api/workspaces/{orgId}/overview` and `/dashboard` so workbench no longer depends on mock fallbacks.
+- [ ] Provide project-scoped view/task/calendar/doc APIs per the REST contract above.
+
+### Frontend
+- [ ] Wire global sidebar project clicks and `/workspace/projects` list selections to `navigateToProject`.
+- [ ] Connect `ProjectList`/`ProjectCrudForm` to live endpoints and remove console logging.
+- [ ] Replace workbench module mock data with user-scoped queries; add loading/empty/error states.
+- [ ] Ensure Board/List/Timeline/Calendar/Mindmap/Docs pull data via project-scoped APIs.
+
+### Observability & QA
+- [ ] Remove temporary mock fallbacks once APIs respond; monitor for regressions.
+- [ ] Add telemetry for module usage (tasks completed from workbench, project switches, etc.).
+- [ ] Regression-test navigation (deep links, exit-to-workspace, browser back/forward) each release.
 
 ## Conclusion
 
