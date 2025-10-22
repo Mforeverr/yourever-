@@ -15,6 +15,8 @@ export interface WorkspaceProject {
   defaultView: string
   isTemplate: boolean
   updatedAt: string
+  taskCount?: number
+  memberCount?: number
 }
 
 export interface WorkspaceTask {

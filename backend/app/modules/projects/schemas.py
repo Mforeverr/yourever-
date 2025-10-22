@@ -10,7 +10,7 @@ proper validation, serialization, and security considerations.
 """
 
 from datetime import datetime
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, validator
@@ -30,6 +30,24 @@ class ProjectPriority(str, Enum):
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
+
+
+class ViewType(str, Enum):
+    """Workspace view type enumeration."""
+    BOARD = "board"
+    LIST = "list"
+    TIMELINE = "timeline"
+    CALENDAR = "calendar"
+    MINDMAP = "mindmap"
+    DOCS = "docs"
+
+
+class ProjectMemberRole(str, Enum):
+    """Project member role enumeration."""
+    OWNER = "owner"
+    ADMIN = "admin"
+    COLLABORATOR = "collaborator"
+    VIEWER = "viewer"
 
 
 class ProjectSummary(BaseModel):
@@ -145,6 +163,118 @@ class ProjectSearchRequest(BaseModel):
     per_page: int = Field(default=20, ge=1, le=100, description="Items per page")
     sort_by: Optional[str] = Field(default="updated_at", description="Sort field")
     sort_order: Optional[str] = Field(default="desc", pattern="^(asc|desc)$", description="Sort order")
+
+
+class ProjectMember(BaseModel):
+    """Project member information."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    user_id: str = Field(..., alias="userId", description="User ID")
+    role: ProjectMemberRole = Field(..., description="Member role")
+    invited_at: Optional[datetime] = Field(None, alias="invitedAt", description="Invitation timestamp")
+    joined_at: Optional[datetime] = Field(None, alias="joinedAt", description="Join timestamp")
+
+
+class ProjectMemberAddRequest(BaseModel):
+    """Request model for adding a member to a project."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    user_id: str = Field(..., min_length=1, description="User ID to add as member")
+    role: ProjectMemberRole = Field(..., description="Role to assign to the member")
+
+    @validator('user_id')
+    def validate_user_id(cls, v):
+        if not v or not v.strip():
+            raise ValueError('User ID cannot be empty')
+        return v.strip()
+
+
+class ProjectMemberUpdateRequest(BaseModel):
+    """Request model for updating a project member's role."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    role: ProjectMemberRole = Field(..., description="New role for the member")
+
+
+class WorkspaceView(BaseModel):
+    """Workspace view configuration."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str = Field(..., description="View identifier")
+    type: ViewType = Field(..., description="View type")
+    name: str = Field(..., min_length=1, max_length=255, description="View name")
+    is_default: bool = Field(default=False, alias="isDefault", description="Whether this is the default view")
+    settings: Dict[str, Any] = Field(default_factory=dict, description="View-specific settings")
+    created_by: Optional[str] = Field(None, alias="createdBy", description="Creator user ID")
+    created_at: datetime = Field(default_factory=datetime.utcnow, alias="createdAt", description="Creation timestamp")
+    updated_at: datetime = Field(default_factory=datetime.utcnow, alias="updatedAt", description="Last update timestamp")
+
+
+class WorkspaceViewCreateRequest(BaseModel):
+    """Request model for creating workspace views."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    type: ViewType = Field(..., description="View type")
+    name: str = Field(..., min_length=1, max_length=255, description="View name")
+    is_default: bool = Field(default=False, alias="isDefault", description="Whether this is the default view")
+    settings: Dict[str, Any] = Field(default_factory=dict, description="View-specific settings")
+
+    @validator('name')
+    def validate_name(cls, v):
+        if not v or not v.strip():
+            raise ValueError('View name cannot be empty')
+        return v.strip()
+
+
+class WorkspaceViewUpdateRequest(BaseModel):
+    """Request model for updating workspace views."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255, description="Updated view name")
+    is_default: Optional[bool] = Field(None, alias="isDefault", description="Updated default status")
+    settings: Optional[Dict[str, Any]] = Field(None, description="Updated view settings")
+
+    @validator('name')
+    def validate_name(cls, v):
+        if v is not None and (not v or not v.strip()):
+            raise ValueError('View name cannot be empty')
+        return v.strip() if v else v
+
+
+class ProjectCapabilities(BaseModel):
+    """Project capabilities for the current user."""
+    can_manage_project: bool = Field(default=False, alias="canManageProject", description="Can manage project settings")
+    can_manage_views: bool = Field(default=False, alias="canManageViews", description="Can manage workspace views")
+    can_manage_members: bool = Field(default=False, alias="canManageMembers", description="Can manage project members")
+    can_create_tasks: bool = Field(default=False, alias="canCreateTasks", description="Can create tasks")
+    can_delete_project: bool = Field(default=False, alias="canDeleteProject", description="Can delete project")
+
+
+class ProjectFeatureFlags(BaseModel):
+    """Project-specific feature flags."""
+    project_workspace: bool = Field(default=True, alias="projectWorkspace", description="Project workspace feature enabled")
+    project_sidebar: bool = Field(default=False, alias="projectSidebar", description="Project sidebar feature enabled")
+    advanced_views: bool = Field(default=False, alias="advancedViews", description="Advanced views feature enabled")
+    real_time_collaboration: bool = Field(default=True, alias="realTimeCollaboration", description="Real-time collaboration enabled")
+
+
+class ProjectWorkspaceSnapshot(BaseModel):
+    """Complete project workspace snapshot for UI initialization."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    project: ProjectDetails = Field(..., description="Project details")
+    members: List[ProjectMember] = Field(default_factory=list, description="Project members")
+    views: List[WorkspaceView] = Field(default_factory=list, description="Available workspace views")
+    capabilities: ProjectCapabilities = Field(..., description="User capabilities for this project")
+    feature_flags: ProjectFeatureFlags = Field(..., description="Project feature flags")
+    active_view_id: Optional[str] = Field(None, alias="activeViewId", description="Currently active view ID")
+
+
+class WorkspaceViewsList(BaseModel):
+    """Response model for workspace views list."""
+    views: List[WorkspaceView] = Field(default_factory=list, description="List of workspace views")
+    total: int = Field(..., description="Total number of views")
+    default_view_id: Optional[str] = Field(None, alias="defaultViewId", description="Default view ID")
 
 
 # Legacy compatibility aliases

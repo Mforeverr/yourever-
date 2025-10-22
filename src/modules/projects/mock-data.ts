@@ -125,6 +125,43 @@ const projectDetails: Record<string, ProjectDetails> = {
       { id: "pagerduty", provider: "PagerDuty", status: "connected", syncedAt: now },
     ],
   },
+  "company-allhands": {
+    id: "company-allhands",
+    slug: "company-allhands",
+    name: "Company All-Hands",
+    description: "Company all-hands meeting planning and coordination",
+    status: "active",
+    priority: "medium",
+    progressPercent: 45,
+    startDate: "2024-10-01T00:00:00Z",
+    targetDate: "2024-12-31T00:00:00Z",
+    updatedAt: now,
+    createdAt: "2024-09-15T00:00:00Z",
+    ownerId: "user_1",
+    divisionId: null, // Company-wide project, not tied to specific division
+    organizationId: "acme",
+    visibility: "organization",
+    badgeCount: 3,
+    tags: ["all-hands", "company", "meeting"],
+    overview: {
+      goals: [
+        "Coordinate quarterly all-hands meeting logistics",
+        "Prepare company-wide presentations and updates",
+        "Facilitate cross-department communication"
+      ],
+      outcomes: [
+        "Successful quarterly meetings with high engagement",
+        "Clear communication of company goals and progress",
+        "Improved company culture and alignment"
+      ],
+    },
+    metrics: {
+      health: "green",
+      budgetUsedPercent: 25,
+    },
+    defaultView: "board",
+    integrations: [],
+  },
 }
 
 const projectMembers: Record<string, ProjectMember[]> = {
@@ -183,6 +220,35 @@ const projectMembers: Record<string, ProjectMember[]> = {
       avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=thomas",
       role: "viewer",
       joinedAt: "2024-09-04T00:00:00Z",
+      isActive: true,
+    },
+  ],
+  "company-allhands": [
+    {
+      userId: "user_1",
+      fullName: "Dev User",
+      email: "dev@yourever.com",
+      avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=dev",
+      role: "owner",
+      joinedAt: "2024-09-15T00:00:00Z",
+      isActive: true,
+    },
+    {
+      userId: "user_marketing",
+      fullName: "Mia Carter",
+      email: "mia.carter@example.com",
+      avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=mia",
+      role: "editor",
+      joinedAt: "2024-09-20T00:00:00Z",
+      isActive: true,
+    },
+    {
+      userId: "user_engineering",
+      fullName: "Priya Patel",
+      email: "priya.patel@example.com",
+      avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=priya",
+      role: "editor",
+      joinedAt: "2024-09-22T00:00:00Z",
       isActive: true,
     },
   ],
@@ -275,6 +341,43 @@ const projectTasks: Record<string, ProjectTaskSummary[]> = {
       shortId: "INF-042",
     },
   ],
+  "company-allhands": [
+    {
+      id: "task-allhands-slides",
+      name: "Prepare Q4 all-hands presentation slides",
+      status: "in_progress",
+      priority: "high",
+      assigneeId: "user_marketing",
+      assigneeName: "Mia Carter",
+      dueDate: "2024-11-15T00:00:00Z",
+      updatedAt: now,
+      createdAt: "2024-10-20T00:00:00Z",
+      shortId: "ALL-001",
+    },
+    {
+      id: "task-allhands-logistics",
+      name: "Book venue and coordinate logistics",
+      status: "done",
+      priority: "medium",
+      assigneeId: "user_1",
+      assigneeName: "Dev User",
+      updatedAt: "2024-10-25T00:00:00Z",
+      createdAt: "2024-10-18T00:00:00Z",
+      shortId: "ALL-002",
+    },
+    {
+      id: "task-allhands-agenda",
+      name: "Finalize meeting agenda and schedule",
+      status: "todo",
+      priority: "medium",
+      assigneeId: "user_engineering",
+      assigneeName: "Priya Patel",
+      dueDate: "2024-11-10T00:00:00Z",
+      updatedAt: now,
+      createdAt: "2024-10-22T00:00:00Z",
+      shortId: "ALL-003",
+    },
+  ],
 }
 
 const projectTimeline: Record<string, ProjectTimelineEntry[]> = {
@@ -322,6 +425,28 @@ const projectTimeline: Record<string, ProjectTimelineEntry[]> = {
       description: "Agreed on updated SLOs: 99.9% uptime, 2h MTTR, <1% failed deploys.",
     },
   ],
+  "company-allhands": [
+    {
+      id: "timeline-all-01",
+      projectId: "company-allhands",
+      title: "Q4 All-Hands Planning Started",
+      entryType: "milestone",
+      happenedAt: "2024-10-01T10:00:00Z",
+      authorId: "user_1",
+      authorName: "Dev User",
+      description: "Initial planning meeting for Q4 all-hands. Key dates and themes identified.",
+    },
+    {
+      id: "timeline-all-02",
+      projectId: "company-allhands",
+      title: "Venue Confirmed",
+      entryType: "milestone",
+      happenedAt: "2024-10-15T14:30:00Z",
+      authorId: "user_1",
+      authorName: "Dev User",
+      description: "Main conference room booked for November 15th. A/V equipment confirmed.",
+    },
+  ],
 }
 
 const projectDocs: Record<string, ProjectDocSummary[]> = {
@@ -356,6 +481,26 @@ const projectDocs: Record<string, ProjectDocSummary[]> = {
       status: "published",
     },
   ],
+  "company-allhands": [
+    {
+      id: "doc-allAgenda",
+      title: "Q4 All-Hands Agenda",
+      shortId: "DOC-ALL-001",
+      updatedAt: now,
+      ownerId: "user_1",
+      ownerName: "Dev User",
+      status: "published",
+    },
+    {
+      id: "doc-allSlides",
+      title: "Q4 Company Update Presentation",
+      shortId: "DOC-ALL-002",
+      updatedAt: now,
+      ownerId: "user_marketing",
+      ownerName: "Mia Carter",
+      status: "draft",
+    },
+  ],
 }
 
 const projectSettings: Record<string, ProjectSettings> = {
@@ -375,6 +520,16 @@ const projectSettings: Record<string, ProjectSettings> = {
     featureFlags: [
       { key: "enable-doc-sync", enabled: true },
       { key: "enable-budget-tab", enabled: true },
+    ],
+  },
+  "company-allhands": {
+    allowGuests: true, // Company-wide event, allow broader access
+    notificationsEnabled: true,
+    autoArchiveCompletedTasks: true,
+    featureFlags: [
+      { key: "enable-doc-sync", enabled: true },
+      { key: "enable-budget-tab", enabled: false },
+      { key: "enable-public-view", enabled: true },
     ],
   },
 }

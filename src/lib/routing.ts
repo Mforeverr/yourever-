@@ -7,3 +7,13 @@ export const buildDivisionRoute = (orgId: string, divisionId: string, path: stri
   const sanitizedPath = path.startsWith('/') ? path : `/${path}`
   return `/${orgId}/${divisionId}${sanitizedPath}`.replace(/\/+$/, '')
 }
+
+export const buildProjectRoute = (
+  orgId: string,
+  divisionId: string,
+  projectId: string,
+  view: string = 'board',
+) => {
+  const sanitizedView = view ? (view.startsWith('/') ? view : `/${view}`) : ''
+  return `/${orgId}/${divisionId}/workspace/projects/${projectId}${sanitizedView}`.replace(/\/+$/, '')
+}

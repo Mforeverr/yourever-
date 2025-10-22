@@ -17,6 +17,7 @@ import { ScopeProvider, useScope } from "@/contexts/scope-context"
 import { useProtectedRoute } from "@/hooks/use-protected-route"
 import { getUIState, useUIStore } from "@/state/ui.store"
 import type { UITab } from "@/state/ui.store"
+import type { ImperativePanelHandle } from "react-resizable-panels"
 
 interface WorkspaceShellProps {
   children: React.ReactNode
@@ -40,7 +41,9 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
   const activeActivity = useUIStore((state) => state.activeActivity)
   const setActiveActivity = useUIStore((state) => state.setActiveActivity)
   const leftSidebarCollapsed = useUIStore((state) => state.leftSidebarCollapsed)
-  const toggleLeftSidebar = useUIStore((state) => state.toggleLeftSidebar)
+  const setLeftSidebarCollapsed = useUIStore((state) => state.setLeftSidebarCollapsed)
+  const leftSidebarSize = useUIStore((state) => state.leftSidebarSize)
+  const setLeftSidebarSize = useUIStore((state) => state.setLeftSidebarSize)
   const rightPanelCollapsed = useUIStore((state) => state.rightPanelCollapsed)
   const setRightPanelCollapsed = useUIStore((state) => state.setRightPanelCollapsed)
   const toggleRightPanel = useUIStore((state) => state.toggleRightPanel)
@@ -56,6 +59,47 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
   const toggleSplitView = useUIStore((state) => state.toggleSplitView)
   const rightPanelSize = useUIStore((state) => state.rightPanelSize)
   const setRightPanelSize = useUIStore((state) => state.setRightPanelSize)
+  const leftPanelRef = React.useRef<ImperativePanelHandle | null>(null)
+  const previousLeftSidebarSize = React.useRef<number>(leftSidebarSize || 22)
+
+  React.useEffect(() => {
+    if (!leftSidebarCollapsed && leftSidebarSize > 0) {
+      previousLeftSidebarSize.current = leftSidebarSize
+    }
+  }, [leftSidebarCollapsed, leftSidebarSize])
+
+  const handleSidebarResize = React.useCallback((size: number) => {
+    const MIN_VISIBLE_SIZE = 6
+    if (size <= MIN_VISIBLE_SIZE) {
+      if (!leftSidebarCollapsed) {
+        previousLeftSidebarSize.current = leftSidebarSize || previousLeftSidebarSize.current
+        setLeftSidebarCollapsed(true)
+      }
+      return
+    }
+
+    if (leftSidebarCollapsed) {
+      setLeftSidebarCollapsed(false)
+    }
+    previousLeftSidebarSize.current = size
+    setLeftSidebarSize(size)
+  }, [leftSidebarCollapsed, leftSidebarSize, setLeftSidebarCollapsed, setLeftSidebarSize])
+
+  const handleToggleLeftSidebar = React.useCallback(() => {
+    if (leftSidebarCollapsed) {
+      const targetSize = previousLeftSidebarSize.current > 6 ? previousLeftSidebarSize.current : 22
+      setLeftSidebarCollapsed(false)
+      requestAnimationFrame(() => {
+        leftPanelRef.current?.expand(targetSize)
+        leftPanelRef.current?.resize(targetSize)
+        setLeftSidebarSize(targetSize)
+      })
+    } else {
+      previousLeftSidebarSize.current = leftSidebarSize || previousLeftSidebarSize.current
+      setLeftSidebarCollapsed(true)
+      leftPanelRef.current?.collapse()
+    }
+  }, [leftSidebarCollapsed, leftSidebarSize, setLeftSidebarCollapsed, setLeftSidebarSize])
 
   const scopedBasePath = React.useMemo(() => {
     if (!currentOrgId || !currentDivisionId) return null
@@ -360,7 +404,7 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
       }
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'b') {
         event.preventDefault()
-        toggleLeftSidebar()
+        handleToggleLeftSidebar()
       }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'j') {
         event.preventDefault()
@@ -370,7 +414,7 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [toggleLeftSidebar, toggleRightPanel])
+  }, [handleToggleLeftSidebar, toggleRightPanel])
 
   if (authLoading || !isReady) {
     return (
@@ -413,26 +457,37 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
           activeItem={activeActivity}
           onItemChange={handleActivityChange}
           isCollapsed={leftSidebarCollapsed}
-          onToggleCollapse={toggleLeftSidebar}
+          onToggleCollapse={handleToggleLeftSidebar}
         />
 
         {/* Resizable Panels */}
-        <ResizablePanelGroup direction="horizontal" className="flex-1">
+        <ResizablePanelGroup direction="horizontal" className="flex-1 min-w-0">
           {/* Side Bar */}
-          <ResizablePanel 
-            defaultSize={leftSidebarCollapsed ? 0 : 20} 
-            minSize={leftSidebarCollapsed ? 0 : 15} 
-            maxSize={leftSidebarCollapsed ? 0 : 30}
+          <ResizablePanel
+            ref={leftPanelRef}
+            defaultSize={leftSidebarSize || 22}
+            minSize={8}
+            maxSize={35}
+            collapsedSize={0}
+            collapsible
+            onResize={handleSidebarResize}
+            onCollapse={() => {
+              previousLeftSidebarSize.current = leftSidebarSize || previousLeftSidebarSize.current
+              setLeftSidebarCollapsed(true)
+            }}
+            onExpand={() => {
+              setLeftSidebarCollapsed(false)
+            }}
           >
             {!leftSidebarCollapsed && (
               <SideBar activePanel={activeActivity} />
             )}
           </ResizablePanel>
           
-          <ResizableHandle withHandle className="w-px bg-border" />
+          <ResizableHandle withHandle className="bg-border" />
           
           {/* Main Editor Area */}
-          <ResizablePanel defaultSize={leftSidebarCollapsed ? 80 : 60}>
+          <ResizablePanel defaultSize={leftSidebarCollapsed ? 80 : 60} className="min-w-0">
             <div className="h-full flex flex-col">
               {/* Tabs Bar */}
               <TabsBar
@@ -455,7 +510,7 @@ function WorkspaceShellContent({ children, className }: WorkspaceShellProps) {
             </div>
           </ResizablePanel>
           
-          <ResizableHandle withHandle className="w-px bg-border" />
+          <ResizableHandle withHandle className="bg-border" />
           
           {/* Right Panel */}
           <ResizablePanel

@@ -366,7 +366,11 @@ function MindMapConnectionComponent({ connection }: { connection: MindMapConnect
   )
 }
 
-export function MindMapView() {
+interface MindMapViewProps {
+  projectId?: string
+}
+
+export function MindMapView({ projectId }: MindMapViewProps) {
   const [nodes, setNodes] = React.useState<MindMapNode[]>(initialNodes)
   const [connections, setConnections] = React.useState<MindMapConnection[]>(initialConnections)
   const [selectedNode, setSelectedNode] = React.useState<MindMapNode | null>(null)

@@ -73,6 +73,8 @@ interface UIStoreState {
   leftSidebarCollapsed: boolean
   toggleLeftSidebar: () => void
   setLeftSidebarCollapsed: (collapsed: boolean) => void
+  leftSidebarSize: number
+  setLeftSidebarSize: (size: number) => void
 
   rightPanelCollapsed: boolean
   setRightPanelCollapsed: (collapsed: boolean) => void
@@ -232,6 +234,11 @@ export const useUIStore = create<UIStoreState>()(
         leftSidebarCollapsed: false,
         toggleLeftSidebar: () => set((state) => ({ leftSidebarCollapsed: !state.leftSidebarCollapsed })),
         setLeftSidebarCollapsed: (collapsed) => set({ leftSidebarCollapsed: collapsed }),
+        leftSidebarSize: 22,
+        setLeftSidebarSize: (size) =>
+          set(() => ({
+            leftSidebarSize: Math.min(Math.max(size, 8), 35),
+          })),
 
         rightPanelCollapsed: false,
         setRightPanelCollapsed: (collapsed) => set({ rightPanelCollapsed: collapsed }),
@@ -757,6 +764,7 @@ export const useUIStore = create<UIStoreState>()(
         partialize: (state) => ({
           activeActivity: state.activeActivity,
           leftSidebarCollapsed: state.leftSidebarCollapsed,
+          leftSidebarSize: state.leftSidebarSize,
           rightPanelCollapsed: state.rightPanelCollapsed,
           bottomPanelCollapsed: state.bottomPanelCollapsed,
           isBottomPanelOpen: state.isBottomPanelOpen,
@@ -789,6 +797,7 @@ export const useUIStore = create<UIStoreState>()(
             tabs,
             activeActivity: state.activeActivity ?? "home",
             leftSidebarCollapsed: state.leftSidebarCollapsed ?? false,
+            leftSidebarSize: state.leftSidebarSize ?? 22,
             rightPanelCollapsed: state.rightPanelCollapsed ?? false,
             bottomPanelCollapsed: state.bottomPanelCollapsed ?? false,
             isBottomPanelOpen: state.isBottomPanelOpen ?? false,

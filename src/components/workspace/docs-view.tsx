@@ -406,7 +406,11 @@ function SlashCommandMenu({
   )
 }
 
-export function DocsView() {
+interface DocsViewProps {
+  projectId?: string
+}
+
+export function DocsView({ projectId }: DocsViewProps) {
   const [documents, setDocuments] = React.useState<Document[]>(mockDocuments)
   const [selectedDoc, setSelectedDoc] = React.useState<Document | null>(null)
   const [isEditing, setIsEditing] = React.useState(false)

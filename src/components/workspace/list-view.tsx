@@ -143,7 +143,11 @@ const statusVariantMap: Record<Task['status'], StatusBadgeProps['status']> = {
   'done': 'completed'
 }
 
-export function ListView() {
+interface ListViewProps {
+  projectId?: string
+}
+
+export function ListView({ projectId }: ListViewProps) {
   const router = useRouter()
   const { currentOrgId, currentDivisionId } = useScope()
   const canOpenProject = isFeatureEnabled("projects.detail", process.env.NODE_ENV !== "production")
@@ -154,8 +158,13 @@ export function ListView() {
     return `/${currentOrgId}/${currentDivisionId}`
   }, [currentDivisionId, currentOrgId])
 
-  const [tasks, setTasks] = React.useState<Task[]>(mockTasks)
-  const [filteredTasks, setFilteredTasks] = React.useState<Task[]>(mockTasks)
+  // Filter tasks by project
+  const [tasks, setTasks] = React.useState<Task[]>(() =>
+    mockTasks.filter(task => task.projectId === projectId)
+  )
+  const [filteredTasks, setFilteredTasks] = React.useState<Task[]>(() =>
+    mockTasks.filter(task => task.projectId === projectId)
+  )
   const [selectedTasks, setSelectedTasks] = React.useState<Task[]>([])
   const [searchQuery, setSearchQuery] = React.useState("")
   const [statusFilter, setStatusFilter] = React.useState<string>("all")
@@ -256,17 +265,7 @@ export function ListView() {
               )}
             </div>
           )}
-          {canOpenProject && row.projectId && workspaceBasePath && (
-            <Button
-              variant="link"
-              size="sm"
-              className="px-0 text-xs"
-              onClick={() => handleView(row)}
-            >
-              View project
-            </Button>
-          )}
-        </div>
+          </div>
       ),
       width: "300px"
     },

@@ -11,9 +11,12 @@ import { Badge } from "@/components/ui/badge"
 import { Search, Plus, ChevronDown, ChevronRight, Hash, Lock, Users, Star, Bell, BellOff, Calendar, FileText, Loader2, Pencil, X, AlertCircle } from "lucide-react"
 import { PeopleSidebar } from "@/components/people/people-sidebar"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
-import { ProjectForm } from "@/components/forms/project-form"
+import { ProjectList } from "@/components/project/project-list"
+import { ProjectCrudForm } from "@/components/project/project-crud-form"
+import { ProjectSummary } from "@/modules/projects/contracts"
 import { ChannelForm } from "@/components/forms/channel-form"
 import { useScope } from "@/contexts/scope-context"
+import { ProjectWorkspaceContent as ProjectScopeSidebarContent } from "@/components/shell/side-bar"
 import {
   useMockConversationStore,
   selectChannelsForScope,
@@ -114,7 +117,7 @@ interface WorkspaceContentProps {
 }
 
 const countProjectsForDivisionLive = (projects: WorkspaceProject[], divisionId: string) =>
-  projects.filter((project) => project.divisionId === divisionId).length
+  projects.filter((project) => project.divisionId === divisionId || project.divisionId === null).length
 
 const filterProjectsByDivision = (
   projects: WorkspaceProject[],
@@ -123,13 +126,15 @@ const filterProjectsByDivision = (
 ) => {
   if (!orgId) return []
   if (divisionId) {
-    return projects.filter((project) => project.divisionId === divisionId)
+    // Show projects for this division + org-wide projects (divisionId: null)
+    return projects.filter((project) => project.divisionId === divisionId || project.divisionId === null)
   }
-  return projects
+  // When no division specified, only show org-wide projects
+  return projects.filter((project) => project.divisionId === null)
 }
 
 const filterDocsByDivision = (
-  docs: { divisionId: string | null }[],
+  docs: ({ divisionId: string | null; id: string; name: string; isTemplate?: boolean } | { divisionId: string | null })[],
   divisionId?: string | null,
 ) => {
   if (divisionId) {
@@ -139,7 +144,7 @@ const filterDocsByDivision = (
 }
 
 const filterTasksByDivision = (
-  tasks: { divisionId: string | null }[],
+  tasks: ({ divisionId: string | null; id: string; name: string; isTemplate?: boolean; dotColor?: string } | { divisionId: string | null })[],
   divisionId?: string | null,
 ) => {
   if (divisionId) {
@@ -156,14 +161,14 @@ function ExplorerContent({ className, liveDataEnabled, overviewQuery }: Explorer
   const shouldShowTemplatesBanner = useWorkspaceStore((state) => state.showTemplatesBanner)
   const dismissTemplatesBanner = useWorkspaceStore((state) => state.dismissTemplatesBanner)
 
-  const { currentOrganization, currentOrgId, currentDivision, currentDivisionId, setScope, setDivision } = useScope()
+  const { currentOrganization, currentOrgId, currentDivision, currentDivisionId, setScope, setDivision, navigateToProject } = useScope()
 
   // ALL hooks must be called at the top level before any conditional returns
   const mockProjects = useMockWorkspaceStore((state) => state.projects)
   const mockDocs = useMockWorkspaceStore((state) => state.docs)
   const mockTasks = useMockWorkspaceStore((state) => state.tasks)
 
-  const shouldUseMockData = !liveDataEnabled
+  const shouldUseMockData = !liveDataEnabled || Boolean(overviewQuery?.isError)
 
   const projects: WorkspaceProject[] = React.useMemo(() => {
     if (overviewQuery?.isSuccess && overviewQuery?.data) {
@@ -223,8 +228,13 @@ function ExplorerContent({ className, liveDataEnabled, overviewQuery }: Explorer
     if (!workspaceBasePath || !canOpenProjects) {
       return
     }
-    router.push(`${workspaceBasePath}/projects/${projectId}`)
-  }, [workspaceBasePath, canOpenProjects, router])
+    // Use the enhanced navigation from scope context for proper URL synchronization
+    navigateToProject(projectId)
+  }, [workspaceBasePath, canOpenProjects, navigateToProject])
+
+  const handleProjectSelect = React.useCallback((project: ProjectSummary) => {
+    handleProjectOpen(project.id)
+  }, [handleProjectOpen])
 
   const toggleSection = React.useCallback((section: string) => {
     setExpandedSections((prev) =>
@@ -354,64 +364,13 @@ function ExplorerContent({ className, liveDataEnabled, overviewQuery }: Explorer
               Projects
             </Button>
             {expandedSections.includes('projects') && (
-              <div className="ml-4 space-y-1">
-                {overviewQuery.isPending && liveDataEnabled ? (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground px-2 py-3">
-                    <Loader2 className="h-3 w-3 animate-spin" /> Loading scoped projects...
-                  </div>
-                ) : overviewQuery.isError ? (
-                  <div className="flex items-center gap-2 text-xs text-destructive px-2 py-3">
-                    <AlertCircle className="h-3 w-3" /> Unable to load projects.
-                  </div>
-                ) : projects.length > 0 ? (
-                  projects.map((project) => (
-                    <div
-                      key={project.id}
-                      className="flex items-center justify-between rounded-lg p-2 hover:bg-accent/50"
-                    >
-                      <button
-                        type="button"
-                        className={cn(
-                          'flex flex-1 items-center justify-between text-left',
-                          canOpenProjects ? '' : 'cursor-not-allowed opacity-60',
-                        )}
-                        onClick={() => handleProjectOpen(project.id)}
-                        disabled={!canOpenProjects || !workspaceBasePath}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm">{project.name}</span>
-                          {project.isTemplate && (
-                            <Badge
-                              variant="outline"
-                              className="text-[10px] uppercase tracking-wide text-muted-foreground"
-                            >
-                              Sample
-                            </Badge>
-                          )}
-                        </div>
-                        <Badge variant="outline" className="text-xs">
-                          {project.badgeCount}
-                        </Badge>
-                      </button>
-                      <ProjectForm
-                        orgId={currentOrgId}
-                        divisionId={project.divisionId ?? currentDivisionId}
-                        project={project}
-                        onSuccess={() => {
-                          if (liveDataEnabled) {
-                            overviewQuery.refetch()
-                          }
-                        }}
-                      >
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground">
-                          <Pencil className="h-3 w-3" />
-                        </Button>
-                      </ProjectForm>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">Select a division to see scoped projects.</p>
-                )}
+              <div className="ml-4">
+                <ProjectList
+                  compact={true}
+                  showCreateButton={false}
+                  showHeader={false}
+                  onProjectSelect={handleProjectSelect}
+                />
               </div>
             )}
           </div>
@@ -432,21 +391,21 @@ function ExplorerContent({ className, liveDataEnabled, overviewQuery }: Explorer
             </Button>
             {expandedSections.includes('docs') && (
               <div className="ml-4 space-y-1">
-                {overviewQuery.isPending && liveDataEnabled ? (
+                {overviewQuery.isPending && liveDataEnabled && !shouldUseMockData ? (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground px-2 py-3">
                     <Loader2 className="h-3 w-3 animate-spin" /> Loading documents...
                   </div>
-                ) : overviewQuery.isError ? (
+                ) : overviewQuery.isError && !shouldUseMockData ? (
                   <div className="flex items-center gap-2 text-xs text-destructive px-2 py-3">
                     <AlertCircle className="h-3 w-3" /> Unable to load documents.
                   </div>
                 ) : docs.length > 0 ? (
                   docs.map((doc) => (
-                    <div key={doc.id} className="p-2 rounded-lg hover:bg-accent/50 cursor-pointer flex items-center justify-between">
+                    <div key={'id' in doc ? doc.id : `doc-${Math.random()}`} className="p-2 rounded-lg hover:bg-accent/50 cursor-pointer flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <FileText className="size-4 text-muted-foreground" />
-                        <span className="text-sm">{doc.name}</span>
-                        {doc.isTemplate && (
+                        <span className="text-sm">{'name' in doc ? doc.name : 'Untitled Document'}</span>
+                        {'isTemplate' in doc && doc.isTemplate && (
                           <Badge
                             variant="outline"
                             className="text-[10px] uppercase tracking-wide text-muted-foreground"
@@ -467,20 +426,14 @@ function ExplorerContent({ className, liveDataEnabled, overviewQuery }: Explorer
       </ScrollArea>
 
       <div className="p-2 border-t border-border">
-        <ProjectForm
-          orgId={currentOrgId}
-          divisionId={currentDivisionId}
-          onSuccess={() => {
-            if (liveDataEnabled) {
-              overviewQuery.refetch()
-            }
-          }}
+        <ProjectCrudForm
+          onSuccess={(project) => navigateToProject(project.id)}
         >
-          <Button variant="outline" size="sm" className="w-full">
+          <Button variant="outline" size="sm" className="w-full justify-center">
             <Plus className="size-4 mr-2" />
-            New project
+            New Project
           </Button>
-        </ProjectForm>
+        </ProjectCrudForm>
       </div>
     </div>
   )
@@ -872,13 +825,28 @@ function WorkspaceContent({ className, liveDataEnabled, overviewQuery }: Workspa
   const [expandedSections, setExpandedSections] = React.useState<string[]>(['projects', 'tasks'])
   const [selectedItem, setSelectedItem] = React.useState<string | null>(null)
   const router = useRouter()
-  const { currentOrgId, currentDivision, currentDivisionId } = useScope()
+  const { currentOrgId, currentDivision, currentDivisionId, navigateToProject } = useScope()
+
+  const canOpenProjects = isFeatureEnabled('projects.detail', process.env.NODE_ENV !== 'production')
+  const workspaceBasePath = currentOrgId && currentDivisionId ? `/${currentOrgId}/${currentDivisionId}` : null
+
+  const handleProjectOpen = React.useCallback((projectId: string) => {
+    if (!canOpenProjects) {
+      return
+    }
+    // Use the enhanced navigation from scope context for proper URL synchronization
+    navigateToProject(projectId)
+  }, [canOpenProjects, navigateToProject])
+
+  const handleProjectSelectFromList = React.useCallback((project: ProjectSummary) => {
+    handleProjectOpen(project.id)
+  }, [handleProjectOpen])
 
   // ALL hooks must be called at the top level before any conditional returns
   const mockProjects = useMockWorkspaceStore((state) => state.projects)
   const mockTasks = useMockWorkspaceStore((state) => state.tasks)
 
-  const shouldUseMockData = !liveDataEnabled
+  const shouldUseMockData = !liveDataEnabled || Boolean(overviewQuery?.isError)
 
   const scopedProjects = React.useMemo(() => {
     if (overviewQuery?.isSuccess && overviewQuery?.data) {
@@ -927,10 +895,6 @@ function WorkspaceContent({ className, liveDataEnabled, overviewQuery }: Workspa
     )
   }, [scopedProjects])
 
-  const canOpenProjects = isFeatureEnabled("projects.detail", process.env.NODE_ENV !== "production")
-  const workspaceBasePath =
-    currentOrgId && currentDivisionId ? `/${currentOrgId}/${currentDivisionId}` : null
-
   const toggleSection = React.useCallback((section: string) => {
     setExpandedSections((prev) =>
       prev.includes(section) ? prev.filter((s) => s !== section) : [...prev, section]
@@ -939,11 +903,12 @@ function WorkspaceContent({ className, liveDataEnabled, overviewQuery }: Workspa
 
   const handleProjectSelect = React.useCallback((projectId: string) => {
     setSelectedItem(projectId)
-    if (!workspaceBasePath || !canOpenProjects) {
+    if (!canOpenProjects) {
       return
     }
-    router.push(`${workspaceBasePath}/projects/${projectId}`)
-  }, [workspaceBasePath, canOpenProjects, router])
+    // Use the enhanced navigation from scope context for proper URL synchronization
+    navigateToProject(projectId)
+  }, [canOpenProjects, navigateToProject])
 
 const handleTaskSelect = React.useCallback((taskId: string) => {
     setSelectedItem(taskId)
@@ -999,53 +964,13 @@ const handleTaskSelect = React.useCallback((taskId: string) => {
               Projects
             </Button>
             {expandedSections.includes('projects') && (
-              <div className="ml-4 space-y-1">
-                {overviewQuery.isPending && liveDataEnabled ? (
-                  <div className="px-2 py-3 text-sm text-muted-foreground flex items-center gap-2">
-                    <Loader2 className="h-3 w-3 animate-spin" /> Loading projects...
-                  </div>
-                ) : overviewQuery.isError ? (
-                  <div className="flex items-center gap-2 text-xs text-destructive px-2 py-3">
-                    <AlertCircle className="h-3 w-3" /> Unable to load projects.
-                  </div>
-                ) : scopedProjects.length > 0 ? (
-                  scopedProjects.map((project) => (
-                    <button
-                      key={project.id}
-                      type="button"
-                      className={cn(
-                        'flex w-full items-center justify-between rounded-lg p-2 transition-colors',
-                        selectedItem === project.id
-                          ? 'bg-accent'
-                          : canOpenProjects
-                          ? 'hover:bg-accent/50'
-                          : 'cursor-not-allowed opacity-60',
-                      )}
-                      onClick={() => handleProjectSelect(project.id)}
-                      disabled={!canOpenProjects || !workspaceBasePath}
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className={cn('w-2 h-2 rounded-full', project.dotColor)} />
-                        <span className="text-sm">{project.name}</span>
-                        {project.isTemplate && (
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] uppercase tracking-wide text-muted-foreground"
-                          >
-                            Sample
-                          </Badge>
-                        )}
-                      </div>
-                      <Badge variant="outline" className="text-xs">
-                        {project.badgeCount}
-                      </Badge>
-                    </button>
-                  ))
-                ) : (
-                  <p className="px-2 py-3 text-sm text-muted-foreground">
-                    Projects scoped to this division will appear here.
-                  </p>
-                )}
+              <div className="ml-4">
+                <ProjectList
+                  compact={true}
+                  showCreateButton={false}
+                  showHeader={false}
+                  onProjectSelect={handleProjectSelectFromList}
+                />
               </div>
             )}
           </div>
@@ -1067,28 +992,28 @@ const handleTaskSelect = React.useCallback((taskId: string) => {
             </Button>
             {expandedSections.includes('tasks') && (
               <div className="ml-4 space-y-1">
-                {overviewQuery.isPending && liveDataEnabled ? (
+                {overviewQuery.isPending && liveDataEnabled && !shouldUseMockData ? (
                   <div className="px-2 py-3 text-sm text-muted-foreground flex items-center gap-2">
                     <Loader2 className="h-3 w-3 animate-spin" /> Loading tasks...
                   </div>
-                ) : overviewQuery.isError ? (
+                ) : overviewQuery.isError && !shouldUseMockData ? (
                   <div className="flex items-center gap-2 text-xs text-destructive px-2 py-3">
                     <AlertCircle className="h-3 w-3" /> Unable to load tasks.
                   </div>
                 ) : scopedTasks.length > 0 ? (
                   scopedTasks.map((task) => (
                     <div
-                      key={task.id}
+                      key={'id' in task ? task.id : `task-${Math.random()}`}
                       className={cn(
                         'flex items-center justify-between p-2 rounded-lg cursor-pointer',
-                        selectedItem === task.id ? 'bg-accent' : 'hover:bg-accent/50',
+                        selectedItem === ('id' in task ? task.id : undefined) ? 'bg-accent' : 'hover:bg-accent/50',
                       )}
-                      onClick={() => handleTaskSelect(task.id)}
+                      onClick={() => handleTaskSelect('id' in task ? task.id : '')}
                     >
                       <div className="flex items-center gap-2">
-                        <div className={cn('w-2 h-2 rounded-full', task.dotColor)} />
-                        <span className="text-sm">{task.name}</span>
-                        {task.isTemplate && (
+                        <div className={cn('w-2 h-2 rounded-full', 'dotColor' in task ? task.dotColor : 'bg-gray-500')} />
+                        <span className="text-sm">{'name' in task ? task.name : 'Unnamed Task'}</span>
+                        {'isTemplate' in task && task.isTemplate && (
                           <Badge
                             variant="outline"
                             className="text-[10px] uppercase tracking-wide text-muted-foreground"
@@ -1097,9 +1022,11 @@ const handleTaskSelect = React.useCallback((taskId: string) => {
                           </Badge>
                         )}
                       </div>
-                      <Badge variant={task.badgeVariant} className="text-xs">
-                        {task.priority}
-                      </Badge>
+                      {'badgeVariant' in task && 'priority' in task ? (
+                        <Badge variant={task.badgeVariant as any} className="text-xs">
+                          {String(task.priority)}
+                        </Badge>
+                      ) : null}
                     </div>
                   ))
                 ) : (
@@ -1147,20 +1074,14 @@ const handleTaskSelect = React.useCallback((taskId: string) => {
       </ScrollArea>
 
       <div className="p-2 border-t border-border space-y-2">
-        <ProjectForm
-          orgId={currentOrgId}
-          divisionId={currentDivisionId}
-          onSuccess={() => {
-            if (liveDataEnabled) {
-              overviewQuery.refetch()
-            }
-          }}
+        <ProjectCrudForm
+          onSuccess={(project) => handleProjectOpen(project.id)}
         >
-          <Button variant="outline" size="sm" className="w-full">
+          <Button variant="outline" size="sm" className="w-full justify-center">
             <Plus className="size-4 mr-2" />
             New Project
           </Button>
-        </ProjectForm>
+        </ProjectCrudForm>
         <Button variant="ghost" size="sm" className="w-full">
           <Plus className="size-4 mr-2" />
           New Task
@@ -1171,7 +1092,7 @@ const handleTaskSelect = React.useCallback((taskId: string) => {
 }
 
 function SideBar({ activePanel, className }: SideBarProps) {
-  const { currentOrgId, currentDivisionId } = useScope()
+  const { currentOrgId, currentDivisionId, currentProjectId } = useScope()
   const liveDataEnabled = isFeatureEnabled('workspace.liveData', true)
   const overviewQuery = useWorkspaceOverviewQuery(currentOrgId, currentDivisionId, {
     enabled: liveDataEnabled && Boolean(currentOrgId),
@@ -1211,13 +1132,30 @@ function SideBar({ activePanel, className }: SideBarProps) {
     }
   }
 
+  const isProjectScoped = Boolean(currentProjectId)
+  const sidebarContent = isProjectScoped
+    ? (
+      <>
+        {/* Author: Codex | Role: CTO Dev | Date: 2025-10-18 */}
+        {/* Ensure project scope renders dedicated navigation to avoid duplicate workspace lists */}
+        <div className="absolute top-3 right-3 z-10">
+          <div className="flex items-center gap-1 px-2 py-1 bg-brand/10 border border-brand/20 rounded-full">
+            <div className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse" />
+            <span className="text-xs text-brand font-medium">Project Mode</span>
+          </div>
+        </div>
+        <ProjectScopeSidebarContent />
+      </>
+    )
+    : renderContent()
+
   return (
     <SidebarErrorBoundary>
       <div className={cn(
-        "w-64 h-full bg-surface-panel border-r border-border flex flex-col",
+        "h-full min-w-0 bg-surface-panel border-r border-border flex flex-col relative overflow-hidden",
         className
       )}>
-        {renderContent()}
+        {sidebarContent}
       </div>
     </SidebarErrorBoundary>
   )

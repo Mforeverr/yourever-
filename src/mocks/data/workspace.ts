@@ -34,23 +34,42 @@ export interface MockWorkspaceProject extends WorkspaceProject {
   // Additional mock-specific fields for filtering
   orgIds: OrgScope
   divisions: DivisionScope[]
+  taskCount?: number
+  memberCount?: number
 }
 
 export interface MockWorkspaceTask {
   id: string
+  orgId: string
+  divisionId: string | null
+  projectId: string | null
   name: string
   priority: 'Low' | 'Medium' | 'High' | 'Urgent'
   badgeVariant: 'secondary' | 'destructive'
   dotColor: string
+  isTemplate: boolean
+  updatedAt: string
+  // Additional mock-specific fields for filtering
   orgIds: OrgScope
   divisions: DivisionScope[]
+  taskCount?: number
+  memberCount?: number
 }
 
 export interface MockWorkspaceDoc {
   id: string
+  orgId: string
+  divisionId: string | null
   name: string
+  url?: string | null
+  summary?: string | null
+  isTemplate: boolean
+  updatedAt: string
+  // Additional mock-specific fields for filtering
   orgIds: OrgScope
   divisions: DivisionScope[]
+  taskCount?: number
+  memberCount?: number
 }
 
 interface MockWorkspaceState {
@@ -102,7 +121,9 @@ const seedProjects = (): Record<string, MockWorkspaceProject> => {
       status: 'active',
       defaultView: 'board',
       isTemplate: false,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      taskCount: 12,
+      memberCount: 4
     },
     {
       id: 'platform-infra',
@@ -118,7 +139,9 @@ const seedProjects = (): Record<string, MockWorkspaceProject> => {
       status: 'active',
       defaultView: 'board',
       isTemplate: false,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      taskCount: 13,
+      memberCount: 4
     },
     {
       id: 'growth-experiments',
@@ -134,7 +157,9 @@ const seedProjects = (): Record<string, MockWorkspaceProject> => {
       status: 'active',
       defaultView: 'board',
       isTemplate: false,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      taskCount: 13,
+      memberCount: 4
     },
     {
       id: 'design-system',
@@ -150,7 +175,9 @@ const seedProjects = (): Record<string, MockWorkspaceProject> => {
       status: 'active',
       defaultView: 'board',
       isTemplate: false,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      taskCount: 13,
+      memberCount: 4
     },
     {
       id: 'research-labs',
@@ -166,7 +193,9 @@ const seedProjects = (): Record<string, MockWorkspaceProject> => {
       status: 'active',
       defaultView: 'board',
       isTemplate: false,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      taskCount: 13,
+      memberCount: 4
     },
     {
       id: 'product-roadmap',
@@ -182,7 +211,9 @@ const seedProjects = (): Record<string, MockWorkspaceProject> => {
       status: 'active',
       defaultView: 'board',
       isTemplate: false,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      taskCount: 13,
+      memberCount: 4
     },
     {
       id: 'company-allhands',
@@ -198,7 +229,9 @@ const seedProjects = (): Record<string, MockWorkspaceProject> => {
       status: 'active',
       defaultView: 'board',
       isTemplate: false,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      taskCount: 13,
+      memberCount: 4
     }
   ]
   return Object.fromEntries(data.map((project) => [project.id, project]))
@@ -206,24 +239,48 @@ const seedProjects = (): Record<string, MockWorkspaceProject> => {
 
 const seedTasks = (): Record<string, MockWorkspaceTask> => {
   const data: MockWorkspaceTask[] = [
-    { id: 'task-auth', name: 'Ship mock authentication', priority: 'High', badgeVariant: 'secondary', dotColor: 'bg-red-500', orgIds: 'all', divisions: ['engineering', 'product'] },
-    { id: 'task-campaign', name: 'Launch Q4 campaign', priority: 'Urgent', badgeVariant: 'destructive', dotColor: 'bg-rose-500', orgIds: 'all', divisions: ['marketing'] },
-    { id: 'task-ux', name: 'Polish onboarding flow', priority: 'Medium', badgeVariant: 'secondary', dotColor: 'bg-yellow-500', orgIds: 'all', divisions: ['design', 'product'] },
-    { id: 'task-research', name: 'Publish insights memo', priority: 'Medium', badgeVariant: 'secondary', dotColor: 'bg-emerald-500', orgIds: 'all', divisions: ['research'] },
-    { id: 'task-maintenance', name: 'Infrastructure upkeep', priority: 'Low', badgeVariant: 'secondary', dotColor: 'bg-blue-500', orgIds: 'all', divisions: ['engineering'] },
-    { id: 'task-allhands', name: 'Prep all-hands slides', priority: 'High', badgeVariant: 'secondary', dotColor: 'bg-purple-500', orgIds: 'all', divisions: ['all'] }
+    { id: 'task-auth', orgId: 'mock-org-id', divisionId: 'engineering', projectId: null, name: 'Ship mock authentication', priority: 'High', badgeVariant: 'secondary', dotColor: 'bg-red-500', isTemplate: false, updatedAt: new Date().toISOString(),
+      taskCount: 13,
+      memberCount: 4, orgIds: 'all', divisions: ['engineering', 'product'] },
+    { id: 'task-campaign', orgId: 'mock-org-id', divisionId: 'marketing', projectId: null, name: 'Launch Q4 campaign', priority: 'Urgent', badgeVariant: 'destructive', dotColor: 'bg-rose-500', isTemplate: false, updatedAt: new Date().toISOString(),
+      taskCount: 13,
+      memberCount: 4, orgIds: 'all', divisions: ['marketing'] },
+    { id: 'task-ux', orgId: 'mock-org-id', divisionId: 'design', projectId: null, name: 'Polish onboarding flow', priority: 'Medium', badgeVariant: 'secondary', dotColor: 'bg-yellow-500', isTemplate: false, updatedAt: new Date().toISOString(),
+      taskCount: 13,
+      memberCount: 4, orgIds: 'all', divisions: ['design', 'product'] },
+    { id: 'task-research', orgId: 'mock-org-id', divisionId: 'research', projectId: null, name: 'Publish insights memo', priority: 'Medium', badgeVariant: 'secondary', dotColor: 'bg-emerald-500', isTemplate: false, updatedAt: new Date().toISOString(),
+      taskCount: 13,
+      memberCount: 4, orgIds: 'all', divisions: ['research'] },
+    { id: 'task-maintenance', orgId: 'mock-org-id', divisionId: 'engineering', projectId: null, name: 'Infrastructure upkeep', priority: 'Low', badgeVariant: 'secondary', dotColor: 'bg-blue-500', isTemplate: false, updatedAt: new Date().toISOString(),
+      taskCount: 13,
+      memberCount: 4, orgIds: 'all', divisions: ['engineering'] },
+    { id: 'task-allhands', orgId: 'mock-org-id', divisionId: null, projectId: null, name: 'Prep all-hands slides', priority: 'High', badgeVariant: 'secondary', dotColor: 'bg-purple-500', isTemplate: false, updatedAt: new Date().toISOString(),
+      taskCount: 13,
+      memberCount: 4, orgIds: 'all', divisions: ['all'] }
   ]
   return Object.fromEntries(data.map((task) => [task.id, task]))
 }
 
 const seedDocs = (): Record<string, MockWorkspaceDoc> => {
   const data: MockWorkspaceDoc[] = [
-    { id: 'brand-guidelines', name: 'Brand Guidelines', orgIds: 'all', divisions: ['marketing', 'design'] },
-    { id: 'api-overview', name: 'API Overview', orgIds: 'all', divisions: ['engineering'] },
-    { id: 'playbook', name: 'Go-To-Market Playbook', orgIds: 'all', divisions: ['marketing', 'product'] },
-    { id: 'design-language', name: 'Design Language', orgIds: 'all', divisions: ['design'] },
-    { id: 'lab-notes', name: 'Research Lab Notes', orgIds: 'all', divisions: ['research'] },
-    { id: 'ops-manual', name: 'Operations Manual', orgIds: 'all', divisions: ['all'] }
+    { id: 'brand-guidelines', orgId: 'mock-org-id', divisionId: 'marketing', name: 'Brand Guidelines', url: null, summary: 'Comprehensive brand guidelines and visual identity standards', isTemplate: false, updatedAt: new Date().toISOString(),
+      taskCount: 13,
+      memberCount: 4, orgIds: 'all', divisions: ['marketing', 'design'] },
+    { id: 'api-overview', orgId: 'mock-org-id', divisionId: 'engineering', name: 'API Overview', url: '/docs/api', summary: 'Complete API documentation and integration guides', isTemplate: false, updatedAt: new Date().toISOString(),
+      taskCount: 13,
+      memberCount: 4, orgIds: 'all', divisions: ['engineering'] },
+    { id: 'playbook', orgId: 'mock-org-id', divisionId: 'marketing', name: 'Go-To-Market Playbook', url: null, summary: 'Strategic playbook for product launches and market entry', isTemplate: false, updatedAt: new Date().toISOString(),
+      taskCount: 13,
+      memberCount: 4, orgIds: 'all', divisions: ['marketing', 'product'] },
+    { id: 'design-language', orgId: 'mock-org-id', divisionId: 'design', name: 'Design Language', url: '/docs/design', summary: 'Design system documentation and component library', isTemplate: false, updatedAt: new Date().toISOString(),
+      taskCount: 13,
+      memberCount: 4, orgIds: 'all', divisions: ['design'] },
+    { id: 'lab-notes', orgId: 'mock-org-id', divisionId: 'research', name: 'Research Lab Notes', url: null, summary: 'User research findings and usability test results', isTemplate: false, updatedAt: new Date().toISOString(),
+      taskCount: 13,
+      memberCount: 4, orgIds: 'all', divisions: ['research'] },
+    { id: 'ops-manual', orgId: 'mock-org-id', divisionId: null, name: 'Operations Manual', url: null, summary: 'Company operations and procedures manual', isTemplate: false, updatedAt: new Date().toISOString(),
+      taskCount: 13,
+      memberCount: 4, orgIds: 'all', divisions: ['all'] }
   ]
   return Object.fromEntries(data.map((doc) => [doc.id, doc]))
 }

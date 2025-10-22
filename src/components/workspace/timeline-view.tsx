@@ -304,7 +304,11 @@ function TimelineHeader() {
   )
 }
 
-export function TimelineView() {
+interface TimelineViewProps {
+  projectId?: string
+}
+
+export function TimelineView({ projectId }: TimelineViewProps) {
   const [lanes, setLanes] = React.useState<TimelineLane[]>(mockLanes)
   const [zoomLevel, setZoomLevel] = React.useState(1)
 

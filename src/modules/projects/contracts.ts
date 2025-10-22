@@ -22,7 +22,7 @@ export interface ProjectSummary {
   updatedAt: string
   createdAt: string
   ownerId: string
-  divisionId: string
+  divisionId: string | null  // Allow null for org-wide projects
   organizationId: string
   visibility: ProjectVisibility
   badgeCount?: number

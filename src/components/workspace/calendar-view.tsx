@@ -439,7 +439,11 @@ function EventCard({ event, onClick }: { event: CalendarEvent; onClick: () => vo
   )
 }
 
-export function CalendarView() {
+interface CalendarViewProps {
+  projectId?: string
+}
+
+export function CalendarView({ projectId }: CalendarViewProps) {
   const [currentDate, setCurrentDate] = React.useState(new Date())
   const [viewType, setViewType] = React.useState<ViewType>('month')
   const [events] = React.useState<CalendarEvent[]>(mockEvents)

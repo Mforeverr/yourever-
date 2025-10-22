@@ -1,6 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useRef } from 'react'
+
+// Force dynamic rendering to prevent build-time errors
+export const dynamic = 'force-dynamic'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
