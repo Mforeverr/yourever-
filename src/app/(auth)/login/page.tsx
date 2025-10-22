@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AuthLayout } from '@/components/auth/auth-layout'
@@ -24,7 +24,13 @@ import type { WorkspaceUser } from '@/modules/auth/types'
 const findMockUserByEmail = (email: string): MockUser | null =>
   mockUsers.find((candidate) => candidate.email.toLowerCase() === email.toLowerCase()) ?? null
 
-const handlePostLoginRedirect = (router: ReturnType<typeof useRouter>, user: WorkspaceUser | null) => {
+const handlePostLoginRedirect = (router: ReturnType<typeof useRouter>, user: WorkspaceUser | null, redirectUrl?: string | null) => {
+  // If there's a redirect URL from the middleware, use it
+  if (redirectUrl && redirectUrl !== '/' && redirectUrl !== '/login') {
+    router.replace(redirectUrl)
+    return
+  }
+
   const userId = authStorage.getUserId()
   const onboardingStatus = userId ? authStorage.getOnboardingStatus(userId) : null
 
@@ -51,17 +57,21 @@ const handlePostLoginRedirect = (router: ReturnType<typeof useRouter>, user: Wor
 
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { login, strategy, user, isLoading } = useAuth()
   const [activeTab, setActiveTab] = useState<'password' | 'magic'>('password')
   const [isSocialLoading, setIsSocialLoading] = useState(false)
   const isMockStrategy = strategy === 'mock'
 
+  // Get redirect URL from search params
+  const redirectUrl = searchParams?.get('redirect')
+
   // Handle redirect for Supabase logins after successful authentication
   useEffect(() => {
     if (strategy === 'supabase' && user && !isLoading) {
-      handlePostLoginRedirect(router, user)
+      handlePostLoginRedirect(router, user, redirectUrl)
     }
-  }, [user, isLoading, strategy, router])
+  }, [user, isLoading, strategy, router, redirectUrl])
 
   const handleEmailLogin = async (email: string, password: string) => {
     return login(email, password)
@@ -75,7 +85,7 @@ export default function LoginPage() {
 
     // For mock strategy, handle immediate redirect
     const user = findMockUserByEmail(email)
-    handlePostLoginRedirect(router, user)
+    handlePostLoginRedirect(router, user, redirectUrl)
   }
 
   const handleQuickLogin = async (userEmail: string) => {
@@ -83,7 +93,7 @@ export default function LoginPage() {
     const success = await login(userEmail, 'any-password')
     if (success) {
       const user = findMockUserByEmail(userEmail)
-      handlePostLoginRedirect(router, user)
+      handlePostLoginRedirect(router, user, redirectUrl)
     }
   }
 
@@ -105,7 +115,7 @@ export default function LoginPage() {
         const success = await login(fallbackUserEmail, 'any-password')
         if (success) {
           const user = findMockUserByEmail(fallbackUserEmail)
-          handlePostLoginRedirect(router, user)
+          handlePostLoginRedirect(router, user, redirectUrl)
         }
       }
     } catch (error) {

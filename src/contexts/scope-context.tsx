@@ -423,16 +423,9 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
   ])
 
   
-  // Temporarily disabled to prevent infinite API calls during debugging
-  // TODO: Re-enable after fixing the infinite loop issue
-  /*
+  // Fixed route synchronization effect to handle direct URL access
   useEffect(() => {
     if (!isAuthenticated || !isReady) {
-      return
-    }
-
-    if (!scopeState?.active) {
-      router.replace('/workspace-hub')
       return
     }
 
@@ -440,83 +433,109 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     const routeDivisionId = normalizeParam(params?.divisionId)
     const trailing = deriveTrailingPath(pathname)
 
-    const navigateToActive = () => {
-      if (!scopeState.active) {
-        router.replace('/workspace-hub')
-        return
-      }
-      if (scopeState.active.divisionId) {
-        router.replace(buildDivisionRoute(scopeState.active.orgId, scopeState.active.divisionId, trailing))
-      } else {
-        router.replace(buildOrgRoute(scopeState.active.orgId, trailing))
-      }
-    }
-
+    // If no org/division in route, navigate to active scope or workspace hub
     if (!routeOrgId) {
-      navigateToActive()
+      if (scopeState?.active) {
+        if (scopeState.active.divisionId) {
+          router.replace(buildDivisionRoute(scopeState.active.orgId, scopeState.active.divisionId, trailing))
+        } else {
+          router.replace(buildOrgRoute(scopeState.active.orgId, trailing))
+        }
+      } else {
+        router.replace('/workspace-hub')
+      }
       return
     }
 
-    if (routeOrgId === scopeState.active.orgId && (routeDivisionId ?? null) === (scopeState.active.divisionId ?? null)) {
+    // Check if route matches current active scope
+    const routeMatchesActive =
+      routeOrgId === scopeState?.active?.orgId &&
+      (routeDivisionId ?? null) === (scopeState?.active?.divisionId ?? null)
+
+    // If route matches active scope, no action needed
+    if (routeMatchesActive) {
       return
     }
 
+    // Find the requested organization
     const candidateOrg = organizations.find((organization) => organization.id === routeOrgId)
     if (!candidateOrg) {
-      navigateToActive()
+      // Organization not found, navigate to active scope or workspace hub
+      if (scopeState?.active) {
+        if (scopeState.active.divisionId) {
+          router.replace(buildDivisionRoute(scopeState.active.orgId, scopeState.active.divisionId, trailing))
+        } else {
+          router.replace(buildOrgRoute(scopeState.active.orgId, trailing))
+        }
+      } else {
+        router.replace('/workspace-hub')
+      }
       return
     }
 
+    // Find the requested division (or use first available)
     const candidateDivision = routeDivisionId
       ? candidateOrg.divisions.find((division) => division.id === routeDivisionId) ?? null
       : candidateOrg.divisions[0] ?? null
 
-    // Additional check to prevent unnecessary updates
-    if (candidateOrg.id === scopeState.active.orgId &&
-        (candidateDivision?.id ?? null) === (scopeState.active.divisionId ?? null)) {
+    // Check if candidate scope would be the same as active scope (to prevent unnecessary updates)
+    const candidateWouldMatchActive =
+      candidateOrg.id === scopeState?.active?.orgId &&
+      (candidateDivision?.id ?? null) === (scopeState?.active?.divisionId ?? null)
+
+    if (candidateWouldMatchActive) {
       return
     }
 
+    // Update scope to match the route
     void scopeMutexRef.current.runExclusive(async () => {
-        const optimistic = buildOptimisticState(scopeState, candidateOrg.id, candidateDivision?.id ?? null)
-        if (optimistic) {
-          setScopeCache(optimistic)
+      const optimistic = buildOptimisticState(scopeState, candidateOrg.id, candidateDivision?.id ?? null)
+      if (optimistic) {
+        setScopeCache(optimistic)
+      }
+      setMutationPending(true)
+      try {
+        await mutateScope({
+          orgId: candidateOrg.id,
+          divisionId: candidateDivision?.id ?? null,
+          reason: 'route-sync',
+        })
+        setMutationError(null)
+      } catch (mutationError) {
+        // Restore previous state on error
+        if (scopeState) {
+          setScopeCache(scopeState)
         }
-        setMutationPending(true)
-        try {
-          await mutateScope({
-            orgId: candidateOrg.id,
-            divisionId: candidateDivision?.id ?? null,
-            reason: 'route-sync',
-          })
-          setMutationError(null)
-        } catch (mutationError) {
-          if (scopeState) {
-            setScopeCache(scopeState)
+        // Navigate to active scope or workspace hub on error
+        if (scopeState?.active) {
+          if (scopeState.active.divisionId) {
+            router.replace(buildDivisionRoute(scopeState.active.orgId, scopeState.active.divisionId, trailing))
+          } else {
+            router.replace(buildOrgRoute(scopeState.active.orgId, trailing))
           }
-          navigateToActive()
-          if (mutationError instanceof Error) {
-            const apiError = mutationError as ApiError
-            setMutationError(apiError)
-          }
-        } finally {
-          setMutationPending(false)
+        } else {
+          router.replace('/workspace-hub')
         }
-      })
+        if (mutationError instanceof Error) {
+          const apiError = mutationError as ApiError
+          setMutationError(apiError)
+        }
+      } finally {
+        setMutationPending(false)
+      }
+    })
   }, [
     isAuthenticated,
     isReady,
     mutateScope,
     organizations,
-    routeOrgId,
-    routeDivisionId,
-    trailing,
+    pathname,
+    params?.orgId,
+    params?.divisionId,
     router,
-    scopeState?.active?.orgId,
-    scopeState?.active?.divisionId,
+    scopeState,
     setScopeCache,
   ])
-  */
 
   const setScope = useCallback(
     async (orgId: string, divisionId?: string | null, options?: { reason?: string }) => {

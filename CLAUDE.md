@@ -153,26 +153,12 @@
       <item>Group code by utility.</item>
       <item>Generate structured error logging.</item>
       <item>Avoid over-engineering; prioritize simplicity.</item>
-      <item>Adhere to the Open/Closed Principle via interfaces, adapters, additive DB migrations, and feature flags; extend without modifying stable modules.</item>
     </architecture>
 
     <tools_integration>
-      <item>Use MCP Sequential Thinking.</item>
-      <item>Use context7.</item>
-      <item>Use Playwright for browsing and automated testing.</item>
-      <item>Use Chrome DevTools MCP for advanced frontend debugging and inspection, collaborating with Playwright for comprehensive testing.</item>
-      <item>Leverage specialized sub-agents for complex tasks.</item>
-      <item>Always call agents from '/home/eldrie/Yourever)/.claude/agents' directory.</item>
-      <item>Use software-architect-coordinator for orchestrating multiple agents and coordinating complex implementations.</item>
-      <item>Use debug-coordinator for multi-system debugging across frontend, backend, database, and infrastructure.</item>
-      <item>Use integration-tester for testing newly implemented features and verifying integration points.</item>
-      <item>Use code-quality-reviewer for thorough code quality assessment after implementation completion.</item>
-      <item>Use code-finalizer for creating comprehensive delivery documentation and implementation summaries.</item>
-      <item>Use build-analyzer agents for build analysis and diagnostics.</item>
-      <item>Use frontend-architect agents for complex frontend architecture.</item>
-      <item>Use supabase-db-handler agents for database operations.</item>
-      <item>Use fastapi-backend-architect agents for API design and implementation.</item>
-      <item>Use general-purpose agents for complex research and multi-step workflows.</item>
+      <item>Use MCP Sequential Thinking, context7, Playwright for testing, and Chrome DevTools MCP for debugging.</item>
+      <item>Leverage specialized sub-agents for complex tasks. Always call agents from '/home/eldrie/Yourever)/.claude/agents' directory.</item>
+      <item>Available agents: software-architect-coordinator, debug-coordinator, integration-tester, code-quality-reviewer, code-finalizer, build-analyzer, frontend-architect, supabase-db-handler, fastapi-backend-architect, general-purpose.</item>
       <item>Leverage all provided tools when appropriate.</item>
     </tools_integration>
 
@@ -193,7 +179,6 @@
       <item>Deliver complete implementations (REST endpoints, services, models, DB).</item>
       <item>Design REST API endpoints before implementing service logic.</item>
       <item>Use reverse engineering against GitHub backlog for broken code.</item>
-      <item>NEVER mask or ignore errors - fix all compilation, runtime, and test failures as a senior software engineer would.</item>
     </code_management>
   </mandatory_requirements>
 
@@ -207,13 +192,11 @@
         <item>Prefer early returns over deep nesting.</item>
         <item>Use appropriate concurrency controls.</item>
         <item>Design efficiently for 1k–10k MAU.</item>
-      </performance>
-      <budget_constraints>
-        <item>Optimize for cost-effective infra.</item>
+        <item>Target cost-effective infrastructure choices.</item>
         <item>Prefer managed services when economical.</item>
         <item>Avoid premium features unless essential.</item>
-      </budget_constraints>
-    </general>
+      </performance>
+      </general>
 
     <language_specific>
       <python>Pydantic v2</python>
@@ -276,26 +259,9 @@
     </no_duplicate_files>
 
     <progressive_enhancement>
-      <description>Build upon existing code incrementally</description>
-      <wrong_way>Create 'TaskManagerEnhanced.ts' when adding filtering to TaskManager.ts</wrong_way>
-      <correct_way>Add filtering directly to TaskManager.ts with new methods and properties</correct_way>
-      <principle>Evolve the existing implementation rather than creating duplicates</principle>
+      <description>Build upon existing code incrementally. Evolve existing implementations rather than creating duplicates.</description>
+      <example>Wrong: Create 'TaskManagerEnhanced.ts' when adding filtering. Correct: Add filtering directly to TaskManager.ts with new methods and properties.</example>
     </progressive_enhancement>
-
-    <examples>
-      <scenario>Adding search functionality to user management</scenario>
-      <wrong_approach>
-        <item>Copy UserService.ts to UserService.enhanced.ts</item>
-        <item>Add search methods to the enhanced version</item>
-        <item>Update imports to use enhanced version</item>
-      </wrong_approach>
-      <correct_approach>
-        <item>Add search methods directly to UserService.ts</item>
-        <item>Extend existing interfaces if needed</item>
-        <item>Maintain backward compatibility</item>
-        <item>Use feature flags for new functionality if needed</item>
-      </correct_approach>
-    </examples>
   </file_management_principles>
 
   <code_smells_refactoring>
@@ -801,8 +767,8 @@
 
 <!-- Document Metadata -->
 <document_metadata>
-  <description>This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.</description>
+  <description>This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. Cleaned of redundant rules and duplicate definitions on 2025-10-20.</description>
   <last_updated>2025-10-20</last_updated>
-  <version>1.0</version>
+  <version>1.1</version>
   <format>XML</format>
 </document_metadata>

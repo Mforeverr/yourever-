@@ -45,17 +45,31 @@
       "Bash(npx eslint:*)",
       "Bash(timeout 10s npm run dev:*)",
       "Bash(find:*)",
-      "Bash(npm run type-check:*)",
+    "Bash(npm run type-check:*)",
       "Bash(timeout 15 npm run dev:*)",
       "Bash(node:*)",
       "Bash(timeout:*)",
-      "Bash(lsof:*)"
+      "Bash(lsof:*)",
+      "Bash(pip install:*)",
+      "Bash(pip3 install:*)",
+      "Bash(xargs:*)",
+      "Bash(ls:*)",
+      "mcp__supabase__search_docs",
+      "WebSearch",
+      "mcp__zai-mcp-server__analyze_image",
+      "mcp__playwright__browser_resize",
+      "mcp__playwright__browser_close",
+      "Bash(tail:*)",
+      "Bash(git checkout:*)",
+      "Bash(git commit:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "context7",
-    "zai-mcp-server"
+    "supabase",
+    "playwright",
+    "chrome-devtools"
   ],
   "outputStyle": "Explanatory"
 }
