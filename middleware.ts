@@ -60,7 +60,7 @@ async function createAuthMiddleware(request: NextRequest) {
   try {
     // Get session from the request
     const session = await auth.api.getSession({
-      headers: request.headers,
+      headers: Object.fromEntries(request.headers.entries()),
     })
 
     const isAuthenticated = !!session?.user

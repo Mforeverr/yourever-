@@ -368,9 +368,10 @@ function Column({ column, onTaskEdit, onTaskDelete }: {
 
 interface BoardViewProps {
   projectId?: string
+  boardId?: string
 }
 
-export function BoardView({ projectId }: BoardViewProps) {
+export function BoardView({ projectId, boardId }: BoardViewProps) {
   const router = useRouter()
   const { currentOrgId, currentDivisionId } = useScope()
   const canOpenProject = isFeatureEnabled("projects.detail", process.env.NODE_ENV !== "production")

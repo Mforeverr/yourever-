@@ -19,6 +19,36 @@ import type {
 } from '@/types/kanban'
 
 // ============================================================================
+// Date Formatting Utilities
+// ============================================================================
+
+/**
+ * Format the last seen time in a human-readable format
+ * @param lastSeen - ISO timestamp string
+ * @returns Formatted relative time string
+ */
+export function formatLastSeen(lastSeen: string): string {
+  const lastSeenDate = new Date(lastSeen)
+  const now = new Date()
+  const diffMs = now.getTime() - lastSeenDate.getTime()
+  const diffMinutes = Math.floor(diffMs / (1000 * 60))
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+  if (diffMinutes < 1) {
+    return 'just now'
+  } else if (diffMinutes < 60) {
+    return `${diffMinutes}m ago`
+  } else if (diffHours < 24) {
+    return `${diffHours}h ago`
+  } else if (diffDays < 7) {
+    return `${diffDays}d ago`
+  } else {
+    return lastSeenDate.toLocaleDateString()
+  }
+}
+
+// ============================================================================
 // Presence and Cursor Management
 // ============================================================================
 
@@ -276,10 +306,10 @@ export function processRealtimeEvent(
       return handlePresenceEvent(newState, event as any)
 
     case 'task:moved':
-      return handleTaskMovedEvent(newState, event as TaskMovedEvent)
+      return handleTaskMovedEvent(newState, event as unknown as TaskMovedEvent)
 
     case 'task:updated':
-      return handleTaskUpdatedEvent(newState, event as TaskUpdatedEvent)
+      return handleTaskUpdatedEvent(newState, event as unknown as TaskUpdatedEvent)
 
     default:
       return newState
@@ -295,7 +325,7 @@ function handlePresenceEvent(
     userName: event.userId, // Will be populated from user lookup
     status: event.status,
     lastSeen: event.lastSeen,
-    currentBoardId: event.boardId
+    currentTaskId: event.boardId, // Using boardId as currentTaskId for now
   }
 
   return {

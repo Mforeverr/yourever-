@@ -91,11 +91,11 @@ export function MentionsApprovalsModule() {
               <p className="text-xs text-muted-foreground mb-1">{item.project}</p>
               <p className="text-sm text-foreground line-clamp-2">{item.excerpt}</p>
               <div className="mt-2 flex items-center gap-2">
-                <Button variant="ghost" size="xs" className="text-xs">
+                <Button variant="ghost" size="sm" className="text-xs">
                   Reply
                 </Button>
                 {item.type === 'approval' && (
-                  <Button variant="ghost" size="xs" className="text-xs text-brand hover:text-brand">
+                  <Button variant="ghost" size="sm" className="text-xs text-brand hover:text-brand">
                     Review
                   </Button>
                 )}

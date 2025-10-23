@@ -12,7 +12,7 @@ import { useParams, useRouter, usePathname } from 'next/navigation'
 import { useScope } from '@/contexts/scope-context'
 import { useProjectDetailQuery, useProjectsByScopeQuery } from '@/hooks/api/use-project-query'
 import { useUpdateProjectMutation } from '@/hooks/api/use-project-mutations'
-import { buildProjectRoute } from '@/lib/routing'
+import { buildProjectRoute, buildDivisionRoute, buildOrgRoute } from '@/lib/routing'
 import { toast } from '@/hooks/use-toast'
 import type { ProjectDetails, ProjectMember, ProjectSettings, ProjectSummary } from '@/modules/projects/contracts'
 

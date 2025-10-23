@@ -45,7 +45,7 @@
       "Bash(npx eslint:*)",
       "Bash(timeout 10s npm run dev:*)",
       "Bash(find:*)",
-    "Bash(npm run type-check:*)",
+      "Bash(npm run type-check:*)",
       "Bash(timeout 15 npm run dev:*)",
       "Bash(node:*)",
       "Bash(timeout:*)",
@@ -61,7 +61,8 @@
       "mcp__playwright__browser_close",
       "Bash(tail:*)",
       "Bash(git checkout:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "mcp__supabase__get_advisors"
     ]
   },
   "enableAllProjectMcpServers": true,

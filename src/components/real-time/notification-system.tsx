@@ -25,8 +25,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
 import { toast } from "@/hooks/use-toast"
 import type { KanbanUser } from "@/types/kanban"
-import type {
-  NotificationPreferences,
+import type { NotificationPreferences } from "@/lib/collaboration-utils"
+import {
   shouldSendNotification,
   createDefaultNotificationPreferences
 } from "@/lib/collaboration-utils"
@@ -239,7 +239,7 @@ export function NotificationSystem({
     toast({
       title: notification.title,
       description: notification.message,
-      action: notification.actions?.length > 0 ? (
+      action: notification.actions && notification.actions.length > 0 ? (
         <div className="flex gap-1">
           {notification.actions.slice(0, 2).map(action => (
             <Button

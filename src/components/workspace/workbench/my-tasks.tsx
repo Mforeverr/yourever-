@@ -10,7 +10,7 @@ import { useScope } from '@/contexts/scope-context'
 import { useMockWorkspaceStore, filterTasksByScope } from '@/mocks/data/workspace'
 import { CheckCircle2, Circle } from 'lucide-react'
 
-const priorityVariant: Record<string, string> = {
+const priorityVariant: Record<string, 'default' | 'destructive' | 'outline' | 'secondary'> = {
   Urgent: 'destructive',
   High: 'secondary',
   Medium: 'outline',

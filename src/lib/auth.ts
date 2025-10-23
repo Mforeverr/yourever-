@@ -2,7 +2,7 @@ import { createSupabaseAuthGateway } from '@/modules/auth/supabase-gateway'
 
 export const auth = {
   api: {
-    getSession: async (options?: { headers?: Headers }) => {
+    getSession: async (options?: { headers?: Record<string, string> }) => {
       try {
         // First try to get session from cookie-based auth (server-side)
         const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/auth/session`, {

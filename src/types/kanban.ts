@@ -33,6 +33,15 @@ export interface KanbanComment {
   author: KanbanUser
   createdAt: string
   updatedAt: string
+  mentions?: Mention[]
+}
+
+export interface Mention {
+  id: string
+  userId: string
+  name: string
+  startPosition: number
+  endPosition: number
 }
 
 export interface KanbanAttachment {

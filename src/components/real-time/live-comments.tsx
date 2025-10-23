@@ -145,7 +145,7 @@ export function LiveComments({
     }
   }, [editingComment])
 
-  const handleMentionInput = useCallback((text: string, textareaRef: React.RefObject<HTMLTextAreaElement>) => {
+  const handleMentionInput = useCallback((text: string, textareaRef: React.RefObject<HTMLTextAreaElement | null>) => {
     const cursorPos = textareaRef.current?.selectionStart || 0
     const textBeforeCursor = text.substring(0, cursorPos)
     const mentionMatch = textBeforeCursor.match(/@(\w*)$/)
@@ -187,7 +187,7 @@ export function LiveComments({
     handleMentionInput(value, editTextareaRef)
   }, [handleMentionInput])
 
-  const insertMention = useCallback((user: KanbanUser, textareaRef: React.RefObject<HTMLTextAreaElement>) => {
+  const insertMention = useCallback((user: KanbanUser, textareaRef: React.RefObject<HTMLTextAreaElement | null>) => {
     if (!textareaRef.current) return
 
     const textarea = textareaRef.current
@@ -237,7 +237,7 @@ export function LiveComments({
     } catch (error) {
       toast({
         title: "Failed to add comment",
-        description: error.message || "An error occurred while adding your comment.",
+        description: error instanceof Error ? error.message : "An error occurred while adding your comment.",
         variant: "destructive"
       })
     }
@@ -258,7 +258,7 @@ export function LiveComments({
     } catch (error) {
       toast({
         title: "Failed to add reply",
-        description: error.message || "An error occurred while adding your reply.",
+        description: error instanceof Error ? error.message : "An error occurred while adding your reply.",
         variant: "destructive"
       })
     }
@@ -279,7 +279,7 @@ export function LiveComments({
     } catch (error) {
       toast({
         title: "Failed to update comment",
-        description: error.message || "An error occurred while updating your comment.",
+        description: error instanceof Error ? error.message : "An error occurred while updating your comment.",
         variant: "destructive"
       })
     }
@@ -296,7 +296,7 @@ export function LiveComments({
     } catch (error) {
       toast({
         title: "Failed to delete comment",
-        description: error.message || "An error occurred while deleting the comment.",
+        description: error instanceof Error ? error.message : "An error occurred while deleting the comment.",
         variant: "destructive"
       })
     }
@@ -309,7 +309,7 @@ export function LiveComments({
     } catch (error) {
       toast({
         title: "Failed to add reaction",
-        description: error.message || "An error occurred while adding your reaction.",
+        description: error instanceof Error ? error.message : "An error occurred while adding your reaction.",
         variant: "destructive"
       })
     }
@@ -321,7 +321,7 @@ export function LiveComments({
     } catch (error) {
       toast({
         title: "Failed to pin comment",
-        description: error.message || "An error occurred while pinning the comment.",
+        description: error instanceof Error ? error.message : "An error occurred while pinning the comment.",
         variant: "destructive"
       })
     }
@@ -523,8 +523,8 @@ export function LiveComments({
                             size="sm"
                             className="h-8 w-8 p-0"
                             onClick={() => hasReacted
-                              ? users.find(r => r.emoji === emoji && r.userId === currentUser.id) &&
-                                onRemoveReaction(comment.id, users.find(r => r.emoji === emoji && r.userId === currentUser.id)!.id)
+                              ? userReactions.find(r => r.emoji === emoji && r.userId === currentUser.id) &&
+                                onRemoveReaction(comment.id, userReactions.find(r => r.emoji === emoji && r.userId === currentUser.id)!.id)
                               : handleAddReaction(comment.id, emoji)
                             }
                           >

@@ -13,6 +13,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import * as React from 'react'
 import { useScope } from '@/contexts/scope-context'
+import { useCurrentUser } from '@/hooks/use-auth'
 import { useKanbanStore } from '@/state/kanban.store'
 import { useSocketClient } from '@/lib/socket-client'
 import { toast } from '@/hooks/use-toast'
@@ -73,7 +74,8 @@ export function useKanbanWebSocket({
   enablePresence = true,
   enableCursorTracking = true,
 }: UseKanbanWebSocketOptions = {}) {
-  const { currentOrgId, currentDivisionId, currentUser } = useScope()
+  const { currentOrgId, currentDivisionId } = useScope()
+  const { user: currentUser } = useCurrentUser()
   const {
     updateTask,
     moveTask,
@@ -154,6 +156,10 @@ export function useKanbanWebSocket({
 
     try {
       // Connect to Socket.IO server
+      if (!currentOrgId || !currentDivisionId) {
+        throw new Error('Organization and division IDs are required for connection')
+      }
+
       await socketConnect({
         orgId: currentOrgId,
         divisionId: currentDivisionId,
@@ -172,7 +178,7 @@ export function useKanbanWebSocket({
   }, [boardId, currentOrgId, currentDivisionId, socketConnect, joinBoard, setActiveBoard, status.connected, onError])
 
   const disconnect = useCallback(() => {
-    if (boardId && currentOrgId) {
+    if (boardId && currentOrgId && currentDivisionId) {
       leaveBoard(boardId, currentOrgId, currentDivisionId)
     }
     socketDisconnect()
@@ -335,8 +341,22 @@ export function useKanbanWebSocket({
       return
     }
 
+    // Transform UpdateTaskRequest to KanbanTask format
+    const { labels, ...otherChanges } = event.changes
+    const taskUpdates: Partial<KanbanTask> = {
+      ...otherChanges,
+      // Convert string labels to KanbanLabel objects if needed
+      ...(labels && {
+        labels: labels.map((labelText, index) => ({
+          id: `temp-label-${Date.now()}-${index}`,
+          name: labelText,
+          color: '#6366f1' // Default color
+        }))
+      })
+    }
+
     // Apply remote update
-    updateTask(event.taskId, event.changes)
+    updateTask(event.taskId, taskUpdates)
 
     // Show notification for other users' actions
     if (event.userId !== currentUser?.id) {
@@ -485,7 +505,7 @@ export function useKanbanCursorTracking(boardId?: string) {
     enableCursorTracking: true
   })
   const { setDraggedTask, updatePresence } = useKanbanStore()
-  const { currentUser } = useScope()
+  const { user: currentUser } = useCurrentUser()
 
   const [isDragging, setIsDragging] = useState(false)
   const [currentDrag, setCurrentDrag] = useState<{
@@ -523,8 +543,8 @@ export function useKanbanCursorTracking(boardId?: string) {
     // Send drag start event
     sendEvent('cursor:drag-start', {
       taskId,
-      userName: currentUser.name || 'Anonymous',
-      userId: currentUser.id,
+      userName: currentUser?.displayName || currentUser?.fullName || 'Anonymous',
+      userId: currentUser?.id,
       position: startPosition,
       timestamp: new Date().toISOString(),
     }, { optimistic: false })
@@ -585,7 +605,7 @@ export function useKanbanCursorTracking(boardId?: string) {
     // Send drag end event
     sendEvent('cursor:drag-end', {
       taskId: currentDrag.taskId,
-      userId: currentUser.id,
+      userId: currentUser?.id,
       position,
       timestamp: new Date().toISOString(),
     }, { optimistic: false })
@@ -622,13 +642,13 @@ export function useKanbanPresence(boardId?: string) {
     enablePresence: true
   })
   const { presence } = useKanbanStore()
-  const { currentUser } = useScope()
+  const { user: currentUser } = useCurrentUser()
 
   // Get other users currently on the board
   const otherUsers = React.useMemo(() => {
     return Object.values(presence).filter(p =>
       p.userId !== currentUser?.id &&
-      p.currentBoardId === boardId &&
+      p.boardId === boardId &&
       p.status !== 'offline'
     )
   }, [presence, currentUser?.id, boardId])
@@ -645,7 +665,7 @@ export function useKanbanPresence(boardId?: string) {
   const isUserOnline = React.useCallback((userId: string) => {
     const userPresence = presence[userId]
     return userPresence && userPresence.status !== 'offline' &&
-           userPresence.currentBoardId === boardId
+           userPresence.boardId === boardId
   }, [presence, boardId])
 
   return {

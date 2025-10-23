@@ -246,7 +246,7 @@ function TaskPropertiesGrid({
       } catch (error) {
         toast({
           title: 'Failed to update task',
-          description: error.message || 'An error occurred while updating the task',
+          description: error instanceof Error ? error.message : 'An error occurred while updating the task',
           variant: 'destructive',
         })
       }

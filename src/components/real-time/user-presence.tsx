@@ -26,7 +26,10 @@ import type {
   UserPresence,
   UserCursor,
   CollaborationState,
-  NotificationPreferences
+  NotificationPreferences,
+} from "@/lib/collaboration-utils"
+import {
+  formatLastSeen,
 } from "@/lib/collaboration-utils"
 import {
   Circle,
@@ -71,7 +74,7 @@ interface PresenceIndicatorProps {
 interface CursorOverlayProps {
   cursors: Record<string, UserCursor>
   currentUser: KanbanUser
-  containerRef: React.RefObject<HTMLElement>
+  containerRef: React.RefObject<HTMLElement | null>
 }
 
 const STATUS_COLORS = {
@@ -126,7 +129,7 @@ export function UserPresence({
     emailEnabled: false
   })
 
-  const containerRef = useRef<HTMLElement>(null)
+  const containerRef = useRef<HTMLElement | null>(null)
   const { currentOrgId, currentDivisionId } = useScope()
 
   // Clean up stale presence data
