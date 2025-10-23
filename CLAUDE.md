@@ -219,4 +219,110 @@
     <agent name="code-finalizer">Delivery documentation</agent>
     <agent name="general-purpose">Research and complex workflows</agent>
   </specialized_agents>
+
+  <!-- ========================================== -->
+  <!-- AGENT DOCUMENTATION & LOGGING STANDARDS -->
+  <!-- ========================================== -->
+  
+  <agent_documentation_standards>
+    <unified_comment_requirements>
+      <requirement>All agents must enforce consistent comment formats across all codebases</requirement>
+      <requirement>Comments must explain the "why" not the "what" for complex decisions</requirement>
+      <requirement>Business logic must be documented with context and trade-offs</requirement>
+      <requirement>All TODO/FIXME/HACK/XXX comments must include developer names and ticket numbers</requirement>
+      <requirement>File headers must include purpose, author, date, and license information</requirement>
+    </unified_comment_requirements>
+
+    <technology_specific_formats>
+      <python_standards>
+        <docstrings>PEP 257 Google-style format for all functions, classes, and modules</docstrings>
+        <content>Args, Returns, Raises sections with clear parameter descriptions</content>
+        <business_rules>Document algorithm choices and business logic reasoning</business_rules>
+      </python_standards>
+
+      <javascript_typescript_standards>
+        <jsdoc>/** */ blocks for all components, interfaces, and utility functions</jsdoc>
+        <components>@param/@returns for all component props and return values</components>
+        <interfaces>Document all interface properties with /** */ comments</interfaces>
+        <hooks>Explain custom hook usage and dependencies</hooks>
+      </javascript_typescript_standards>
+
+      <postgresql_supabase_standards>
+        <sql_comments>-- for single-line, /* */ for multi-line SQL comments</sql_comments>
+        <migrations>Document schema changes with business impact and rollback procedures</migrations>
+        <complex_queries>Explain query optimization decisions and indexing strategies</complex_queries>
+        <supabase_config>Document all Supabase-specific settings and cloud configurations</supabase_config>
+      </postgresql_supabase_standards>
+
+      <testing_standards>
+        <test_cases>describe/it blocks explaining scenarios and expected behavior</test_cases>
+        <e2e_tests>Step-by-step comments for complex user journey tests</e2e_tests>
+        <performance_tests>Document performance thresholds and optimization validation</performance_tests>
+        <accessibility_tests>Comment on WCAG compliance requirements being tested</accessibility_tests>
+      </testing_standards>
+    </technology_specific_formats>
+
+    <unified_logging_requirements>
+      <structured_logging>All agents must implement structured logging with proper severity levels</structured_logging>
+      <error_context>Errors must be logged with full context, user actions, and system state</error_context>
+      <performance_monitoring>Slow operations (>500ms) must be logged with performance metrics</performance_monitoring>
+      <security_logging>Authentication, authorization, and sensitive operations must be tracked</security_logging>
+      <change_tracking>All modifications must be logged with business impact analysis</change_tracking>
+    </unified_logging_requirements>
+
+    <agent_logging_responsibilities>
+      <backend_architect>
+        <python_logging>Use logging module with getLogger(__name__) and exc_info=True</python_logging>
+        <api_logging>Log API requests, response times, and error rates</api_logging>
+        <database_logging>Track query performance and connection usage</database_logging>
+        <security_logging>Monitor authentication attempts and authorization failures</security_logging>
+      </backend_architect>
+
+      <frontend_architect>
+        <component_logging>Log component render times and user interactions</component_logging>
+        <error_boundary_logging>Capture and log client-side errors with context</error_boundary_logging>
+        <performance_logging>Track bundle sizes, API response times, and user experience metrics</performance_logging>
+        <development_logging>Use console.log() for development debugging with structured context</development_logging>
+      </frontend_architect>
+
+      <database_handler>
+        <postgresql_logging>Configure log_min_duration_statement=500ms, log_connections=on</postgresql_logging>
+        <migration_logging>Document all schema changes with rollback procedures</migration_logging>
+        <query_optimization>Log slow queries and execution plan analysis</query_optimization>
+        <supabase_monitoring>Track cloud database performance and usage metrics</supabase_monitoring>
+      </database_handler>
+
+      <integration_tester>
+        <test_execution_logging>Log test runs, passes, failures with detailed context</test_execution_logging>
+        <performance_test_logging>Document performance thresholds and actual results</performance_test_logging>
+        <security_test_logging>Track vulnerability testing and mitigation validation</security_test_logging>
+        <coverage_logging>Monitor test coverage and identify gaps</coverage_logging>
+      </integration_tester>
+
+      <code_quality_reviewer>
+        <review_logging>Document all code review findings and quality issues</review_logging>
+        <standards_compliance>Track adherence to comment and logging standards</standards_compliance>
+        <technical_debt>Log identified technical debt and improvement recommendations</technical_debt>
+        <metrics_tracking>Monitor code quality metrics over time</metrics_tracking>
+      </code_quality_reviewer>
+    </agent_logging_responsibilities>
+
+    <no_error_masking_enforcement>
+      <universal_rules>
+        <rule>NEVER ignore compilation errors, linting violations, or test failures</rule>
+        <rule>NEVER use workarounds that bypass underlying problems</rule>
+        <rule>NEVER create documentation that masks known issues</rule>
+        <rule>ALWAYS address root causes with proper solutions</rule>
+        <rule>ALWAYS implement comprehensive error handling and logging</rule>
+        <rule>ALWAYS document limitations, bugs, and areas for improvement</rule>
+      </universal_rules>
+
+      <agent_accountability>
+        <reviewer_responsibility>code-quality-reviewer must enforce documentation standards</reviewer_responsibility>
+        <coordinator_responsibility>software-architect-coordinator ensures cross-team consistency</coordinator_responsibility>
+        <finalizer_responsibility>code-finalizer verifies all documentation before delivery</finalizer_responsibility>
+        <individual_responsibility>All agents must follow standards in their domain</individual_responsibility>
+      </agent_accountability>
+    </no_error_masking_enforcement>
+  </agent_documentation_standards>
 </claude_configuration>

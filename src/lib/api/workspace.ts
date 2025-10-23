@@ -11,28 +11,8 @@ import type {
   WorkspaceOverview,
   WorkspaceProject,
 } from '@/modules/workspace/types'
-import { buildMockDashboardSummary } from '@/mocks/data/dashboard'
-import {
-  useMockWorkspaceStore,
-  filterProjectsByScope,
-  filterTasksByScope,
-  filterDocsByScope,
-} from '@/mocks/data/workspace'
 
-const WORKSPACE_ENDPOINT = '/api/workspaces'
-
-const buildMockWorkspaceOverview = (orgId: string, divisionId: string | null): WorkspaceOverview => {
-  const state = useMockWorkspaceStore.getState()
-  return {
-    orgId,
-    divisionId,
-    hasTemplates: true,
-    projects: filterProjectsByScope(state.projects, orgId, divisionId),
-    tasks: filterTasksByScope(state.tasks, orgId, divisionId),
-    docs: filterDocsByScope(state.docs, orgId, divisionId),
-    channels: [],
-  }
-}
+const WORKSPACE_ENDPOINT = '/api/organizations'
 
 export const fetchWorkspaceOverview = (
   orgId: string,
@@ -42,13 +22,10 @@ export const fetchWorkspaceOverview = (
   const params = new URLSearchParams()
   if (options?.divisionId) params.set('divisionId', options.divisionId)
   params.set('includeTemplates', `${options?.includeTemplates ?? true}`)
-  const endpoint = `${WORKSPACE_ENDPOINT}/${orgId}/overview?${params.toString()}`
+  const endpoint = `${WORKSPACE_ENDPOINT}/${orgId}/workspace/overview?${params.toString()}`
   return httpRequest<WorkspaceOverview>('GET', endpoint, {
     signal,
     meta: { endpoint, method: 'GET', scope: { orgId, divisionId: options?.divisionId ?? undefined } },
-  }).catch((error) => {
-    console.warn('[workspace] overview request failed, using mock data', error)
-    return buildMockWorkspaceOverview(orgId, options?.divisionId ?? null)
   })
 }
 
@@ -64,9 +41,6 @@ export const fetchWorkspaceDashboardSummary = (
   return httpRequest<DashboardSummary>('GET', endpoint, {
     signal,
     meta: { endpoint, method: 'GET', scope: { orgId, divisionId: options?.divisionId ?? undefined } },
-  }).catch((error) => {
-    console.warn('[workspace] dashboard request failed, using mock data', error)
-    return buildMockDashboardSummary(orgId, options?.divisionId ?? null)
   })
 }
 
@@ -80,7 +54,7 @@ export const fetchDivisionChannels = (
   params.set('includeTemplates', `${options?.includeTemplates ?? true}`)
   if (options?.page) params.set('page', `${options.page}`)
   if (options?.pageSize) params.set('pageSize', `${options.pageSize}`)
-  const endpoint = `${WORKSPACE_ENDPOINT}/${orgId}/divisions/${divisionId}/channels?${params.toString()}`
+  const endpoint = `${WORKSPACE_ENDPOINT}/${orgId}/divisions/${divisionId}/workspace/channels?${params.toString()}`
   return httpRequest('GET', endpoint, {
     signal,
     meta: { endpoint, method: 'GET', scope: { orgId, divisionId } },
@@ -97,7 +71,7 @@ export const fetchActivityFeed = (
   params.set('includeTemplates', `${options?.includeTemplates ?? true}`)
   if (options?.limit) params.set('limit', `${options.limit}`)
   if (options?.cursor) params.set('cursor', options.cursor)
-  const endpoint = `${WORKSPACE_ENDPOINT}/${orgId}/divisions/${divisionId}/activities?${params.toString()}`
+  const endpoint = `${WORKSPACE_ENDPOINT}/${orgId}/divisions/${divisionId}/workspace/activities?${params.toString()}`
   return httpRequest('GET', endpoint, {
     signal,
     meta: { endpoint, method: 'GET', scope: { orgId, divisionId } },
@@ -108,7 +82,7 @@ export const createWorkspaceProject = (
   orgId: string,
   payload: CreateProjectPayload,
 ): Promise<WorkspaceProject> => {
-  const endpoint = `${WORKSPACE_ENDPOINT}/${orgId}/projects`
+  const endpoint = `${WORKSPACE_ENDPOINT}/${orgId}/divisions/${payload.divisionId}/projects`
   return httpRequest('POST', endpoint, {
     body: payload,
     meta: { endpoint, method: 'POST', scope: { orgId, divisionId: payload.divisionId ?? undefined } },
@@ -120,7 +94,7 @@ export const updateWorkspaceProject = (
   orgId: string,
   payload: UpdateProjectPayload,
 ): Promise<WorkspaceProject> => {
-  const endpoint = `${WORKSPACE_ENDPOINT}/projects/${projectId}`
+  const endpoint = `${WORKSPACE_ENDPOINT}/${orgId}/projects/${projectId}`
   const params = new URLSearchParams({ orgId })
   return httpRequest('PATCH', `${endpoint}?${params.toString()}`, {
     body: payload,
@@ -132,7 +106,7 @@ export const deleteWorkspaceProject = (
   projectId: string,
   orgId: string,
 ): Promise<void> => {
-  const endpoint = `${WORKSPACE_ENDPOINT}/projects/${projectId}`
+  const endpoint = `${WORKSPACE_ENDPOINT}/${orgId}/projects/${projectId}`
   const params = new URLSearchParams({ orgId })
   return httpRequest('DELETE', `${endpoint}?${params.toString()}`, {
     meta: { endpoint, method: 'DELETE', scope: { orgId } },
@@ -143,7 +117,7 @@ export const createWorkspaceChannel = (
   orgId: string,
   payload: CreateChannelPayload,
 ): Promise<WorkspaceChannel> => {
-  const endpoint = `${WORKSPACE_ENDPOINT}/${orgId}/channels`
+  const endpoint = `${WORKSPACE_ENDPOINT}/${orgId}/divisions/${payload.divisionId}/workspace/channels`
   return httpRequest('POST', endpoint, {
     body: payload,
     meta: { endpoint, method: 'POST', scope: { orgId, divisionId: payload.divisionId ?? undefined } },
@@ -155,7 +129,7 @@ export const updateWorkspaceChannel = (
   orgId: string,
   payload: UpdateChannelPayload,
 ): Promise<WorkspaceChannel> => {
-  const endpoint = `${WORKSPACE_ENDPOINT}/channels/${channelId}`
+  const endpoint = `${WORKSPACE_ENDPOINT}/${orgId}/workspace/channels/${channelId}`
   const params = new URLSearchParams({ orgId })
   return httpRequest('PATCH', `${endpoint}?${params.toString()}`, {
     body: payload,
@@ -167,7 +141,7 @@ export const deleteWorkspaceChannel = (
   channelId: string,
   orgId: string,
 ): Promise<void> => {
-  const endpoint = `${WORKSPACE_ENDPOINT}/channels/${channelId}`
+  const endpoint = `${WORKSPACE_ENDPOINT}/${orgId}/workspace/channels/${channelId}`
   const params = new URLSearchParams({ orgId })
   return httpRequest('DELETE', `${endpoint}?${params.toString()}`, {
     meta: { endpoint, method: 'DELETE', scope: { orgId } },

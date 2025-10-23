@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { createApiClient } from './client'
+import { httpRequest } from '@/lib/api/http'
 import type { ProjectDetailResponse, ProjectSummary } from '@/modules/projects/contracts'
 
 const toArray = <T>(value: T[] | null | undefined): T[] => (Array.isArray(value) ? value : [])
@@ -186,110 +186,39 @@ const normalizeProjectListResponse = (data: unknown): ProjectSummary[] => {
 // API client functions
 export async function fetchProject(
   projectId: string,
-  options?: { signal?: AbortSignal }
+  options?: { orgId?: string; signal?: AbortSignal },
 ): Promise<ProjectDetailResponse> {
-  const client = createApiClient()
+  // Project endpoints require organization context in the backend
+  if (!options?.orgId) {
+    throw new Error('Organization ID is required to fetch project details')
+  }
 
-  const response = await client.get(`/api/projects/${projectId}`, {
+  const endpoint = `/api/organizations/${options.orgId}/projects/${projectId}`
+  const data = await httpRequest<unknown>('GET', endpoint, {
     signal: options?.signal,
+    meta: { endpoint, method: 'GET', scope: { orgId: options.orgId } },
   })
 
-  return normalizeProjectDetailResponse(response.data)
+  return normalizeProjectDetailResponse(data)
 }
 
 export async function fetchProjectsByScope(
   orgId: string,
   divisionId: string | null,
-  options?: { signal?: AbortSignal }
+  options?: { signal?: AbortSignal },
 ): Promise<ProjectSummary[]> {
-  const client = createApiClient()
-
-  const url = divisionId
+  const endpoint = divisionId
     ? `/api/organizations/${orgId}/divisions/${divisionId}/projects`
     : `/api/organizations/${orgId}/projects`
 
-  const response = await client.get(url, {
+  const data = await httpRequest<unknown>('GET', endpoint, {
     signal: options?.signal,
+    meta: { endpoint, method: 'GET', scope: { orgId, divisionId: divisionId ?? undefined } },
   })
 
-  return normalizeProjectListResponse(response.data)
+  return normalizeProjectListResponse(data)
 }
 
-// Mock projects for fallback when API fails
-export function createMockProjectsList(orgId: string, divisionId: string | null): ProjectSummary[] {
-  const mockProjects = [
-    {
-      id: 'company-allhands',
-      slug: 'company-allhands',
-      name: 'Company All-Hands',
-      description: 'Company all-hands meeting planning and coordination',
-      status: 'active' as const,
-      priority: 'medium' as const,
-      progressPercent: 45,
-      startDate: '2024-10-01T00:00:00Z',
-      targetDate: '2024-12-31T00:00:00Z',
-      updatedAt: '2024-10-22T15:30:00Z',
-      createdAt: '2024-09-15T10:00:00Z',
-      ownerId: 'user-1',
-      divisionId: null, // Company-wide project
-      organizationId: orgId,
-      visibility: 'organization' as const,
-      badgeCount: 3,
-      tags: ['all-hands', 'company', 'meeting'],
-    },
-    {
-      id: 'website-revamp',
-      slug: 'website-revamp',
-      name: 'Website Revamp',
-      description: 'Refresh marketing site visuals, messaging, and conversion flows',
-      status: 'active' as const,
-      priority: 'high' as const,
-      progressPercent: 58,
-      startDate: '2024-08-01T00:00:00Z',
-      targetDate: '2024-12-15T00:00:00Z',
-      updatedAt: '2024-10-22T15:30:00Z',
-      createdAt: '2024-07-01T10:00:00Z',
-      ownerId: 'user-1',
-      divisionId: divisionId || 'marketing',
-      organizationId: orgId,
-      visibility: 'division' as const,
-      badgeCount: 12,
-      tags: ['website', 'launch', 'marketing'],
-    },
-    {
-      id: 'platform-infra',
-      slug: 'platform-infra',
-      name: 'Platform Infrastructure',
-      description: 'Reduce hosting costs and improve reliability across platform services',
-      status: 'planning' as const,
-      priority: 'medium' as const,
-      progressPercent: 35,
-      startDate: '2024-09-15T00:00:00Z',
-      targetDate: '2024-11-30T00:00:00Z',
-      updatedAt: '2024-10-22T15:30:00Z',
-      createdAt: '2024-08-20T10:00:00Z',
-      ownerId: 'user-1',
-      divisionId: divisionId || 'engineering',
-      organizationId: orgId,
-      visibility: 'organization' as const,
-      badgeCount: 9,
-      tags: ['infra', 'cost', 'reliability'],
-    }
-  ]
-
-  // Filter projects based on division scope
-  return mockProjects.filter(project => {
-    if (divisionId) {
-      // When looking for specific division, show projects with that divisionId OR org-wide projects
-      return project.divisionId === divisionId || project.divisionId === null
-    } else {
-      // When looking for org-wide projects, only show projects with no division
-      return project.divisionId === null
-    }
-  })
-}
-
-// Enhanced project creation API
 export const CreateProjectSchema = z.object({
   name: z.string().min(1, 'Project name is required'),
   description: z.string().optional(),
@@ -307,15 +236,24 @@ export type CreateProjectRequest = z.infer<typeof CreateProjectSchema>
 
 export async function createProject(
   data: CreateProjectRequest,
-  options?: { signal?: AbortSignal }
+  options?: { signal?: AbortSignal },
 ): Promise<ProjectDetailResponse> {
-  const client = createApiClient()
+  // Project creation requires organization context in the backend
+  const endpoint = data.divisionId
+    ? `/api/organizations/${data.organizationId}/divisions/${data.divisionId}/projects`
+    : `/api/organizations/${data.organizationId}/projects`
 
-  const response = await client.post('/api/projects', data, {
+  const response = await httpRequest<unknown>('POST', endpoint, {
+    body: data,
     signal: options?.signal,
+    meta: {
+      endpoint,
+      method: 'POST',
+      scope: { orgId: data.organizationId, divisionId: data.divisionId ?? undefined },
+    },
   })
 
-  return normalizeProjectDetailResponse(response.data)
+  return normalizeProjectDetailResponse(response)
 }
 
 // Enhanced project update API
@@ -337,216 +275,36 @@ export type UpdateProjectRequest = z.infer<typeof UpdateProjectSchema>
 export async function updateProject(
   projectId: string,
   updates: UpdateProjectRequest,
-  options?: { signal?: AbortSignal }
+  options?: { orgId: string; signal?: AbortSignal },
 ): Promise<ProjectDetailResponse> {
-  const client = createApiClient()
+  // Project update requires organization context in the backend
+  if (!options?.orgId) {
+    throw new Error('Organization ID is required to update project')
+  }
 
-  const response = await client.patch(`/api/projects/${projectId}`, updates, {
+  const endpoint = `/api/organizations/${options.orgId}/projects/${projectId}`
+  const response = await httpRequest<unknown>('PATCH', endpoint, {
+    body: updates,
     signal: options?.signal,
+    meta: { endpoint, method: 'PATCH', scope: { orgId: options.orgId } },
   })
 
-  return normalizeProjectDetailResponse(response.data)
+  return normalizeProjectDetailResponse(response)
 }
 
 // Project deletion API
 export async function deleteProject(
   projectId: string,
-  options?: { signal?: AbortSignal }
+  options?: { orgId: string; signal?: AbortSignal },
 ): Promise<void> {
-  const client = createApiClient()
+  // Project deletion requires organization context in the backend
+  if (!options?.orgId) {
+    throw new Error('Organization ID is required to delete project')
+  }
 
-  await client.delete(`/api/projects/${projectId}`, {
+  const endpoint = `/api/organizations/${options.orgId}/projects/${projectId}`
+  await httpRequest<void>('DELETE', endpoint, {
     signal: options?.signal,
+    meta: { endpoint, method: 'DELETE', scope: { orgId: options.orgId } },
   })
-}
-
-// Mock functions for development and fallback
-export function createMockProjectCreation(
-  data: CreateProjectRequest
-): ProjectDetailResponse {
-  const mockProject: ProjectDetailResponse = {
-    project: {
-      id: `project-${Date.now()}`,
-      slug: data.name.toLowerCase().replace(/\s+/g, '-'),
-      name: data.name,
-      description: data.description,
-      status: data.status,
-      priority: data.priority,
-      progressPercent: 0,
-      startDate: new Date().toISOString(),
-      targetDate: data.targetDate,
-      updatedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      ownerId: 'current-user',
-      divisionId: data.divisionId || null,
-      organizationId: data.organizationId,
-      visibility: data.visibility,
-      badgeCount: 0,
-      tags: data.tags,
-      overview: {
-        goals: ['Complete project setup', 'Define project requirements'],
-        outcomes: ['Successful project delivery'],
-      },
-      defaultView: data.defaultView,
-      integrations: [],
-      metrics: {
-        health: 'green',
-        scorecards: [
-          {
-            id: 'tasks-completed',
-            label: 'Tasks Completed',
-            value: 0,
-            target: 100,
-            unit: '%'
-          }
-        ]
-      }
-    },
-    members: [
-      {
-        userId: 'current-user',
-        fullName: 'Current User',
-        email: 'user@example.com',
-        role: 'owner',
-        joinedAt: new Date().toISOString(),
-        isActive: true
-      }
-    ],
-    taskCounts: {
-      todo: 0,
-      in_progress: 0,
-      review: 0,
-      done: 0
-    }
-  }
-
-  return mockProject
-}
-
-export async function mockUpdateProject(
-  projectId: string,
-  updates: UpdateProjectRequest
-): Promise<ProjectDetailResponse> {
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 500))
-
-  const baseProject = createMockProjectResponse(projectId)
-
-  return {
-    ...baseProject,
-    project: {
-      ...baseProject.project,
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    }
-  }
-}
-
-export async function mockDeleteProject(projectId: string): Promise<void> {
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 300))
-  console.log(`Mock deleted project: ${projectId}`)
-}
-
-// Mock data fallback for development
-export function createMockProjectResponse(projectId: string): ProjectDetailResponse {
-  const mockProject: ProjectDetailResponse = {
-    project: {
-      id: projectId,
-      slug: `project-${projectId}`,
-      name: `Project ${projectId}`,
-      description: 'A sample project for demonstration purposes',
-      status: 'active',
-      priority: 'medium',
-      progressPercent: 65,
-      startDate: '2024-01-15T00:00:00Z',
-      targetDate: '2024-06-30T00:00:00Z',
-      updatedAt: '2024-10-22T15:30:00Z',
-      createdAt: '2024-01-15T10:00:00Z',
-      ownerId: 'user-1',
-      divisionId: 'division-1',
-      organizationId: 'org-1',
-      visibility: 'division',
-      badgeCount: 3,
-      tags: ['frontend', 'react', 'typescript'],
-      overview: {
-        goals: [
-          'Implement user authentication system',
-          'Create responsive dashboard interface',
-          'Set up continuous integration pipeline'
-        ],
-        outcomes: [
-          'Improved user security',
-          'Better user experience across devices',
-          'Faster deployment cycles'
-        ],
-      },
-      defaultView: 'board',
-      integrations: [
-        {
-          id: 'github-1',
-          provider: 'GitHub',
-          status: 'connected',
-          syncedAt: '2024-10-22T14:00:00Z'
-        }
-      ],
-      coverImage: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=800&h=400&fit=crop',
-      metrics: {
-        health: 'green',
-        budgetUsedPercent: 45,
-        scorecards: [
-          {
-            id: 'tasks-completed',
-            label: 'Tasks Completed',
-            value: 78,
-            target: 100,
-            unit: '%'
-          },
-          {
-            id: 'team-velocity',
-            label: 'Team Velocity',
-            value: 12,
-            target: 15,
-            unit: 'points/week'
-          }
-        ]
-      }
-    },
-    members: [
-      {
-        userId: 'user-1',
-        fullName: 'Alice Johnson',
-        avatarUrl: 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=64&h=64&fit=crop&crop=face',
-        email: 'alice@example.com',
-        role: 'owner',
-        joinedAt: '2024-01-15T10:00:00Z',
-        isActive: true
-      },
-      {
-        userId: 'user-2',
-        fullName: 'Bob Smith',
-        avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=64&h=64&fit=crop&crop=face',
-        email: 'bob@example.com',
-        role: 'editor',
-        joinedAt: '2024-01-20T14:30:00Z',
-        isActive: true
-      },
-      {
-        userId: 'user-3',
-        fullName: 'Carol Davis',
-        email: 'carol@example.com',
-        role: 'viewer',
-        joinedAt: '2024-02-01T09:15:00Z',
-        isActive: true
-      }
-    ],
-    taskCounts: {
-      todo: 8,
-      in_progress: 5,
-      review: 3,
-      done: 24
-    }
-  }
-
-  return mockProject
 }

@@ -4,21 +4,37 @@ import * as React from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Star, Clock } from 'lucide-react'
 import { useScope } from '@/contexts/scope-context'
-import { useMockWorkspaceStore, filterProjectsByScope } from '@/mocks/data/workspace'
+import { useWorkspaceOverviewQuery } from '@/hooks/api/use-workspace-overview-query'
 import { cn } from '@/lib/utils'
 
 export function PinnedProjectsModule() {
   const { currentOrgId, currentDivisionId, navigateToProject } = useScope()
-  const projects = useMockWorkspaceStore((state) => state.projects)
+  const {
+    data: overview,
+    isPending,
+    isError,
+  } = useWorkspaceOverviewQuery(currentOrgId, currentDivisionId, {
+    enabled: Boolean(currentOrgId),
+  })
 
-  const scopedProjects = React.useMemo(
-    () => filterProjectsByScope(projects, currentOrgId, currentDivisionId),
-    [projects, currentOrgId, currentDivisionId]
-  )
+  const scopedProjects = React.useMemo(() => overview?.projects ?? [], [overview?.projects])
 
-  const [pinnedIds, setPinnedIds] = React.useState<Set<string>>(() => new Set(scopedProjects.slice(0, 2).map((p) => p.id)))
+  const [pinnedIds, setPinnedIds] = React.useState<Set<string>>(() => new Set())
+
+  React.useEffect(() => {
+    if (!scopedProjects.length) {
+      return
+    }
+    setPinnedIds((previous) => {
+      if (previous.size > 0) {
+        return previous
+      }
+      return new Set(scopedProjects.slice(0, 2).map((project) => project.id))
+    })
+  }, [scopedProjects])
 
   const togglePinned = React.useCallback((projectId: string) => {
     setPinnedIds((prev) => {
@@ -42,18 +58,30 @@ export function PinnedProjectsModule() {
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
         <CardTitle className="text-lg font-semibold">Pinned &amp; Recent Projects</CardTitle>
         <Badge variant="outline" className="text-xs">
-          {pinnedProjects.length}/{scopedProjects.length}
+          {isPending ? '…' : `${pinnedProjects.length}/${scopedProjects.length}`}
         </Badge>
       </CardHeader>
       <CardContent className="space-y-4">
         <section className="space-y-2">
           <h4 className="text-xs font-semibold uppercase text-muted-foreground">Pinned</h4>
-          {pinnedProjects.length === 0 && (
+          {isError && (
+            <p className="text-xs text-destructive">
+              Unable to load projects right now. Please try again shortly.
+            </p>
+          )}
+          {isPending && (
+            <div className="space-y-2">
+              {Array.from({ length: 2 }).map((_, index) => (
+                <Skeleton key={index} className="h-12 w-full rounded-md" />
+              ))}
+            </div>
+          )}
+          {!isPending && !isError && pinnedProjects.length === 0 && (
             <p className="text-xs text-muted-foreground">
               Pin projects you revisit often. We saved two for you to start.
             </p>
           )}
-          {pinnedProjects.map((project) => (
+          {!isPending && !isError && pinnedProjects.map((project) => (
             <article
               key={project.id}
               className="flex items-center justify-between rounded-md border border-border/70 bg-background/60 px-3 py-2"
@@ -81,10 +109,17 @@ export function PinnedProjectsModule() {
 
         <section className="space-y-2">
           <h4 className="text-xs font-semibold uppercase text-muted-foreground">Recently Viewed</h4>
-          {recentProjects.length === 0 && (
+          {!isPending && !isError && recentProjects.length === 0 && (
             <p className="text-xs text-muted-foreground">Open a project to see it appear here.</p>
           )}
-          {recentProjects.map((project) => (
+          {isPending && (
+            <div className="space-y-2">
+              {Array.from({ length: 2 }).map((_, index) => (
+                <Skeleton key={index} className="h-12 w-full rounded-md" />
+              ))}
+            </div>
+          )}
+          {!isPending && !isError && recentProjects.map((project) => (
             <article
               key={project.id}
               className="flex items-center justify-between rounded-md border border-dashed border-border/70 bg-background/40 px-3 py-2"

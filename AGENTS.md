@@ -221,6 +221,14 @@
         <guideline>Use TODO markers for follow-up work</guideline>
         <guideline>Docstrings explain intent, tradeoffs, and constraints</guideline>
         <guideline>Cross-reference related modules and dependencies</guideline>
+        <format_standards>
+          <standard name="python_docstrings">PEP 257 Google-style format for all functions/classes</standard>
+          <standard name="javascript_jsdoc">/** */ blocks for all components, interfaces, utilities</standard>
+          <standard name="sql_comments">-- for single-line, /* */ for multi-line SQL comments</standard>
+          <standard name="action_items">TODO/FIXME/HACK/XXX with developer names and ticket numbers</standard>
+          <standard name="header_comments">File purpose, author, date, and license at top of all files</standard>
+          <standard name="business_logic">Comment the "why" not "what" for complex decisions</standard>
+        </format_standards>
       </code_comments>
 
       <project_documentation>
@@ -228,6 +236,55 @@
         <content>Architecture decisions, API specifications, TODO tracking</content>
       </project_documentation>
     </documentation_standards>
+
+    <logging_standards>
+      <unified_requirements>
+        <requirement>Structured logging with appropriate severity levels</requirement>
+        <requirement>Error logging with full context and debugging information</requirement>
+        <requirement>Performance logging for slow operations (>500ms threshold)</requirement>
+        <requirement>Security logging for authentication, authorization, and sensitive operations</requirement>
+        <requirement>Change tracking with business impact analysis</requirement>
+      </unified_requirements>
+
+      <technology_specific>
+        <python_logging>
+          <standard>Use Python logging module with getLogger(__name__)</standard>
+          <levels>DEBUG, INFO, WARNING, ERROR, CRITICAL with proper usage</levels>
+          <error_handling>Use exc_info=True in exception handlers for full stack traces</standard>
+          <performance>Log slow operations, database queries, and API response times</standard>
+        </python_logging>
+
+        <javascript_logging>
+          <development>Use console.log() freely for development debugging</development>
+          <production>Use structured logging (Pino) for production server-side code</production>
+          <frontend>Log user interactions and component performance metrics</frontend>
+          <error_context>Include user state, browser info, and actions leading to errors</error_context>
+        </javascript_logging>
+
+        <database_logging>
+          <postgresql>Configure log_min_duration_statement=500ms, log_connections=on</postgresql>
+          <supabase>Document all Supabase-specific configuration and cloud settings</supabase>
+          <schema_changes>Comment all migrations with business impact and rollback procedures</schema_changes>
+          <query_performance>Log slow queries and analyze execution plans</query_performance>
+        </database_logging>
+
+        <testing_logging>
+          <test_cases>Document test scenarios, expected behavior, and edge cases</test_cases>
+          <performance_tests>Log performance thresholds and optimization validation</performance_tests>
+          <security_tests>Document vulnerability testing and mitigation validation</security_tests>
+          <e2e_tests>Add step-by-step comments for complex user journey tests</e2e_tests>
+        </testing_logging>
+      </technology_specific>
+
+      <no_error_masking>
+        <rule>NEVER ignore compilation errors, linting violations, or test failures</rule>
+        <rule>NEVER use workarounds that bypass underlying problems</rule>
+        <rule>NEVER create documentation that masks known issues</rule>
+        <rule>ALWAYS address root causes with proper solutions</rule>
+        <rule>ALWAYS implement comprehensive error handling and logging</rule>
+        <rule>ALWAYS document limitations, bugs, and areas for improvement</rule>
+      </no_error_masking>
+    </logging_standards>
   </code_standards>
 
   <!-- ========================================== -->

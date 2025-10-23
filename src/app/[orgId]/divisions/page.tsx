@@ -4,15 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { Search } from 'lucide-react'
+
 import { useProtectedRoute } from '@/hooks/use-protected-route'
-import { useCurrentUser } from '@/hooks/use-auth'
-import { authStorage } from '@/lib/auth-utils'
-import { fetchDivisionOverviews } from '@/mocks/data/divisions'
-import {
-  DivisionCard,
-  DivisionCardSkeleton,
-  type DivisionSelection
-} from '@/components/selection/division-card'
+import { useScope } from '@/contexts/scope-context'
+import { DivisionCard, DivisionCardSkeleton, type DivisionSelection } from '@/components/selection/division-card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import {
@@ -21,7 +16,7 @@ import {
   BreadcrumbLink,
   BreadcrumbList,
   BreadcrumbPage,
-  BreadcrumbSeparator
+  BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
 
 const SKELETON_COUNT = 4
@@ -30,131 +25,89 @@ export default function DivisionSelectionPage() {
   const params = useParams<{ orgId: string }>()
   const router = useRouter()
   const { isLoading: isProtecting } = useProtectedRoute()
-  const { user } = useCurrentUser()
+  const {
+    organizations,
+    currentDivisionId,
+    setDivision,
+    status: scopeStatus,
+  } = useScope()
 
   const [searchQuery, setSearchQuery] = useState('')
-  const [isLoadingDivisions, setIsLoadingDivisions] = useState(true)
-  const [divisions, setDivisions] = useState<DivisionSelection[]>([])
-  const [activeDivisionId, setActiveDivisionId] = useState<string | null>(null)
-  const [restrictedCount, setRestrictedCount] = useState(0)
+  const [isNavigating, setIsNavigating] = useState(false)
 
   const orgId = params.orgId
 
   const organization = useMemo(() => {
-    if (!user) return undefined
-    return user.organizations.find((candidate) => candidate.id === orgId)
-  }, [orgId, user])
+    return organizations.find((candidate) => candidate.id === orgId)
+  }, [organizations, orgId])
+
+  useEffect(() => {
+    if (isProtecting) {
+      return
+    }
+    if (!organization) {
+      router.replace('/workspace-hub')
+    }
+  }, [isProtecting, organization, router])
+
+  const divisions: DivisionSelection[] = useMemo(() => {
+    if (!organization) {
+      return []
+    }
+
+    return organization.divisions.map((division) => ({
+      id: division.id,
+      name: division.name,
+      summary: division.description ?? undefined,
+      userRole: (division.userRole as DivisionSelection['userRole']) ?? undefined,
+    }))
+  }, [organization])
+
+  const filteredDivisions = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return divisions
+    }
+    const normalized = searchQuery.toLowerCase()
+    return divisions.filter((division) => {
+      if (division.name.toLowerCase().includes(normalized)) return true
+      if (division.summary?.toLowerCase().includes(normalized)) return true
+      return false
+    })
+  }, [divisions, searchQuery])
 
   const navigateToDivision = useCallback(
     (divisionId: string) => {
       if (!organization) return
-      const accessibleDivision = divisions.find((candidate) => candidate.id === divisionId)
-      if (!accessibleDivision) return
+      const target = organization.divisions.find((candidate) => candidate.id === divisionId)
+      if (!target) return
 
-      const divisionRecord = organization.divisions.find((candidate) => candidate.id === divisionId)
-      if (!divisionRecord) return
-
-      authStorage.setActiveOrganizationId(organization.id)
-      authStorage.setActiveDivisionId(divisionRecord.id)
-      setActiveDivisionId(divisionRecord.id)
-      router.replace(`/${organization.id}/${divisionRecord.id}/dashboard`)
+      setIsNavigating(true)
+      void setDivision(target.id, { reason: 'division-selection' })
+        .catch((error) => {
+          console.error('Failed to switch division', error)
+        })
+        .finally(() => {
+          setIsNavigating(false)
+        })
     },
-    [divisions, organization, router]
+    [organization, setDivision],
   )
 
   useEffect(() => {
-    const storedDivisionId = authStorage.getActiveDivisionId()
-    if (storedDivisionId) {
-      setActiveDivisionId(storedDivisionId)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!user || !organization) {
+    if (isProtecting || isNavigating) {
       return
     }
-
-    let cancelled = false
-    const loadDivisions = async () => {
-      setIsLoadingDivisions(true)
-      const overviews = await fetchDivisionOverviews(
-        organization.id,
-        organization.divisions.map((division) => division.id)
-      )
-      if (cancelled) return
-
-      const userRole = organization.userRole
-      let restricted = 0
-
-      const cards: DivisionSelection[] = organization.divisions.reduce<DivisionSelection[]>((accumulator, division) => {
-        const overview = overviews.find((candidate) => candidate.id === division.id)
-        const allowedRoles = overview?.allowedRoles ?? ['owner', 'admin', 'member']
-
-        if (!userRole || !allowedRoles.includes(userRole as 'owner' | 'admin' | 'member')) {
-          restricted += 1
-          return accumulator
-        }
-
-        accumulator.push({
-          id: division.id,
-          name: division.name,
-          summary: overview?.summary,
-          leader: overview?.leader,
-          memberCount: overview?.memberCount,
-          projectCount: overview?.projectCount,
-          activeInitiatives: overview?.activeInitiatives,
-          focusAreas: overview?.focusAreas,
-          timezone: overview?.timezone,
-          lastSync: overview?.lastSync,
-          accentColor: overview?.accentColor,
-          userRole: userRole as 'owner' | 'admin' | 'member' | undefined
-        })
-
-        return accumulator
-      }, [])
-
-      setRestrictedCount(restricted)
-      setDivisions(cards)
-      setIsLoadingDivisions(false)
+    if (!organization || divisions.length !== 1) {
+      return
     }
-
-    void loadDivisions()
-
-    return () => {
-      cancelled = true
+    const [onlyDivision] = divisions
+    if (onlyDivision && onlyDivision.id !== currentDivisionId) {
+      navigateToDivision(onlyDivision.id)
     }
-  }, [organization, user])
+  }, [currentDivisionId, divisions, isNavigating, isProtecting, navigateToDivision, organization])
 
-  useEffect(() => {
-    if (!isProtecting && organization) {
-      if (divisions.length === 0) return
-      const storedDivisionId = authStorage.getActiveDivisionId()
-      if (storedDivisionId && divisions.some((division) => division.id === storedDivisionId)) {
-        navigateToDivision(storedDivisionId)
-        return
-      }
-
-      if (divisions.length === 1) {
-        navigateToDivision(divisions[0].id)
-      }
-    }
-  }, [divisions, isProtecting, navigateToDivision, organization])
-
-  useEffect(() => {
-    if (!isProtecting && user && !organization) {
-      router.replace('/workspace-hub')
-    }
-  }, [isProtecting, organization, router, user])
-
-  const filteredDivisions = useMemo(() => {
-    if (!searchQuery) return divisions
-    const query = searchQuery.toLowerCase()
-    return divisions.filter((division) => {
-      if (division.name.toLowerCase().includes(query)) return true
-      if (division.summary?.toLowerCase().includes(query)) return true
-      return division.focusAreas?.some((area) => area.toLowerCase().includes(query)) ?? false
-    })
-  }, [divisions, searchQuery])
+  const isLoading = isProtecting || scopeStatus === 'loading'
+  const hasDivisions = filteredDivisions.length > 0
 
   if (isProtecting) {
     return (
@@ -164,11 +117,9 @@ export default function DivisionSelectionPage() {
     )
   }
 
-  if (!user || !organization) {
+  if (!organization) {
     return null
   }
-
-  const showEmptyState = !isLoadingDivisions && filteredDivisions.length === 0
 
   return (
     <div className="min-h-screen bg-background">
@@ -200,11 +151,6 @@ export default function DivisionSelectionPage() {
           <Button asChild variant="outline" size="sm">
             <Link href="/workspace-hub">Back to organizations</Link>
           </Button>
-          {restrictedCount > 0 && (
-            <p className="text-xs text-muted-foreground text-center sm:text-right">
-              {restrictedCount} division{restrictedCount === 1 ? '' : 's'} hidden based on your permissions.
-            </p>
-          )}
         </div>
 
         <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-between">
@@ -227,13 +173,13 @@ export default function DivisionSelectionPage() {
           )}
         </div>
 
-        {isLoadingDivisions ? (
+        {isLoading ? (
           <div className="grid gap-5 sm:grid-cols-2">
             {Array.from({ length: SKELETON_COUNT }).map((_, index) => (
               <DivisionCardSkeleton key={`division-skeleton-${index}`} />
             ))}
           </div>
-        ) : showEmptyState ? (
+        ) : !hasDivisions ? (
           <div className="rounded-lg border border-dashed border-border/60 bg-muted/30 p-12 text-center">
             <h2 className="text-lg font-semibold">No divisions found</h2>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -249,7 +195,7 @@ export default function DivisionSelectionPage() {
                 key={division.id}
                 division={division}
                 onSelect={navigateToDivision}
-                isActive={division.id === activeDivisionId}
+                isActive={division.id === currentDivisionId}
               />
             ))}
           </div>

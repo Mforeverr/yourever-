@@ -1,10 +1,8 @@
 'use client'
 
 import { useMutation, useQueryClient, type UseMutationOptions } from '@tanstack/react-query'
-import { createProject, updateProject, deleteProject, createMockProjectCreation, mockUpdateProject, mockDeleteProject } from '@/lib/api/projects'
-import { isFeatureEnabled } from '@/lib/feature-flags'
-import { buildProjectsByScopeKey } from './use-project-query'
-import { buildProjectDetailKey } from './use-project-query'
+import { createProject, updateProject, deleteProject } from '@/lib/api/projects'
+import { buildProjectsByScopeKey, buildProjectDetailKey } from './use-project-query'
 import type { CreateProjectRequest, UpdateProjectRequest } from '@/lib/api/projects'
 import type { ProjectDetailResponse } from '@/modules/projects/contracts'
 
@@ -19,21 +17,20 @@ export type UseCreateProjectOptions = UseMutationOptions<
 export type UseUpdateProjectOptions = UseMutationOptions<
   ProjectDetailResponse,
   Error,
-  { projectId: string; updates: UpdateProjectRequest },
+  { projectId: string; updates: UpdateProjectRequest; orgId: string },
   unknown
 >
 
 export type UseDeleteProjectOptions = UseMutationOptions<
   void,
   Error,
-  { projectId: string },
+  { projectId: string; orgId: string },
   unknown
 >
 
 // Hook for creating projects
 export const useCreateProjectMutation = (options?: UseCreateProjectOptions) => {
   const queryClient = useQueryClient()
-  const liveDataEnabled = isFeatureEnabled('workspace.liveData', process.env.NODE_ENV !== 'production')
 
   return useMutation<ProjectDetailResponse, Error, CreateProjectRequest & { orgId: string; divisionId?: string | null }>({
     mutationFn: async ({ orgId, divisionId, ...projectData }) => {
@@ -43,16 +40,7 @@ export const useCreateProjectMutation = (options?: UseCreateProjectOptions) => {
         divisionId: divisionId || null,
       }
 
-      if (liveDataEnabled) {
-        try {
-          return await createProject(createRequest)
-        } catch (error) {
-          console.warn('Failed to create project via API, falling back to mock data:', error)
-          return createMockProjectCreation(createRequest)
-        }
-      } else {
-        return createMockProjectCreation(createRequest)
-      }
+      return createProject(createRequest)
     },
     onSuccess: async (data, variables, context) => {
       // Invalidate and refetch projects list for the scope
@@ -72,20 +60,10 @@ export const useCreateProjectMutation = (options?: UseCreateProjectOptions) => {
 // Hook for updating projects
 export const useUpdateProjectMutation = (options?: UseUpdateProjectOptions) => {
   const queryClient = useQueryClient()
-  const liveDataEnabled = isFeatureEnabled('workspace.liveData', process.env.NODE_ENV !== 'production')
 
-  return useMutation<ProjectDetailResponse, Error, { projectId: string; updates: UpdateProjectRequest }>({
-    mutationFn: async ({ projectId, updates }) => {
-      if (liveDataEnabled) {
-        try {
-          return await updateProject(projectId, updates)
-        } catch (error) {
-          console.warn('Failed to update project via API, falling back to mock data:', error)
-          return mockUpdateProject(projectId, updates)
-        }
-      } else {
-        return mockUpdateProject(projectId, updates)
-      }
+  return useMutation<ProjectDetailResponse, Error, { projectId: string; updates: UpdateProjectRequest; orgId: string }>({
+    mutationFn: async ({ projectId, updates, orgId }) => {
+      return updateProject(projectId, updates, { orgId })
     },
     onSuccess: async (data, variables, context) => {
       // Update the specific project in cache
@@ -106,20 +84,10 @@ export const useUpdateProjectMutation = (options?: UseUpdateProjectOptions) => {
 // Hook for deleting projects
 export const useDeleteProjectMutation = (options?: UseDeleteProjectOptions) => {
   const queryClient = useQueryClient()
-  const liveDataEnabled = isFeatureEnabled('workspace.liveData', process.env.NODE_ENV !== 'production')
 
-  return useMutation<void, Error, { projectId: string }>({
-    mutationFn: async ({ projectId }) => {
-      if (liveDataEnabled) {
-        try {
-          await deleteProject(projectId)
-        } catch (error) {
-          console.warn('Failed to delete project via API, falling back to mock data:', error)
-          await mockDeleteProject(projectId)
-        }
-      } else {
-        await mockDeleteProject(projectId)
-      }
+  return useMutation<void, Error, { projectId: string; orgId: string }>({
+    mutationFn: async ({ projectId, orgId }) => {
+      await deleteProject(projectId, { orgId })
     },
     onSuccess: async (data, variables, context) => {
       // Remove project from cache

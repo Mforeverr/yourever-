@@ -5,15 +5,15 @@
 const DEFAULT_FLAGS: Record<string, boolean> = {
   "projects.detail": process.env.NODE_ENV !== "production",
   "projects.detail.api": false,
-  "workspace.liveData": true,
-  "workspace.dashboard.api": true,
+  "workspace.dashboard.api": false,
+  "workspace.liveData": false,
 }
 
 const ENV_FLAG_MAP: Record<string, string> = {
   "projects.detail": "NEXT_PUBLIC_FEATURE_PROJECT_DETAIL",
   "projects.detail.api": "NEXT_PUBLIC_FEATURE_PROJECT_DETAIL_API",
-  "workspace.liveData": "NEXT_PUBLIC_FEATURE_WORKSPACE_LIVE_DATA",
   "workspace.dashboard.api": "NEXT_PUBLIC_FEATURE_WORKSPACE_DASHBOARD_API",
+  "workspace.liveData": "NEXT_PUBLIC_FEATURE_WORKSPACE_LIVE_DATA",
 }
 
 const memoryOverrides = new Map<string, boolean>()

@@ -22,13 +22,6 @@ import {
   selectChannelsForScope,
   selectDirectMessageUsersForScope
 } from "@/mocks/data/conversations"
-import {
-  useMockWorkspaceStore,
-  filterProjectsByScope,
-  filterTasksByScope,
-  filterDocsByScope,
-  countProjectsForDivision
-} from "@/mocks/data/workspace"
 import { useWorkspaceOverviewQuery } from "@/hooks/api/use-workspace-overview-query"
 import { useDivisionChannelsQuery } from "@/hooks/api/use-division-channels-query"
 import { useWorkspaceStore } from "@/state/workspace.store"
@@ -163,44 +156,25 @@ function ExplorerContent({ className, liveDataEnabled, overviewQuery }: Explorer
 
   const { currentOrganization, currentOrgId, currentDivision, currentDivisionId, setScope, setDivision, navigateToProject } = useScope()
 
-  // ALL hooks must be called at the top level before any conditional returns
-  const mockProjects = useMockWorkspaceStore((state) => state.projects)
-  const mockDocs = useMockWorkspaceStore((state) => state.docs)
-  const mockTasks = useMockWorkspaceStore((state) => state.tasks)
-
-  const shouldUseMockData = !liveDataEnabled || Boolean(overviewQuery?.isError)
-
+  
   const projects: WorkspaceProject[] = React.useMemo(() => {
     if (overviewQuery?.isSuccess && overviewQuery?.data) {
       return overviewQuery.data.projects || []
-    }
-    if (shouldUseMockData) {
-      return filterProjectsByScope(mockProjects, currentOrgId, currentDivisionId)
     }
     return []
   }, [
     overviewQuery?.isSuccess,
     overviewQuery?.data,
-    shouldUseMockData,
-    mockProjects,
-    currentOrgId,
-    currentDivisionId,
   ])
 
   const docs = React.useMemo(() => {
     if (overviewQuery?.isSuccess && overviewQuery?.data) {
       return filterDocsByDivision(overviewQuery.data.docs || [], currentDivisionId)
     }
-    if (shouldUseMockData) {
-      return filterDocsByScope(mockDocs, currentOrgId, currentDivisionId)
-    }
     return []
   }, [
     overviewQuery?.isSuccess,
     overviewQuery?.data,
-    shouldUseMockData,
-    mockDocs,
-    currentOrgId,
     currentDivisionId,
   ])
 
@@ -208,16 +182,10 @@ function ExplorerContent({ className, liveDataEnabled, overviewQuery }: Explorer
     if (overviewQuery?.isSuccess && overviewQuery?.data) {
       return filterTasksByDivision(overviewQuery.data.tasks || [], currentDivisionId)
     }
-    if (shouldUseMockData) {
-      return filterTasksByScope(mockTasks, currentOrgId, currentDivisionId)
-    }
     return []
   }, [
     overviewQuery?.isSuccess,
     overviewQuery?.data,
-    shouldUseMockData,
-    mockTasks,
-    currentOrgId,
     currentDivisionId,
   ])
 
@@ -255,12 +223,9 @@ function ExplorerContent({ className, liveDataEnabled, overviewQuery }: Explorer
       if (overviewQuery?.isSuccess && overviewQuery?.data) {
         return countProjectsForDivisionLive(overviewQuery.data.projects || [], divisionId)
       }
-      if (shouldUseMockData) {
-        return countProjectsForDivision(mockProjects, currentOrgId, divisionId)
-      }
       return 0
     },
-    [overviewQuery?.isSuccess, overviewQuery?.data, shouldUseMockData, mockProjects, currentOrgId],
+    [overviewQuery?.isSuccess, overviewQuery?.data],
   )
 
   const showTemplatesBanner = overviewQuery?.isSuccess && overviewQuery.data?.hasTemplates && shouldShowTemplatesBanner
@@ -391,11 +356,11 @@ function ExplorerContent({ className, liveDataEnabled, overviewQuery }: Explorer
             </Button>
             {expandedSections.includes('docs') && (
               <div className="ml-4 space-y-1">
-                {overviewQuery.isPending && liveDataEnabled && !shouldUseMockData ? (
+                {overviewQuery.isPending && liveDataEnabled ? (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground px-2 py-3">
                     <Loader2 className="h-3 w-3 animate-spin" /> Loading documents...
                   </div>
-                ) : overviewQuery.isError && !shouldUseMockData ? (
+                ) : overviewQuery.isError ? (
                   <div className="flex items-center gap-2 text-xs text-destructive px-2 py-3">
                     <AlertCircle className="h-3 w-3" /> Unable to load documents.
                   </div>
@@ -417,7 +382,9 @@ function ExplorerContent({ className, liveDataEnabled, overviewQuery }: Explorer
                     </div>
                   ))
                 ) : (
-                  <p className="text-sm text-muted-foreground">Switch to a division to load its documentation.</p>
+                  <p className="text-sm text-muted-foreground">
+                    {liveDataEnabled ? 'No documentation found for this division.' : 'Documentation will appear when live data is enabled.'}
+                  </p>
                 )}
               </div>
             )}
@@ -448,7 +415,7 @@ function ChannelsContent({ className }: ChannelsContentProps) {
   const channelSearch = useWorkspaceStore((state) => state.channelSearch)
   const setChannelSearch = useWorkspaceStore((state) => state.setChannelSearch)
 
-  const liveDataEnabled = isFeatureEnabled('workspace.liveData', true)
+  const liveDataEnabled = isFeatureEnabled('workspace.liveData', false)
 
   const channelsQuery = useDivisionChannelsQuery(currentOrgId, currentDivisionId, {
     enabled: liveDataEnabled && Boolean(currentOrgId && currentDivisionId),
@@ -473,17 +440,16 @@ function ChannelsContent({ className }: ChannelsContentProps) {
   const toggleChannelMuteMock = useMockConversationStore((state) => state.toggleChannelMute)
   const markDirectMessageRead = useMockConversationStore((state) => state.markDirectMessageRead)
 
-  const shouldUseMockChannels = !liveDataEnabled
-
+  
   const channels: WorkspaceChannel[] = React.useMemo(() => {
     if (channelsQuery.isSuccess) {
       return channelsQuery.data.items
     }
-    if (shouldUseMockChannels) {
+    if (!liveDataEnabled) {
       return mockChannels
     }
     return []
-  }, [channelsQuery.isSuccess, channelsQuery.data, shouldUseMockChannels, mockChannels])
+  }, [channelsQuery.isSuccess, channelsQuery.data, liveDataEnabled, mockChannels])
 
   const filteredChannels = channels.filter((channel) =>
     channel.name.toLowerCase().includes(channelSearch.toLowerCase()),
@@ -687,7 +653,7 @@ function ChannelsContent({ className }: ChannelsContentProps) {
                   })
                 ) : (
                   <div className="px-2 py-3 text-sm text-muted-foreground">
-                    No channels match this scope yet.
+                    {liveDataEnabled ? 'No channels found for this division.' : 'Channels will appear when live data is enabled.'}
                   </div>
                 )}
               </div>
@@ -733,7 +699,7 @@ function ChannelsContent({ className }: ChannelsContentProps) {
                   ))
                 ) : (
                   <div className="px-2 py-3 text-sm text-muted-foreground">
-                    No teammates linked to this division yet.
+                    {liveDataEnabled ? 'No teammates found for this division.' : 'Direct messages will appear when live data is enabled.'}
                   </div>
                 )}
               </div>
@@ -842,25 +808,16 @@ function WorkspaceContent({ className, liveDataEnabled, overviewQuery }: Workspa
     handleProjectOpen(project.id)
   }, [handleProjectOpen])
 
-  // ALL hooks must be called at the top level before any conditional returns
-  const mockProjects = useMockWorkspaceStore((state) => state.projects)
-  const mockTasks = useMockWorkspaceStore((state) => state.tasks)
-
-  const shouldUseMockData = !liveDataEnabled || Boolean(overviewQuery?.isError)
-
+  
+  
   const scopedProjects = React.useMemo(() => {
     if (overviewQuery?.isSuccess && overviewQuery?.data) {
       return filterProjectsByDivision(overviewQuery.data.projects || [], currentOrgId, currentDivisionId)
-    }
-    if (shouldUseMockData) {
-      return filterProjectsByScope(mockProjects, currentOrgId, currentDivisionId)
     }
     return []
   }, [
     overviewQuery?.isSuccess,
     overviewQuery?.data,
-    shouldUseMockData,
-    mockProjects,
     currentOrgId,
     currentDivisionId,
   ])
@@ -869,16 +826,10 @@ function WorkspaceContent({ className, liveDataEnabled, overviewQuery }: Workspa
     if (overviewQuery?.isSuccess && overviewQuery?.data) {
       return filterTasksByDivision(overviewQuery.data.tasks || [], currentDivisionId)
     }
-    if (shouldUseMockData) {
-      return filterTasksByScope(mockTasks, currentOrgId, currentDivisionId)
-    }
     return []
   }, [
     overviewQuery?.isSuccess,
     overviewQuery?.data,
-    shouldUseMockData,
-    mockTasks,
-    currentOrgId,
     currentDivisionId,
   ])
 
@@ -992,11 +943,11 @@ const handleTaskSelect = React.useCallback((taskId: string) => {
             </Button>
             {expandedSections.includes('tasks') && (
               <div className="ml-4 space-y-1">
-                {overviewQuery.isPending && liveDataEnabled && !shouldUseMockData ? (
+                {overviewQuery.isPending && liveDataEnabled ? (
                   <div className="px-2 py-3 text-sm text-muted-foreground flex items-center gap-2">
                     <Loader2 className="h-3 w-3 animate-spin" /> Loading tasks...
                   </div>
-                ) : overviewQuery.isError && !shouldUseMockData ? (
+                ) : overviewQuery.isError ? (
                   <div className="flex items-center gap-2 text-xs text-destructive px-2 py-3">
                     <AlertCircle className="h-3 w-3" /> Unable to load tasks.
                   </div>
@@ -1031,7 +982,7 @@ const handleTaskSelect = React.useCallback((taskId: string) => {
                   ))
                 ) : (
                   <p className="px-2 py-3 text-sm text-muted-foreground">
-                    Tasks align to the currently active division.
+                    {liveDataEnabled ? 'No tasks found for this division.' : 'Tasks will appear when live data is enabled.'}
                   </p>
                 )}
               </div>
@@ -1093,7 +1044,7 @@ const handleTaskSelect = React.useCallback((taskId: string) => {
 
 function SideBar({ activePanel, className }: SideBarProps) {
   const { currentOrgId, currentDivisionId, currentProjectId } = useScope()
-  const liveDataEnabled = isFeatureEnabled('workspace.liveData', true)
+  const liveDataEnabled = isFeatureEnabled('workspace.liveData', false)
   const overviewQuery = useWorkspaceOverviewQuery(currentOrgId, currentDivisionId, {
     enabled: liveDataEnabled && Boolean(currentOrgId),
   })

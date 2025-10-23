@@ -85,16 +85,31 @@ export function ProjectList({
   const [filterStatus, setFilterStatus] = React.useState<FilterOption>('all')
   const [viewMode, setViewMode] = React.useState<ViewMode>(compact ? 'list' : 'card')
 
-  const { currentOrgId, currentDivisionId, currentProjectId, navigateToProject } = useScope()
-
   const {
-    data: projects = [],
-    isLoading,
-    error,
+    currentOrgId,
+    currentDivisionId,
+    currentProjectId,
+    navigateToProject,
+    getAvailableProjects,
+    status: scopeStatus,
+    isReady,
+    refresh: refreshScope
+  } = useScope()
+
+  // Use scope context data for consistency, but fall back to direct API call for flexibility
+  const {
+    data: projectsFromApi = [],
+    isLoading: isLoadingFromApi,
+    error: errorFromApi,
     refetch,
   } = useProjectsByScopeQuery(currentOrgId, currentDivisionId, {
-    enabled: Boolean(currentOrgId),
+    enabled: Boolean(currentOrgId) && false, // Disable by default to prefer scope context
   })
+
+  // Use scope context projects when available for consistency
+  const projects = isReady && scopeStatus === 'ready' ? getAvailableProjects() : projectsFromApi
+  const isLoading = isLoadingFromApi || scopeStatus === 'loading' || !isReady
+  const error = errorFromApi
 
   // Filter and sort projects
   const filteredAndSortedProjects = React.useMemo(() => {
@@ -159,6 +174,14 @@ export function ProjectList({
       onProjectSelect(project)
     } else {
       navigateToProject(project.id)
+    }
+  }
+
+  const handleRefresh = async () => {
+    if (isReady) {
+      await refreshScope()
+    } else {
+      await refetch()
     }
   }
 
@@ -289,7 +312,7 @@ export function ProjectList({
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <AlertCircle className="h-8 w-8 text-destructive mb-2" />
               <p className="text-sm text-destructive mb-2">Failed to load projects</p>
-              <Button variant="outline" size="sm" onClick={() => refetch()}>
+              <Button variant="outline" size="sm" onClick={() => handleRefresh()}>
                 Try again
               </Button>
             </div>

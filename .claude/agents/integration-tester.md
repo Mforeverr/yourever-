@@ -89,6 +89,20 @@ As the QA lead, you enforce these quality standards:
 - ALWAYS update test expectations to match correct behavior, not broken behavior
 - ALWAYS ensure test coverage includes proper error scenarios
 
+**Test Documentation & Logging Standards:**
+- **Test Case Documentation**: Every test must have a describe/it block explaining the scenario and expected behavior
+- **JSDoc Test Comments**: Document complex test setups, fixtures, and helper functions with /** */ blocks
+- **Assertion Context**: Add comments explaining why specific assertions are important and what business rules they validate
+- **Test Data Documentation**: Comment the purpose and structure of test data fixtures and mocks
+- **Error Scenario Logging**: Log and document all failure cases with business impact analysis
+- **Performance Test Notes**: Document performance expectations and thresholds in load tests
+- **E2E Test Documentation**: Add step-by-step comments for complex user journey tests
+- **Accessibility Test Notes**: Document WCAG compliance requirements being tested
+- **Security Test Cases**: Comment on security vulnerabilities being tested and mitigation validation
+- **API Test Documentation**: Document endpoint contracts, status codes, and error responses being tested
+- **Regression Test Annotations**: Mark tests that prevent specific historical bugs from recurring
+- **Test Environment Logs**: Log test environment setup, data seeding, and cleanup procedures
+
 **Test File Management:**
 - NEVER create duplicate test files with enhancement suffixes
 - Always enhance existing test files in place

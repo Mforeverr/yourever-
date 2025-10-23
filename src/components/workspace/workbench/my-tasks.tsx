@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { useScope } from '@/contexts/scope-context'
-import { useMockWorkspaceStore, filterTasksByScope } from '@/mocks/data/workspace'
+import { useWorkspaceOverviewQuery } from '@/hooks/api/use-workspace-overview-query'
 import { CheckCircle2, Circle } from 'lucide-react'
 
 const priorityVariant: Record<string, 'default' | 'destructive' | 'outline' | 'secondary'> = {
@@ -23,12 +23,18 @@ interface MyTasksModuleProps {
 
 export function MyTasksModule({ limit = 6 }: MyTasksModuleProps) {
   const { currentOrgId, currentDivisionId } = useScope()
-  const tasks = useMockWorkspaceStore((state) => state.tasks)
+  const {
+    data: overview,
+    isPending,
+    isError,
+  } = useWorkspaceOverviewQuery(currentOrgId, currentDivisionId, {
+    enabled: Boolean(currentOrgId),
+  })
 
   const scopedTasks = React.useMemo(() => {
-    const scoped = filterTasksByScope(tasks, currentOrgId, currentDivisionId)
-    return scoped.slice(0, limit)
-  }, [tasks, currentOrgId, currentDivisionId, limit])
+    const tasks = overview?.tasks ?? []
+    return tasks.slice(0, limit)
+  }, [overview?.tasks, limit])
 
   const hasTasks = scopedTasks.length > 0
 
@@ -37,17 +43,26 @@ export function MyTasksModule({ limit = 6 }: MyTasksModuleProps) {
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
         <CardTitle className="text-lg font-semibold">My Tasks</CardTitle>
         <Badge variant="secondary" className="text-xs">
-          {scopedTasks.length}
+          {isPending ? '…' : scopedTasks.length}
         </Badge>
       </CardHeader>
       <CardContent className="space-y-3">
-        {!hasTasks && (
+        {isError && (
+          <div className="rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+            Unable to load tasks right now. Please retry shortly.
+          </div>
+        )}
+        {!isPending && !isError && !hasTasks && (
           <div className="flex flex-col items-center justify-center rounded-md border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground">
             <p>No tasks assigned to you in this scope yet.</p>
             <p className="mt-1">Create or assign tasks from a project board to see them here.</p>
           </div>
         )}
-        {scopedTasks.map((task) => (
+        {isPending &&
+          Array.from({ length: 3 }).map((_, index) => (
+            <Skeleton key={index} className="h-10 w-full rounded-md" />
+          ))}
+        {!isPending && !isError && scopedTasks.map((task) => (
           <div
             key={task.id}
             className="group flex items-center justify-between rounded-md border border-border/70 bg-background/50 px-3 py-2 transition hover:border-brand/40 hover:bg-brand/5"
@@ -68,9 +83,6 @@ export function MyTasksModule({ limit = 6 }: MyTasksModuleProps) {
               {task.priority}
             </Badge>
           </div>
-        ))}
-        {!hasTasks && Array.from({ length: 3 }).map((_, index) => (
-          <Skeleton key={index} className="h-10 w-full rounded-md" />
         ))}
       </CardContent>
       <CardFooter className="flex justify-end">

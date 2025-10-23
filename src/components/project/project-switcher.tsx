@@ -23,10 +23,8 @@ import {
   Loader2,
 } from 'lucide-react'
 import { useScope } from '@/contexts/scope-context'
-import { useProjectsByScopeQuery } from '@/hooks/api/use-project-query'
 import { buildProjectRoute } from '@/lib/routing'
-import { isFeatureEnabled } from '@/lib/feature-flags'
-import type { ProjectDetailResponse, ProjectSummary } from '@/modules/projects/contracts'
+import type { ProjectDetailResponse } from '@/modules/projects/contracts'
 import type { WorkspaceProject } from '@/modules/workspace/types'
 
 interface ProjectSwitcherProps {
@@ -125,81 +123,33 @@ export function ProjectSwitcher({
     breadcrumbs,
     navigateToProject,
     exitProject,
+    getAvailableProjects,
+    status: scopeStatus,
+    isReady,
   } = useScope()
 
   const [searchQuery, setSearchQuery] = React.useState('')
   const [isOpen, setIsOpen] = React.useState(false)
 
-  // Get projects for current scope
-  const liveDataEnabled = isFeatureEnabled('workspace.liveData', process.env.NODE_ENV !== 'production')
-
-  // Mock projects for development - this would be replaced with actual API call
-  const mockProjects: WorkspaceProject[] = [
-    {
-      id: 'proj-1',
-      orgId: currentOrgId || 'org-1',
-      divisionId: currentDivisionId || 'division-1',
-      name: 'Mobile App Redesign',
-      description: 'Complete redesign of the mobile application',
-      badgeCount: 3,
-      dotColor: 'bg-blue-500',
-      status: 'active',
-      defaultView: 'board',
-      isTemplate: false,
-      updatedAt: '2024-10-22T10:00:00Z',
-    },
-    {
-      id: 'proj-2',
-      orgId: currentOrgId || 'org-1',
-      divisionId: currentDivisionId || 'division-1',
-      name: 'API Integration',
-      description: 'Third-party API integration project',
-      badgeCount: 7,
-      dotColor: 'bg-green-500',
-      status: 'active',
-      defaultView: 'timeline',
-      isTemplate: false,
-      updatedAt: '2024-10-21T15:30:00Z',
-    },
-    {
-      id: 'proj-3',
-      orgId: currentOrgId || 'org-1',
-      divisionId: currentDivisionId || 'division-1',
-      name: 'Marketing Campaign',
-      description: 'Q4 marketing campaign planning',
-      badgeCount: 2,
-      dotColor: 'bg-purple-500',
-      status: 'planning',
-      defaultView: 'board',
-      isTemplate: false,
-      updatedAt: '2024-10-20T09:15:00Z',
-    },
-  ]
-
-  const { data: projects, isLoading } = useProjectsByScopeQuery(currentOrgId, currentDivisionId, {
-    enabled: liveDataEnabled && Boolean(currentOrgId),
-  })
-
-  // Use mock data when live data is disabled or unavailable
+  // Use scope context to get available projects instead of direct API call
   const availableProjects = React.useMemo(() => {
-    if (liveDataEnabled && projects) {
-      // Convert projects to workspace project format for display
-      return projects.map((projectData) => ({
-        id: projectData.id,
-        orgId: projectData.organizationId,
-        divisionId: projectData.divisionId,
-        name: projectData.name,
-        description: projectData.description,
-        badgeCount: projectData.badgeCount || 0,
-        dotColor: 'bg-blue-500', // Default color
-        status: projectData.status,
-        defaultView: 'board' as const, // Default view for summary projects
-        isTemplate: false,
-        updatedAt: projectData.updatedAt,
-      }))
-    }
-    return mockProjects
-  }, [liveDataEnabled, projects, mockProjects])
+    const projects = getAvailableProjects()
+    return projects.map((projectData) => ({
+      id: projectData.id,
+      orgId: projectData.organizationId,
+      divisionId: projectData.divisionId,
+      name: projectData.name,
+      description: projectData.description,
+      badgeCount: projectData.badgeCount || 0,
+      dotColor: 'bg-blue-500' as const,
+      status: projectData.status,
+      defaultView: 'board' as const,
+      isTemplate: false,
+      updatedAt: projectData.updatedAt,
+    }))
+  }, [getAvailableProjects])
+
+  const isLoading = scopeStatus === 'loading' || !isReady
 
   // Filter projects by search query
   const filteredProjects = React.useMemo(() => {
@@ -309,7 +259,9 @@ export function ProjectSwitcher({
               {isLoading ? (
                 <div className="flex items-center justify-center p-4">
                   <Loader2 className="size-4 animate-spin" />
-                  <span className="ml-2 text-sm text-muted-foreground">Loading projects...</span>
+                  <span className="ml-2 text-sm text-muted-foreground">
+                    {scopeStatus === 'loading' ? 'Loading scope...' : 'Loading projects...'}
+                  </span>
                 </div>
               ) : filteredProjects.length === 0 ? (
                 <div className="p-4 text-center text-sm text-muted-foreground">

@@ -158,18 +158,17 @@ def require_organization_access_with_id(
     """
     async def dependency(
         principal: CurrentPrincipal = Depends(require_current_principal),
-        organization_id: str = None,  # This will be injected from path parameters
+        org_id: str = None,  # This will be injected from path parameters
     ) -> ScopeContext:
-        if not organization_id:
+        if not org_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Organization ID is required",
-                code="missing_organization_id",
             )
 
         guard = scope_guard or get_scope_guard()
         return await require_organization_access(
-            principal, organization_id, required_permissions, guard
+            principal, org_id, required_permissions, guard
         )
 
     return dependency
@@ -194,19 +193,18 @@ def require_division_access_with_ids(
     """
     async def dependency(
         principal: CurrentPrincipal = Depends(require_current_principal),
-        organization_id: str = None,  # This will be injected from path parameters
-        division_id: str = None,  # This will be injected from path parameters
+        org_id: str = None,  # This will be injected from path parameters
+        div_id: str = None,  # This will be injected from path parameters
     ) -> ScopeContext:
-        if not organization_id or not division_id:
+        if not org_id or not div_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Organization ID and division ID are required",
-                code="missing_scope_ids",
             )
 
         guard = scope_guard or get_scope_guard()
         return await require_division_access(
-            principal, organization_id, division_id, required_permissions, guard
+            principal, org_id, div_id, required_permissions, guard
         )
 
     return dependency
@@ -240,7 +238,6 @@ def scoped_endpoint(
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Authentication required",
-                    code="authentication_required",
                 )
 
             guard = scope_guard or get_scope_guard()

@@ -123,6 +123,18 @@ You advocate for best practices without being dogmatic, always considering the s
 - ALWAYS resolve import/export issues with correct module structure
 - ALWAYS address missing properties with complete interface definitions
 
+**Code Documentation & Logging Requirements:**
+- **JSDoc Standards**: Use /** */ blocks for all components, functions, and interfaces
+- **TypeScript Interfaces**: Document all interface properties with /** */ comments
+- **React Components**: Document props, returns, and usage examples for every component
+- **Action Items**: Use TODO/FIXME/HACK/XXX comments with developer names and ticket numbers
+- **Explanatory Comments**: Explain business logic, algorithm choices, and non-obvious implementations
+- **Header Comments**: Include file purpose, author, date, and copyright in every file
+- **Console Logging**: Use console.log for development, structured logging for production
+- **Error Logging**: Log errors with context, user actions, and system state in try/catch blocks
+- **Performance Logging**: Log component render times, API response times, and bundle metrics
+- **User Actions**: Log user interactions for debugging and analytics (with privacy considerations)
+
 **File Management Principles:**
 - NEVER create duplicate React components with enhancement suffixes
 - Always enhance existing components in place

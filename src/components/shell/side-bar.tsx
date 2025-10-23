@@ -34,18 +34,18 @@ import {
   AlertCircle,
   Clock,
 } from "lucide-react"
-import { isFeatureEnabled } from "@/lib/feature-flags"
 import { useScope } from "@/contexts/scope-context"
 import { useWorkspaceOverviewQuery } from "@/hooks/api/use-workspace-overview-query"
-import {
-  useMockWorkspaceStore,
-  filterProjectsByScope,
-  filterTasksByScope,
-  filterDocsByScope,
-} from "@/mocks/data/workspace"
+import { useDivisionChannelsQuery } from "@/hooks/api/use-division-channels-query"
+import { isFeatureEnabled } from "@/lib/feature-flags"
 import type { WorkspaceProject, WorkspaceTask, WorkspaceDoc } from "@/modules/workspace/types"
 import { buildProjectRoute } from "@/lib/routing"
 import { toast } from "@/hooks/use-toast"
+import {
+  useMockConversationStore,
+  selectChannelsForScope,
+  selectDirectMessageUsersForScope
+} from "@/mocks/data/conversations"
 
 interface SideBarProps {
   activePanel: string
@@ -108,50 +108,29 @@ function ExplorerContent({ className }: ExplorerContentProps) {
     clearProjectScope,
     canSwitchToProject,
   } = useScope()
-  const mockProjects = useMockWorkspaceStore((state) => state.projects)
-  const mockTasks = useMockWorkspaceStore((state) => state.tasks)
-  const mockDocs = useMockWorkspaceStore((state) => state.docs)
 
   const [expandedSections, setExpandedSections] = React.useState<string[]>(['divisions', 'projects', 'tasks', 'docs'])
   const [searchQuery, setSearchQuery] = React.useState('')
 
-  const liveDataEnabled = isFeatureEnabled('workspace.liveData', process.env.NODE_ENV !== 'production')
   const overviewQuery = useWorkspaceOverviewQuery(currentOrgId, currentDivisionId, {
-    enabled: liveDataEnabled && Boolean(currentOrgId),
+    enabled: Boolean(currentOrgId),
   })
 
-  const shouldUseMockData = !liveDataEnabled || overviewQuery.isError || !overviewQuery.data
-
   const scopedProjects = React.useMemo<WorkspaceProject[]>(() => {
-    if (shouldUseMockData) {
-      return filterProjectsByScope(mockProjects, currentOrgId, currentDivisionId)
-    }
     const projects = overviewQuery.data?.projects ?? []
     if (!currentDivisionId) {
       return projects
     }
     return projects.filter((project) => project.divisionId === currentDivisionId)
-  }, [
-    shouldUseMockData,
-    mockProjects,
-    currentOrgId,
-    currentDivisionId,
-    overviewQuery.data?.projects,
-  ])
+  }, [currentDivisionId, overviewQuery.data?.projects])
 
   const scopedTasks = React.useMemo<WorkspaceTask[]>(() => {
-    if (shouldUseMockData) {
-      return filterTasksByScope(mockTasks, currentOrgId, currentDivisionId)
-    }
     return overviewQuery.data?.tasks ?? []
-  }, [shouldUseMockData, mockTasks, currentOrgId, currentDivisionId, overviewQuery.data?.tasks])
+  }, [currentDivisionId, overviewQuery.data?.tasks])
 
   const scopedDocs = React.useMemo<WorkspaceDoc[]>(() => {
-    if (shouldUseMockData) {
-      return filterDocsByScope(mockDocs, currentOrgId, currentDivisionId)
-    }
     return overviewQuery.data?.docs ?? []
-  }, [shouldUseMockData, mockDocs, currentOrgId, currentDivisionId, overviewQuery.data?.docs])
+  }, [currentDivisionId, overviewQuery.data?.docs])
 
   const filteredProjects = React.useMemo(() => {
     if (!searchQuery.trim()) {
@@ -171,12 +150,9 @@ function ExplorerContent({ className }: ExplorerContentProps) {
 
   const divisionProjectCount = React.useCallback(
     (divisionId: string) => {
-      if (shouldUseMockData) {
-        return filterProjectsByScope(mockProjects, currentOrgId, divisionId).length
-      }
       return (overviewQuery.data?.projects ?? []).filter((project) => project.divisionId === divisionId).length
     },
-    [shouldUseMockData, mockProjects, currentOrgId, overviewQuery.data?.projects],
+    [overviewQuery.data?.projects],
   )
 
   // Enhanced loading state for project navigation
@@ -328,7 +304,7 @@ function ExplorerContent({ className }: ExplorerContentProps) {
 
   
   const renderProjectList = () => {
-    if (liveDataEnabled && overviewQuery.isLoading) {
+    if (overviewQuery.isLoading) {
       return (
         <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
           <Loader2 className="size-3 animate-spin" />
@@ -344,8 +320,8 @@ function ExplorerContent({ className }: ExplorerContentProps) {
     return filteredProjects.map((project) => {
       const isActive = project.id === currentProjectId
       const isNavigating = navigatingProjectId === project.id
-      const taskCount = project.taskCount || 0
-      const memberCount = project.memberCount || 0
+      const taskCount = 0 // Default value since ProjectSummary doesn't include taskCount
+      const memberCount = 0 // Default value since ProjectSummary doesn't include memberCount
       const lastUpdated = project.updatedAt ? new Date(project.updatedAt) : null
 
       return (
@@ -666,25 +642,51 @@ interface User {
 
 function ChannelsContent({ className }: ChannelsContentProps) {
   const router = useRouter()
+  const { currentOrgId, currentDivisionId } = useScope()
   const [searchQuery, setSearchQuery] = React.useState('')
   const [showFavoritesOnly, setShowFavoritesOnly] = React.useState(false)
   const [expandedSections, setExpandedSections] = React.useState<string[]>(['channels', 'dms'])
 
-  // Mock data
-  const channels: Channel[] = [
-    { id: '1', name: 'general', type: 'public', isMuted: false, isFavorite: true, unreadCount: 5, memberCount: 24 },
-    { id: '2', name: 'development', type: 'public', isMuted: false, isFavorite: true, unreadCount: 12, memberCount: 18 },
-    { id: '3', name: 'design', type: 'public', isMuted: true, isFavorite: false, unreadCount: 0, memberCount: 8 },
-    { id: '4', name: 'marketing', type: 'private', isMuted: false, isFavorite: false, unreadCount: 3, memberCount: 6 },
-    { id: '5', name: 'random', type: 'public', isMuted: false, isFavorite: false, unreadCount: 28, memberCount: 32 },
-  ]
+  // Use feature flag to control live data vs mock data
+  const liveDataEnabled = isFeatureEnabled('workspace.liveData', false)
 
-  const users: User[] = [
-    { id: '1', name: 'Sarah Chen', status: 'online', unreadCount: 2 },
-    { id: '2', name: 'Mike Johnson', status: 'online', unreadCount: 0 },
-    { id: '3', name: 'Emily Davis', status: 'away', unreadCount: 0 },
-    { id: '4', name: 'Tom Wilson', status: 'offline', unreadCount: 1 },
-  ]
+  // API-driven data
+  const channelsQuery = useDivisionChannelsQuery(currentOrgId, currentDivisionId, {
+    enabled: liveDataEnabled && Boolean(currentOrgId && currentDivisionId),
+  })
+
+  // Mock data as fallback when API is disabled
+  const mockChannels = useMockConversationStore(
+    React.useCallback(
+      (state) => selectChannelsForScope(state, currentOrgId, currentDivisionId),
+      [currentDivisionId, currentOrgId],
+    ),
+  )
+
+  const mockUsers = useMockConversationStore(
+    React.useCallback(
+      (state) => selectDirectMessageUsersForScope(state, currentOrgId, currentDivisionId),
+      [currentDivisionId, currentOrgId],
+    ),
+  )
+
+  // Use live data when available, otherwise fall back to mock data
+  const channels = React.useMemo(() => {
+    if (channelsQuery.isSuccess) {
+      return channelsQuery.data.items
+    }
+    if (!liveDataEnabled) {
+      return mockChannels
+    }
+    return []
+  }, [channelsQuery.isSuccess, channelsQuery.data, liveDataEnabled, mockChannels])
+
+  const users = React.useMemo(() => {
+    if (!liveDataEnabled) {
+      return mockUsers
+    }
+    return []
+  }, [liveDataEnabled, mockUsers])
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => 
@@ -763,54 +765,68 @@ function ChannelsContent({ className }: ChannelsContentProps) {
             </Button>
             {expandedSections.includes('channels') && (
               <div className="space-y-1">
-                {filteredChannels.map(channel => {
-                  const Icon = channel.type === 'private' ? Lock : Hash
-                  return (
-                    <div
-                      key={channel.id}
-                      className="flex items-center justify-between p-2 rounded-lg hover:bg-accent/50 cursor-pointer group"
-                      onClick={() => router.push(`/c/${channel.id}`)}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Icon className="size-4 text-muted-foreground" />
-                        <span className="text-sm">{channel.name}</span>
-                        {channel.isFavorite && <Star className="size-3 fill-current text-yellow-500" />}
-                        {channel.isMuted && <BellOff className="size-3 text-muted-foreground" />}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {channel.unreadCount > 0 && (
-                          <Badge variant="destructive" className="text-xs">
-                            {channel.unreadCount}
-                          </Badge>
-                        )}
-                        <div className="opacity-0 group-hover:opacity-100 flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-4 w-4"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              toggleFavorite(channel.id)
-                            }}
-                          >
-                            <Star className={cn("size-3", channel.isFavorite && "fill-current")} />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-4 w-4"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              toggleMute(channel.id)
-                            }}
-                          >
-                            {channel.isMuted ? <BellOff className="size-3" /> : <Bell className="size-3" />}
-                          </Button>
+                {channelsQuery.isPending && liveDataEnabled ? (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground px-2 py-3">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Loading channels...
+                  </div>
+                ) : channelsQuery.isError ? (
+                  <div className="flex items-center gap-2 text-xs text-destructive px-2 py-3">
+                    <AlertCircle className="h-3 w-3" /> Unable to load channels.
+                  </div>
+                ) : filteredChannels.length > 0 ? (
+                  filteredChannels.map(channel => {
+                    const Icon = channel.channelType === 'private' ? Lock : Hash
+                    return (
+                      <div
+                        key={channel.id}
+                        className="flex items-center justify-between p-2 rounded-lg hover:bg-accent/50 cursor-pointer group"
+                        onClick={() => router.push(`/c/${channel.id}`)}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Icon className="size-4 text-muted-foreground" />
+                          <span className="text-sm">{channel.slug}</span>
+                          {channel.isFavorite && <Star className="size-3 fill-current text-yellow-500" />}
+                          {channel.isMuted && <BellOff className="size-3 text-muted-foreground" />}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {channel.unreadCount > 0 && (
+                            <Badge variant="destructive" className="text-xs">
+                              {channel.unreadCount}
+                            </Badge>
+                          )}
+                          <div className="opacity-0 group-hover:opacity-100 flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-4 w-4"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                toggleFavorite(channel.id)
+                              }}
+                            >
+                              <Star className={cn("size-3", channel.isFavorite && "fill-current")} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-4 w-4"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                toggleMute(channel.id)
+                              }}
+                            >
+                              {channel.isMuted ? <BellOff className="size-3" /> : <Bell className="size-3" />}
+                            </Button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })
+                ) : (
+                  <div className="px-2 py-3 text-sm text-muted-foreground">
+                    {liveDataEnabled ? 'No channels found.' : 'Channels will appear when live data is enabled.'}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -832,23 +848,29 @@ function ChannelsContent({ className }: ChannelsContentProps) {
             </Button>
             {expandedSections.includes('dms') && (
               <div className="space-y-1">
-                {users.map(user => (
-                  <div
-                    key={user.id}
-                    className="flex items-center justify-between p-2 rounded-lg hover:bg-accent/50 cursor-pointer"
-                    onClick={() => router.push(`/dm/${user.id}`)}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className={cn("size-2 rounded-full", getStatusColor(user.status))} />
-                      <span className="text-sm">{user.name}</span>
+                {users.length > 0 ? (
+                  users.map(user => (
+                    <div
+                      key={user.id}
+                      className="flex items-center justify-between p-2 rounded-lg hover:bg-accent/50 cursor-pointer"
+                      onClick={() => router.push(`/dm/${user.id}`)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className={cn("size-2 rounded-full", getStatusColor(user.status))} />
+                        <span className="text-sm">{user.name}</span>
+                      </div>
+                      {user.unreadCount && user.unreadCount > 0 && (
+                        <Badge variant="secondary" className="text-xs">
+                          {user.unreadCount}
+                        </Badge>
+                      )}
                     </div>
-                    {user.unreadCount && user.unreadCount > 0 && (
-                      <Badge variant="secondary" className="text-xs">
-                        {user.unreadCount}
-                      </Badge>
-                    )}
+                  ))
+                ) : (
+                  <div className="px-2 py-3 text-sm text-muted-foreground">
+                    {liveDataEnabled ? 'No direct messages found.' : 'Direct messages will appear when live data is enabled.'}
                   </div>
-                ))}
+                )}
               </div>
             )}
           </div>
@@ -922,12 +944,12 @@ function ProjectWorkspaceContent({ className }: ProjectWorkspaceContentProps) {
     currentOrgId,
     currentDivisionId,
     currentProjectId,
+    currentProject,
     currentOrganization,
     currentDivision,
     clearProjectScope,
     breadcrumbs,
   } = useScope()
-  const mockProjects = useMockWorkspaceStore((state) => state.projects)
 
   // Derive current view from pathname
   const currentView = React.useMemo(() => {
@@ -947,8 +969,6 @@ function ProjectWorkspaceContent({ className }: ProjectWorkspaceContentProps) {
 
     return viewMap[lastSegment] || 'board'
   }, [pathname])
-
-  const currentProject = Object.values(mockProjects).find((p) => p.id === currentProjectId)
 
   // Loading and error states
   const [isNavigating, setIsNavigating] = React.useState(false)
@@ -1035,11 +1055,11 @@ function ProjectWorkspaceContent({ className }: ProjectWorkspaceContentProps) {
                 <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1">
                     <User className="size-3" />
-                    {currentProject.memberCount || 0} members
+                    0 members {/* Default count since ProjectSummary doesn't include memberCount */}
                   </span>
                   <span className="flex items-center gap-1">
                     <ListTodo className="size-3" />
-                    {currentProject.taskCount || 0} tasks
+                    0 tasks {/* Default count since ProjectSummary doesn't include taskCount */}
                   </span>
                   <span className="flex items-center gap-1">
                     <Clock className="size-3" />
@@ -1124,7 +1144,7 @@ function ProjectWorkspaceContent({ className }: ProjectWorkspaceContentProps) {
                   <FolderKanban className="size-3" />
                   Default View
                 </span>
-                <span className="font-medium capitalize">{currentProject.defaultView || 'board'}</span>
+                <span className="font-medium capitalize">board</span> {/* Default view since ProjectSummary doesn't include defaultView */}
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground flex items-center gap-2">
@@ -1140,7 +1160,7 @@ function ProjectWorkspaceContent({ className }: ProjectWorkspaceContentProps) {
                   <User className="size-3" />
                   Team Size
                 </span>
-                <span className="font-medium">{currentProject.memberCount || 0} members</span>
+                <span className="font-medium">0 members</span> {/* Default count since ProjectSummary doesn't include memberCount */}
               </div>
             </div>
 

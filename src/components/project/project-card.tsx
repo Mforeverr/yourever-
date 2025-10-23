@@ -127,7 +127,7 @@ export function ProjectCard({
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false)
   const [showEditDialog, setShowEditDialog] = React.useState(false)
 
-  const { navigateToProject, currentProjectId } = useScope()
+  const { navigateToProject, currentProjectId, currentOrgId } = useScope()
   const { updateProjectOptimistically } = useOptimisticProjectUpdate()
 
   const deleteProjectMutation = useDeleteProjectMutation({
@@ -163,7 +163,15 @@ export function ProjectCard({
   }
 
   const handleDelete = () => {
-    deleteProjectMutation.mutate({ projectId: project.id })
+    if (!currentOrgId) {
+      toast({
+        title: 'Missing Organization',
+        description: 'Cannot delete project: organization context is missing',
+        variant: 'destructive',
+      })
+      return
+    }
+    deleteProjectMutation.mutate({ projectId: project.id, orgId: currentOrgId })
   }
 
   const handleUpdate = (updatedProject: ProjectDetails) => {

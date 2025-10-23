@@ -363,9 +363,14 @@ export function ProjectProvider({ children, projectId }: ProjectProviderProps) {
       throw new Error('No project selected for update')
     }
 
+    if (!currentOrgId) {
+      throw new Error('No organization context available for update')
+    }
+
     try {
       await updateProjectMutation.mutateAsync({
         projectId: effectiveProjectId,
+        orgId: currentOrgId,
         updates: {
           name: updates.name,
           description: updates.description,
@@ -383,7 +388,7 @@ export function ProjectProvider({ children, projectId }: ProjectProviderProps) {
       console.error('Failed to update project:', error)
       throw error
     }
-  }, [effectiveProjectId, updateProjectMutation])
+  }, [effectiveProjectId, currentOrgId, updateProjectMutation])
 
   const updateSettings = useCallback(async (settings: Partial<ProjectSettings>) => {
     if (!effectiveProjectId) return

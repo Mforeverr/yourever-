@@ -13,16 +13,15 @@ import { useParams, usePathname, useRouter } from 'next/navigation'
 import type { ApiError } from '@/lib/api/http'
 import { useScopeQuery } from '@/hooks/api/use-scope-query'
 import { useCurrentUser } from '@/hooks/use-auth'
-import { authStorage } from '@/lib/auth-utils'
 import { buildDivisionRoute, buildOrgRoute, buildProjectRoute } from '@/lib/routing'
 import { toast } from '@/hooks/use-toast'
-import { isFeatureEnabled } from '@/lib/feature-flags'
 import type { WorkspaceDivision, WorkspaceOrganization } from '@/modules/auth/types'
 import type { ScopeStatus } from '@/modules/scope/types'
 import type { ScopeState } from '@/modules/scope/types'
 import { useScopeStore } from '@/state/scope.store'
 import type { ProjectScopeSource } from '@/state/scope.store'
 import type { ProjectSummary } from '@/modules/projects/contracts'
+import { useProjectsByScopeQuery, useProjectDetailQuery } from '@/hooks/api/use-project-query'
 
 // Breadcrumb navigation item for scope hierarchy
 interface ScopeBreadcrumbItem {
@@ -228,6 +227,36 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
       return failureCount < 1
     },
   })
+
+  const scopeState = data ?? undefined
+  const organizations = scopeState?.organizations ?? []
+  const activeOrgId = scopeState?.active?.orgId ?? null
+  const activeDivisionId = scopeState?.active?.divisionId ?? null
+  const isReady = queryStatus === 'success' && Boolean(scopeState?.active || organizations.length === 0)
+
+  // Fetch projects available in the current scope
+  const { data: scopeProjects, isLoading: projectsLoading } = useProjectsByScopeQuery(
+    activeOrgId,
+    activeDivisionId,
+    {
+      enabled: Boolean(activeOrgId && isReady),
+      staleTime: 60_000, // 1 minute
+      gcTime: 10 * 60 * 1000, // 10 minutes
+    }
+  )
+
+  // Fetch current project details if a project is active
+  const rawRouteProjectId = normalizeParam(params?.projectId)
+  const routeProjectId = rawRouteProjectId ?? null
+  const routeIncludesProject = typeof rawRouteProjectId !== 'undefined'
+  const { data: currentProjectDetails } = useProjectDetailQuery(
+    routeProjectId,
+    {
+      enabled: Boolean(routeProjectId && activeOrgId),
+      staleTime: 30_000, // 30 seconds
+      gcTime: 5 * 60 * 1000, // 5 minutes,
+    }
+  )
   const [mutationPending, setMutationPending] = useState(false)
   const [mutationError, setMutationError] = useState<ApiError | null>(null)
   const scopeMutexRef = useRef(new ScopeMutex())
@@ -243,8 +272,6 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     if (!isAuthenticated) {
       setMutationPending(false)
       setMutationError(null)
-      authStorage.clearActiveOrganizationId()
-      authStorage.clearActiveDivisionId()
       setProjectScopeState({ projectId: null, source: null, reason: null, updatedAt: null, projectData: null })
       useScopeStore.getState().setSnapshot({
         userId: null,
@@ -268,10 +295,6 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isAuthenticated])
 
-  const scopeState = data ?? undefined
-  const organizations = scopeState?.organizations ?? []
-  const activeOrgId = scopeState?.active?.orgId ?? null
-  const activeDivisionId = scopeState?.active?.divisionId ?? null
   const combinedError = useMemo<ApiError | null>(() => {
     if (mutationError) {
       return mutationError
@@ -311,12 +334,8 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     return currentOrganization.divisions.find((division) => division.id === activeDivisionId) ?? null
   }, [currentOrganization, activeDivisionId])
 
-  const isReady = status === 'ready' && Boolean(scopeState?.active || organizations.length === 0)
-
-  const rawRouteProjectId = normalizeParam(params?.projectId)
-  const routeProjectId = rawRouteProjectId ?? null
-  const routeIncludesProject = typeof rawRouteProjectId !== 'undefined'
-
+  
+  
   // Generate breadcrumb navigation
   const breadcrumbs = useMemo(() => {
     return generateBreadcrumbs(
@@ -331,20 +350,47 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
 
   // Project validation function
   const canSwitchToProject = useCallback((projectId: string) => {
-    // Get available projects from either live data or mock data
-    const liveDataEnabled = isFeatureEnabled('workspace.liveData', process.env.NODE_ENV !== 'production')
-
-    if (liveDataEnabled && scopeState?.organizations) {
-      // Use live data when available
-      const currentOrg = scopeState.organizations.find(org => org.id === activeOrgId)
-      const currentDiv = currentOrg?.divisions.find(div => div.id === activeDivisionId)
-      // For now, use a simple validation - this would be enhanced with actual project data
-      return Boolean(currentOrg && currentDiv && projectId)
+    if (!projectId) {
+      return false
     }
 
-    // Fallback validation - assume project access is valid if org and division are set
-    return Boolean(currentOrganization && currentDivision && projectId)
-  }, [currentOrganization, currentDivision, activeOrgId, activeDivisionId, scopeState])
+    // Check if user has basic scope access
+    const currentOrg = scopeState?.organizations?.find((organization) => organization.id === activeOrgId)
+    if (!currentOrg) {
+      return Boolean(currentOrganization)
+    }
+
+    if (!activeDivisionId) {
+      return true
+    }
+
+    const currentDiv = currentOrg.divisions.find((division) => division.id === activeDivisionId)
+    if (!currentDiv) {
+      return false
+    }
+
+    // Check if project exists and is accessible in current scope
+    if (!scopeProjects) {
+      return false
+    }
+
+    const project = scopeProjects.find((p) => p.id === projectId)
+    if (!project) {
+      return false
+    }
+
+    // Additional validation: ensure project belongs to current org/division scope
+    if (project.organizationId !== activeOrgId) {
+      return false
+    }
+
+    if (activeDivisionId && project.divisionId && project.divisionId !== activeDivisionId) {
+      // If project has a specific division, it must match the current division
+      return false
+    }
+
+    return true
+  }, [activeDivisionId, activeOrgId, currentOrganization, scopeState?.organizations, scopeProjects])
 
   useEffect(() => {
     if (!routeIncludesProject) {
@@ -366,23 +412,21 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     })
   }, [routeIncludesProject, routeProjectId])
 
+  // Update project data when current project details are fetched
   useEffect(() => {
-    if (!isAuthenticated || !isReady) {
-      return
+    if (currentProjectDetails && projectScope.projectId) {
+      setProjectScopeState((previous) => {
+        if (previous.projectData?.id === currentProjectDetails.project.id) {
+          return previous
+        }
+        return {
+          ...previous,
+          projectData: currentProjectDetails.project,
+          updatedAt: new Date().toISOString(),
+        }
+      })
     }
-
-    if (activeOrgId) {
-      authStorage.setActiveOrganizationId(activeOrgId)
-    } else {
-      authStorage.clearActiveOrganizationId()
-    }
-
-    if (activeDivisionId) {
-      authStorage.setActiveDivisionId(activeDivisionId)
-    } else {
-      authStorage.clearActiveDivisionId()
-    }
-  }, [isAuthenticated, isReady, activeOrgId, activeDivisionId])
+  }, [currentProjectDetails, projectScope.projectId])
 
   // Optimize scope store updates to prevent unnecessary re-renders
   useEffect(() => {
@@ -426,6 +470,10 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
   // Fixed route synchronization effect to handle direct URL access
   useEffect(() => {
     if (!isAuthenticated || !isReady) {
+      return
+    }
+
+    if (pathname?.startsWith('/workspace-hub')) {
       return
     }
 
@@ -623,10 +671,9 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
 
   // Enhanced project management functions
   const getAvailableProjects = useCallback((): ProjectSummary[] => {
-    // For now, return empty array. This would be populated with actual project data
-    // from the API in a real implementation
-    return []
-  }, [])
+    // Return real project data from the API
+    return scopeProjects || []
+  }, [scopeProjects])
 
   const switchToProject = useCallback(async (
     projectId: string,
@@ -655,9 +702,13 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
+      // Find the project data to pre-populate the scope
+      const projectData = scopeProjects?.find(p => p.id === projectId)
+
       setProjectScope(projectId, {
         reason: options?.reason || 'manual-switch',
         syncToRoute: true,
+        projectData: projectData || undefined,
       })
 
       // Navigate to the specified view or default to board
@@ -675,7 +726,7 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
       })
       return false
     }
-  }, [activeOrgId, activeDivisionId, canSwitchToProject, projectScope.projectId, setProjectScope, router])
+  }, [activeOrgId, activeDivisionId, canSwitchToProject, projectScope.projectId, setProjectScope, router, scopeProjects])
 
   const switchToProjectBySlug = useCallback(async (
     slug: string,
@@ -716,14 +767,18 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
+    // Find the project data to pre-populate the scope
+    const projectData = scopeProjects?.find(p => p.id === projectId)
+
     setProjectScope(projectId, {
       reason: options?.reason || 'navigation',
       syncToRoute: true,
+      projectData: projectData || undefined,
     })
 
     const destination = buildProjectRoute(activeOrgId, activeDivisionId, projectId, view || 'board')
     router.push(destination)
-  }, [activeOrgId, activeDivisionId, canSwitchToProject, setProjectScope, router])
+  }, [activeOrgId, activeDivisionId, canSwitchToProject, setProjectScope, router, scopeProjects])
 
   const exitProject = useCallback((targetPath?: string) => {
     clearProjectScope({ reason: 'project-exit' })

@@ -277,6 +277,7 @@ export function ProjectCrudForm({
         await updateProjectMutation.mutateAsync({
           projectId: project.id,
           updates: values,
+          orgId: currentOrgId,
         })
       }
     } catch (error) {
@@ -286,8 +287,8 @@ export function ProjectCrudForm({
   }
 
   const handleDelete = async () => {
-    if (!project) return
-    await deleteProjectMutation.mutateAsync({ projectId: project.id })
+    if (!project || !currentOrgId) return
+    await deleteProjectMutation.mutateAsync({ projectId: project.id, orgId: currentOrgId })
   }
 
   const addTag = () => {
