@@ -193,10 +193,16 @@ def validate_project_status(status: Optional[str]) -> str:
     from .schemas import ProjectStatus
 
     if not status:
-        return ProjectStatus.ACTIVE
+        return ProjectStatus.ACTIVE.value
+
+    # If it's already an enum instance, get its value
+    if hasattr(status, 'value'):
+        return status.value
 
     try:
-        return ProjectStatus(status.lower())
+        # Validate it's a valid status and return the string value
+        validated_status = ProjectStatus(status.lower())
+        return validated_status.value
     except ValueError:
         valid_statuses = [s.value for s in ProjectStatus]
         raise ProjectValidationError(
@@ -210,10 +216,16 @@ def validate_project_priority(priority: Optional[str]) -> str:
     from .schemas import ProjectPriority
 
     if not priority:
-        return ProjectPriority.MEDIUM
+        return ProjectPriority.MEDIUM.value
+
+    # If it's already an enum instance, get its value
+    if hasattr(priority, 'value'):
+        return priority.value
 
     try:
-        return ProjectPriority(priority.lower())
+        # Validate it's a valid priority and return the string value
+        validated_priority = ProjectPriority(priority.lower())
+        return validated_priority.value
     except ValueError:
         valid_priorities = [p.value for p in ProjectPriority]
         raise ProjectValidationError(
@@ -241,8 +253,14 @@ def validate_project_member_role(role: Optional[str]) -> str:
     if not role:
         raise ProjectValidationError("role", "Member role is required")
 
+    # If it's already an enum instance, get its value
+    if hasattr(role, 'value'):
+        return role.value
+
     try:
-        return ProjectMemberRole(role.lower())
+        # Validate it's a valid role and return the string value
+        validated_role = ProjectMemberRole(role.lower())
+        return validated_role.value
     except ValueError:
         valid_roles = [r.value for r in ProjectMemberRole]
         raise ProjectValidationError(

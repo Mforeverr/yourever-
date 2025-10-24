@@ -74,6 +74,7 @@
     <tools_integration>
       <item>Use MCP Sequential Thinking</item>
       <item>Use context7 for code analysis</item>
+      <item>ACTIVELY leverage code-index MCP for project indexing, search, and analysis</item>
       <item>Use Playwright for testing</item>
       <item>Use Chrome DevTools MCP for frontend debugging</item>
       <item>Call agents from '/home/eldrie/Yourever)/.claude/agents'</item>
@@ -219,6 +220,353 @@
     <agent name="code-finalizer">Delivery documentation</agent>
     <agent name="general-purpose">Research and complex workflows</agent>
   </specialized_agents>
+
+  <!-- ========================================== -->
+  <!-- CODE-INDEX MCP TOOLS DOCUMENTATION -->
+  <!-- ========================================== -->
+
+  <code_index_mcp_tools>
+    <description>
+      The code-index MCP server provides powerful project indexing, search, and analysis capabilities. It maintains both shallow and deep indexes for efficient code discovery and comprehensive symbol analysis.
+    </description>
+
+    <project_management>
+      <category>🏗️ Project Management</category>
+      <tools>
+        <tool name="set_project_path">
+          <purpose>Initialize indexing for a project directory</purpose>
+          <usage>Call with the project path to automatically index the codebase and create searchable cache</usage>
+          <example>set_project_path("/Users/dev/my-react-app")</example>
+        </tool>
+
+        <tool name="refresh_index">
+          <purpose>Rebuild the shallow file index after file changes</purpose>
+          <usage>Use when files are added, removed, or moved to update the searchable cache</usage>
+          <example>refresh_index() after large-scale operations</example>
+        </tool>
+
+        <tool name="build_deep_index">
+          <purpose>Generate the full symbol index used by deep analysis</purpose>
+          <usage>Run when you need symbol-level data; the default shallow index powers quick file discovery</usage>
+          <example>build_deep_index() before using get_file_summary</example>
+        </tool>
+
+        <tool name="get_settings_info">
+          <purpose>View current project configuration and status</purpose>
+          <usage>Check current indexing state, project path, and configuration</usage>
+          <example>get_settings_info() to verify project setup</example>
+        </tool>
+      </tools>
+    </project_management>
+
+    <search_discovery>
+      <category>🔍 Search & Discovery</category>
+      <tools>
+        <tool name="search_code_advanced">
+          <purpose>Smart search with regex, fuzzy matching, and file filtering</purpose>
+          <usage>Find code patterns, function calls, or language-specific constructs</usage>
+          <examples>
+            <example>Search for all function calls matching "get.*Data" using regex - finds: getData(), getUserData(), getFormData()</example>
+            <example>Fuzzy function search for 'authUser' - matches: authenticateUser, authUserToken, userAuthCheck</example>
+            <example>Language-specific search for "API_ENDPOINT" only in Python files using file_pattern: "*.py"</example>
+          </examples>
+        </tool>
+
+        <tool name="find_files">
+          <purpose>Locate files using glob patterns</purpose>
+          <usage>Find files by pattern (e.g., **/*.py, src/components/**/*.tsx)</usage>
+          <examples>
+            <example>find_files("src/components/**/*.tsx") - Find all TypeScript component files</example>
+            <example>find_files("*.py") - Find all Python files</example>
+            <example>find_files("README.md") - Find all README files</example>
+          </examples>
+        </tool>
+
+        <tool name="get_file_summary">
+          <purpose>Analyze file structure, functions, imports, and complexity</purpose>
+          <usage>Get comprehensive analysis of file contents including functions, classes, and metrics</usage>
+          <requirement>Requires deep index to be built first</requirement>
+          <example>get_file_summary("src/api/userService.ts") to analyze API service structure</example>
+        </tool>
+      </tools>
+    </search_discovery>
+
+    <monitoring_auto_refresh>
+      <category>🔄 Monitoring & Auto-refresh</category>
+      <tools>
+        <tool name="get_file_watcher_status">
+          <purpose>Check file watcher status and configuration</purpose>
+          <usage>Monitor file watcher service status and statistics</usage>
+          <example>get_file_watcher_status() to check if auto-refresh is active</example>
+        </tool>
+
+        <tool name="configure_file_watcher">
+          <purpose>Enable/disable auto-refresh and configure settings</purpose>
+          <usage>Set up automatic index updates when files change</usage>
+          <parameters>
+            <param name="enabled">Boolean to enable/disable file watcher</param>
+            <param name="debounce_seconds">Delay before processing file changes</param>
+            <param name="additional_exclude_patterns">Patterns to exclude from watching</param>
+          </parameters>
+          <example>configure_file_watcher(true, 2, ["node_modules/**"]) to enable with 2-second debounce</example>
+        </tool>
+      </tools>
+    </monitoring_auto_refresh>
+
+    <system_maintenance>
+      <category>🛠️ System & Maintenance</category>
+      <tools>
+        <tool name="create_temp_directory">
+          <purpose>Set up storage directory for index data</purpose>
+          <usage>Initialize temporary storage for index files and cache</usage>
+          <example>create_temp_directory() if storage location needs initialization</example>
+        </tool>
+
+        <tool name="check_temp_directory">
+          <purpose>Verify index storage location and permissions</purpose>
+          <usage>Confirm storage directory exists and is accessible</usage>
+          <example>check_temp_directory() to troubleshoot storage issues</example>
+        </tool>
+
+        <tool name="clear_settings">
+          <purpose>Reset all cached data and configurations</purpose>
+          <usage>Clear all indexes and settings when needed for fresh start</usage>
+          <warning>This will delete all cached index data</warning>
+          <example>clear_settings() to reset to clean state</example>
+        </tool>
+
+        <tool name="refresh_search_tools">
+          <purpose>Re-detect available search tools (ugrep, ripgrep, etc.)</purpose>
+          <usage>Update tool detection after installing new search utilities</usage>
+          <example>refresh_search_tools() after installing ripgrep or ugrep</example>
+        </tool>
+      </tools>
+    </system_maintenance>
+
+    <usage_workflows>
+      <category>📋 Usage Examples & Workflows</category>
+
+      <workflow name="Quick Start">
+        <steps>
+          <step>Initialize project: set_project_path("/path/to/project")</step>
+          <step>Explore structure: find_files("src/**/*.tsx")</step>
+          <step>Analyze key files: get_file_summary("src/components/App.tsx")</step>
+        </steps>
+        <note>Run build_deep_index first if get_file_summary returns needs_deep_index response</note>
+      </workflow>
+
+      <workflow name="Code Pattern Analysis">
+        <steps>
+          <step>Search patterns: search_code_advanced("useState.*\[\]")</step>
+          <step>Filter by language: search_code_advanced("interface.*", file_pattern: "*.ts")</step>
+          <step>Fuzzy matching: search_code_advanced("handleButton", fuzzy: true)</step>
+        </steps>
+      </workflow>
+
+      <workflow name="Project Maintenance">
+        <steps>
+          <step>After adding components: refresh_index()</step>
+          <step>Enable auto-refresh: configure_file_watcher(true, 3, [])</step>
+          <step>Monitor status: get_file_watcher_status()</step>
+        </steps>
+      </workflow>
+
+      <workflow name="Deep Analysis Setup">
+        <steps>
+          <step>Set project path: set_project_path("/project/path")</step>
+          <step>Build deep index: build_deep_index()</step>
+          <step>Analyze files: get_file_summary("src/complex/module.ts")</step>
+        </steps>
+        <performance_note>Deep index provides symbol-level data but uses more memory</performance_note>
+      </workflow>
+    </usage_workflows>
+
+    <best_practices>
+      <practice name="Index Management">
+        <recommendation>Use refresh_index() after large file operations rather than relying solely on file watcher</recommendation>
+        <reason>Ensures complete index consistency after bulk changes</reason>
+      </practice>
+
+      <practice name="Search Optimization">
+        <recommendation>Use specific file patterns with search_code_advanced for better performance</recommendation>
+        <example>file_pattern: "*.tsx" is faster than searching all files</example>
+      </practice>
+
+      <practice name="Deep Index Usage">
+        <recommendation>Build deep index only when symbol-level analysis is needed</recommendation>
+        <reason>Deep index uses more memory but provides comprehensive symbol data</reason>
+      </practice>
+
+      <practice name="File Watcher Configuration">
+        <recommendation>Set appropriate debounce time (2-5 seconds) to balance responsiveness and performance</recommendation>
+        <example>configure_file_watcher(true, 3, ["node_modules/**", "dist/**"])</example>
+      </practice>
+    </best_practices>
+
+    <integration_notes>
+      <note>Works seamlessly with existing MCP tools like context7 for documentation lookup</note>
+      <note>Can be used alongside specialized agents for comprehensive code analysis</note>
+      <note>Indexes are maintained locally for fast, offline-capable searching</note>
+      <note>Supports multiple search engines (ugrep, ripgrep, ag, grep) with automatic selection</note>
+    </integration_notes>
+
+    <active_usage_guidelines>
+      <title>DAILY ACTIVE USAGE REQUIREMENTS</title>
+
+      <mandatory_practices>
+        <practice name="PRE-WORK INDEX CHECK">
+          <requirement>ALWAYS verify index status before starting development work</requirement>
+          <workflow>
+            <step>Run get_settings_info() to verify project is indexed</step>
+            <step>Run refresh_index() after large file operations</step>
+            <step>Build deep_index() when symbol analysis is needed</step>
+          </workflow>
+          <rationale>Ensures search results are accurate and complete for current codebase state</rationale>
+        </practice>
+
+        <practice name="CONTINUOUS SEARCH LEVERAGE">
+          <requirement>ACTIVELY use code-index for all code discovery and analysis tasks</requirement>
+          <examples>
+            <example>Use find_files() instead of manual file system navigation</example>
+            <example>Use search_code_advanced() for pattern finding across codebase</example>
+            <example>Use get_file_summary() for understanding file structure before modifications</example>
+            <example>Use fuzzy search for finding related functionality</example>
+          </examples>
+          <rationale>Dramatically improves development efficiency and code understanding</rationale>
+        </practice>
+
+        <practice name="POST-CHANGE INDEX UPDATES">
+          <requirement>ALWAYS refresh indexes after significant code changes</requirectrine>
+          <triggers>
+            <trigger>After adding/removing multiple files</trigger>
+            <trigger>After major refactoring operations</trigger>
+            <trigger>After switching git branches</trigger>
+            <trigger>Before complex analysis tasks</trigger>
+          </triggers>
+          <workflow>
+            <step>Run refresh_index() for file system changes</step>
+            <step>Run build_deep_index() for symbol-level changes</step>
+          </workflow>
+          <rationale>Maintains search accuracy and prevents stale results</rationale>
+        </practice>
+      </mandatory_practices>
+
+      <integration_workflow>
+        <title>INTEGRATED DEVELOPMENT WORKFLOW</title>
+
+        <phase name="PROJECT KICKOFF">
+          <steps>
+            <step>set_project_path() - Initialize project indexing</step>
+            <step>build_deep_index() - Enable comprehensive analysis</step>
+            <step>configure_file_watcher() - Enable automatic updates</step>
+            <step>get_settings_info() - Verify setup completeness</step>
+          </steps>
+        </phase>
+
+        <phase name="DAILY DEVELOPMENT">
+          <steps>
+            <step>get_settings_info() - Verify index status (morning check)</step>
+            <step>find_files() - Locate relevant files for current task</step>
+            <step>search_code_advanced() - Find related patterns and implementations</step>
+            <step>get_file_summary() - Understand file structure before changes</step>
+          </steps>
+        </phase>
+
+        <phase name="CODE ANALYSIS">
+          <steps>
+            <step>search_code_advanced() - Find all occurrences of patterns</step>
+            <step>find_files() - Locate all files matching criteria</step>
+            <step>get_file_summary() - Analyze key files in detail</step>
+            <step>build_deep_index() - Ensure symbol data is current</step>
+          </steps>
+        </phase>
+
+        <phase name="MAINTENANCE">
+          <steps>
+            <step>refresh_index() - Update after file operations</step>
+            <step>get_file_watcher_status() - Check auto-refresh health</step>
+            <step>configure_file_watcher() - Adjust settings as needed</step>
+            <step>clear_settings() - Reset when index corruption suspected</step>
+          </steps>
+        </phase>
+      </integration_workflow>
+
+      <performance_optimization>
+        <title>PERFORMANCE & EFFICIENCY</title>
+
+        <best_practices>
+          <practice name="SEARCH OPTIMIZATION">
+            <tips>
+              <tip>Use specific file patterns for faster searches</tip>
+              <tip>Combine search terms to reduce result noise</tip>
+              <tip>Use fuzzy search for approximate matching</tip>
+              <tip>Leverage regex for complex pattern searches</tip>
+            </tips>
+          </practice>
+
+          <practice name="INDEX MANAGEMENT">
+            <tips>
+              <tip>Build deep index only when symbol analysis is needed</tip>
+              <tip>Use file watcher exclusions to avoid unnecessary rebuilds</tip>
+              <tip>Set appropriate debounce times (2-5 seconds)</tip>
+              <tip>Refresh index manually after large batch operations</tip>
+            </tips>
+          </practice>
+        </best_practices>
+      </performance_optimization>
+
+      <troubleshooting>
+        <title>COMMON ISSUES & SOLUTIONS</title>
+
+        <issues>
+          <issue name="STALE SEARCH RESULTS">
+            <symptoms>Search returns outdated or missing results</symptoms>
+            <solution>
+              <step>Run refresh_index() to update file index</step>
+              <step>Run build_deep_index() for symbol-level updates</step>
+              <step>Check file watcher status with get_file_watcher_status()</step>
+            </solution>
+          </issue>
+
+          <issue name="SLOW SEARCH PERFORMANCE">
+            <symptoms>Search operations taking excessive time</symptoms>
+            <solution>
+              <step>Use more specific file patterns</step>
+              <step>Reduce search scope with better patterns</step>
+              <step>Check available search tools with refresh_search_tools()</step>
+            </solution>
+          </issue>
+
+          <issue name="MISSING SYMBOL DATA">
+            <symptoms>get_file_summary() returns incomplete results</symptoms>
+            <solution>
+              <step>Ensure deep index is built with build_deep_index()</step>
+              <step>Check if file is supported for symbol extraction</step>
+              <step>Verify project path is correctly set</step>
+            </solution>
+          </issue>
+        </issues>
+      </troubleshooting>
+
+      <monitoring>
+        <title>INDEX HEALTH MONITORING</title>
+
+        <daily_checks>
+          <check name="INDEX STATUS">Run get_settings_info() to verify indexing health</check>
+          <check name="FILE WATCHER">Run get_file_watcher_status() to ensure auto-refresh is working</check>
+          <check name="SEARCH PERFORMANCE">Monitor search response times for degradation</check>
+          <check name="RESULT ACCURACY">Spot-check search results against known files</check>
+        </daily_checks>
+
+        <weekly_maintenance>
+          <task name="DEEP INDEX REBUILD">Run build_deep_index() for comprehensive symbol updates</task>
+          <task name="CONFIGURATION REVIEW">Review file watcher exclusions and settings</task>
+          <task name="PERFORMANCE AUDIT">Check search performance and optimize patterns</task>
+          <task name="STORAGE CLEANUP">Check temp directory usage and clean if needed</task>
+        </weekly_maintenance>
+      </monitoring>
+    </active_usage_guidelines>
+  </code_index_mcp_tools>
 
   <!-- ========================================== -->
   <!-- AGENT DOCUMENTATION & LOGGING STANDARDS -->

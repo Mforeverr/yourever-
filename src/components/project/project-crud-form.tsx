@@ -63,6 +63,7 @@ import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
 import { toast } from '@/hooks/use-toast'
 import { useScope } from '@/contexts/scope-context'
+import { useAuth } from '@/contexts/auth-context'
 import { useCreateProjectMutation, useUpdateProjectMutation, useDeleteProjectMutation } from '@/hooks/api/use-project-mutations'
 import type { ProjectSummary, ProjectDetails } from '@/modules/projects/contracts'
 
@@ -146,10 +147,12 @@ export function ProjectCrudForm({
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false)
   const [currentTag, setCurrentTag] = React.useState('')
 
-  const { currentOrgId, currentDivisionId } = useScope()
+  const { currentOrgId, currentDivisionId, isReady: scopeReady } = useScope()
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 
   const createProjectMutation = useCreateProjectMutation({
     onSuccess: (data) => {
+      console.log('[project-crud] Create project success', { projectName: data.project.name })
       toast({
         title: 'Project created successfully',
         description: `${data.project.name} has been added to your workspace.`,
@@ -158,9 +161,69 @@ export function ProjectCrudForm({
       setOpen(false)
     },
     onError: (error) => {
+      console.error('[project-crud] Create project error', {
+        error: error,
+        message: error.message,
+        stack: error.stack,
+        body: error.body,
+        status: error.status,
+        code: error.code
+      })
+
+      // Enhanced error extraction for better user experience
+      let errorMessage = 'An unexpected error occurred'
+      let errorTitle = 'Failed to create project'
+
+      // Extract error message from different possible sources
+      if (error.message && typeof error.message === 'string' && error.message.trim() !== '') {
+        errorMessage = error.message
+      } else if (error.body?.detail && typeof error.body.detail === 'string') {
+        errorMessage = error.body.detail
+      } else if (error.body?.message && typeof error.body.message === 'string') {
+        errorMessage = error.body.message
+      } else if (error.code && typeof error.code === 'string') {
+        errorMessage = `Error: ${error.code}`
+      } else if (typeof error === 'string') {
+        errorMessage = error
+      }
+
+      // Handle specific error cases with enhanced messaging
+      if (error.status === 401 || errorMessage.toLowerCase().includes('unauthorized')) {
+        errorTitle = 'Authentication Required'
+        errorMessage = 'Please sign in again to create a project. Your session may have expired.'
+      } else if (error.status === 403 || errorMessage.toLowerCase().includes('forbidden')) {
+        errorTitle = 'Permission Denied'
+        errorMessage = 'You do not have permission to create projects in this organization or division.'
+      } else if (error.status === 404 || errorMessage.toLowerCase().includes('not found')) {
+        errorTitle = 'Resource Not Found'
+        errorMessage = 'The organization or division could not be found. Please refresh and try again.'
+      } else if (error.status === 400 || errorMessage.toLowerCase().includes('validation')) {
+        errorTitle = 'Validation Error'
+        // Extract more detailed validation error if available
+        if (error.body?.details?.validation_message) {
+          errorMessage = error.body.details.validation_message
+        } else if (error.body?.details?.field && error.body?.details?.message) {
+          errorMessage = `Invalid ${error.body.details.field}: ${error.body.details.message}`
+        }
+      } else if (error.status === 409 || errorMessage.toLowerCase().includes('conflict')) {
+        errorTitle = 'Conflict'
+        errorMessage = 'A project with this name may already exist or there is a conflict with existing data.'
+      } else if (errorMessage.toLowerCase().includes('network') || errorMessage.toLowerCase().includes('fetch')) {
+        errorTitle = 'Network Error'
+        errorMessage = 'Unable to connect to the server. Please check your internet connection and try again.'
+      } else if (errorMessage.toLowerCase().includes('failed to fetch')) {
+        errorTitle = 'Connection Error'
+        errorMessage = 'Unable to connect to the server. This might be due to authentication issues. Please try signing in again.'
+      }
+
+      // Fallback to generic error if we still have an empty message
+      if (!errorMessage || errorMessage.trim() === '') {
+        errorMessage = 'An unexpected error occurred while creating the project. Please try again.'
+      }
+
       toast({
-        title: 'Failed to create project',
-        description: error.message || 'An unexpected error occurred',
+        title: errorTitle,
+        description: errorMessage,
         variant: 'destructive',
       })
     }
@@ -168,6 +231,7 @@ export function ProjectCrudForm({
 
   const updateProjectMutation = useUpdateProjectMutation({
     onSuccess: (data) => {
+      console.log('[project-crud] Update project success', { projectName: data.project.name })
       toast({
         title: 'Project updated successfully',
         description: `${data.project.name} has been updated.`,
@@ -176,9 +240,69 @@ export function ProjectCrudForm({
       setOpen(false)
     },
     onError: (error) => {
+      console.error('[project-crud] Update project error', {
+        error: error,
+        message: error.message,
+        stack: error.stack,
+        body: error.body,
+        status: error.status,
+        code: error.code
+      })
+
+      // Enhanced error extraction for better user experience
+      let errorMessage = 'An unexpected error occurred'
+      let errorTitle = 'Failed to update project'
+
+      // Extract error message from different possible sources
+      if (error.message && typeof error.message === 'string' && error.message.trim() !== '') {
+        errorMessage = error.message
+      } else if (error.body?.detail && typeof error.body.detail === 'string') {
+        errorMessage = error.body.detail
+      } else if (error.body?.message && typeof error.body.message === 'string') {
+        errorMessage = error.body.message
+      } else if (error.code && typeof error.code === 'string') {
+        errorMessage = `Error: ${error.code}`
+      } else if (typeof error === 'string') {
+        errorMessage = error
+      }
+
+      // Handle specific error cases with enhanced messaging
+      if (error.status === 401 || errorMessage.toLowerCase().includes('unauthorized')) {
+        errorTitle = 'Authentication Required'
+        errorMessage = 'Please sign in again to update this project. Your session may have expired.'
+      } else if (error.status === 403 || errorMessage.toLowerCase().includes('forbidden')) {
+        errorTitle = 'Permission Denied'
+        errorMessage = 'You do not have permission to update this project.'
+      } else if (error.status === 404 || errorMessage.toLowerCase().includes('not found')) {
+        errorTitle = 'Project Not Found'
+        errorMessage = 'The project could not be found or may have been deleted.'
+      } else if (error.status === 400 || errorMessage.toLowerCase().includes('validation')) {
+        errorTitle = 'Validation Error'
+        // Extract more detailed validation error if available
+        if (error.body?.details?.validation_message) {
+          errorMessage = error.body.details.validation_message
+        } else if (error.body?.details?.field && error.body?.details?.message) {
+          errorMessage = `Invalid ${error.body.details.field}: ${error.body.details.message}`
+        }
+      } else if (error.status === 409 || errorMessage.toLowerCase().includes('conflict')) {
+        errorTitle = 'Conflict'
+        errorMessage = 'A conflict occurred while updating the project. Please refresh and try again.'
+      } else if (errorMessage.toLowerCase().includes('network') || errorMessage.toLowerCase().includes('fetch')) {
+        errorTitle = 'Network Error'
+        errorMessage = 'Unable to connect to the server. Please check your internet connection and try again.'
+      } else if (errorMessage.toLowerCase().includes('failed to fetch')) {
+        errorTitle = 'Connection Error'
+        errorMessage = 'Unable to connect to the server. This might be due to authentication issues. Please try signing in again.'
+      }
+
+      // Fallback to generic error if we still have an empty message
+      if (!errorMessage || errorMessage.trim() === '') {
+        errorMessage = 'An unexpected error occurred while updating the project. Please try again.'
+      }
+
       toast({
-        title: 'Failed to update project',
-        description: error.message || 'An unexpected error occurred',
+        title: errorTitle,
+        description: errorMessage,
         variant: 'destructive',
       })
     }
@@ -194,9 +318,40 @@ export function ProjectCrudForm({
       setShowDeleteDialog(false)
     },
     onError: (error) => {
+      console.error('[project-crud] Delete project error', {
+        error: error,
+        message: error.message,
+        body: error.body,
+        status: error.status,
+        code: error.code
+      })
+
+      // Enhanced error extraction for better user experience
+      let errorMessage = 'An unexpected error occurred'
+
+      // Extract error message from different possible sources
+      if (error.message && typeof error.message === 'string' && error.message.trim() !== '') {
+        errorMessage = error.message
+      } else if (error.body?.detail && typeof error.body.detail === 'string') {
+        errorMessage = error.body.detail
+      } else if (error.body?.message && typeof error.body.message === 'string') {
+        errorMessage = error.body.message
+      } else if (error.code && typeof error.code === 'string') {
+        errorMessage = `Error: ${error.code}`
+      }
+
+      // Handle specific error cases
+      if (error.status === 401 || errorMessage.toLowerCase().includes('unauthorized')) {
+        errorMessage = 'Please sign in again to delete this project. Your session may have expired.'
+      } else if (error.status === 403 || errorMessage.toLowerCase().includes('forbidden')) {
+        errorMessage = 'You do not have permission to delete this project.'
+      } else if (error.status === 404 || errorMessage.toLowerCase().includes('not found')) {
+        errorMessage = 'The project could not be found or may have already been deleted.'
+      }
+
       toast({
         title: 'Failed to delete project',
-        description: error.message || 'An unexpected error occurred',
+        description: errorMessage,
         variant: 'destructive',
       })
       setShowDeleteDialog(false)
@@ -247,10 +402,20 @@ export function ProjectCrudForm({
   }, [project, form])
 
   const handleSubmit = async (values: ProjectFormValues) => {
+    // Enhanced authentication and scope validation
     if (!currentOrgId) {
       toast({
-        title: 'Organization required',
+        title: 'Organization Required',
         description: 'Please select an organization before creating a project.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    if (!currentDivisionId) {
+      toast({
+        title: 'Division Required',
+        description: 'Please select a division before creating a project.',
         variant: 'destructive',
       })
       return
@@ -258,6 +423,12 @@ export function ProjectCrudForm({
 
     try {
       if (mode === 'create') {
+        console.log('[project-crud] Starting project creation', {
+          orgId: currentOrgId,
+          divisionId: currentDivisionId,
+          projectName: values.name
+        })
+
         const { organizationId, divisionId, ...projectData } = values
         const createData = {
           orgId: currentOrgId,
@@ -272,17 +443,45 @@ export function ProjectCrudForm({
           targetDate: projectData.targetDate,
           defaultView: projectData.defaultView,
         }
+
         await createProjectMutation.mutateAsync(createData)
+        console.log('[project-crud] Project creation completed successfully')
       } else if (project) {
+        console.log('[project-crud] Starting project update', {
+          projectId: project.id,
+          orgId: currentOrgId,
+          projectName: values.name
+        })
+
         await updateProjectMutation.mutateAsync({
           projectId: project.id,
           updates: values,
           orgId: currentOrgId,
         })
+
+        console.log('[project-crud] Project update completed successfully')
       }
     } catch (error) {
-      // Error handling is done in mutation hooks
-      console.error('Project operation failed:', error)
+      // Enhanced error handling with specific authentication messages
+      console.error('[project-crud] Project operation failed:', {
+        error,
+        mode,
+        orgId: currentOrgId,
+        divisionId: currentDivisionId,
+        projectName: values.name
+      })
+
+      // Don't show duplicate toast - mutation hooks handle this
+      // But we can add additional context here if needed
+      if (error instanceof Error) {
+        const errorMessage = error.message.toLowerCase()
+        if (errorMessage.includes('401') || errorMessage.includes('unauthorized')) {
+          console.error('[project-crud] Authentication error detected', error)
+        }
+        if (errorMessage.includes('403') || errorMessage.includes('forbidden')) {
+          console.error('[project-crud] Authorization error detected', error)
+        }
+      }
     }
   }
 
@@ -311,11 +510,53 @@ export function ProjectCrudForm({
     }
   }
 
+  // Enhanced authentication and scope validation
+  const canCreateProject = React.useMemo(() => {
+    return isAuthenticated && user && currentOrgId && currentDivisionId && scopeReady && !authLoading
+  }, [isAuthenticated, user, currentOrgId, currentDivisionId, scopeReady, authLoading])
+
+  const handleTriggerClick = React.useCallback((event: React.MouseEvent) => {
+    if (!canCreateProject) {
+      event.preventDefault()
+
+      let title = 'Authentication Required'
+      let description = 'Please sign in to create projects.'
+
+      if (!isAuthenticated) {
+        title = 'Authentication Required'
+        description = 'Please sign in to create projects.'
+      } else if (!currentOrgId) {
+        title = 'Organization Required'
+        description = 'Please select an organization before creating a project.'
+      } else if (!currentDivisionId) {
+        title = 'Division Required'
+        description = 'Please select a division before creating a project.'
+      } else if (authLoading) {
+        title = 'Loading'
+        description = 'Please wait while we verify your authentication...'
+      }
+
+      toast({
+        title,
+        description,
+        variant: 'destructive',
+      })
+      return
+    }
+
+    // Allow dialog to open
+    setOpen(true)
+  }, [canCreateProject, isAuthenticated, currentOrgId, currentDivisionId, authLoading])
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {children || (
-          <Button className={triggerClassName}>
+          <Button
+            className={triggerClassName}
+            onClick={handleTriggerClick}
+            disabled={!canCreateProject}
+          >
             <Plus className="h-4 w-4 mr-2" />
             New Project
           </Button>

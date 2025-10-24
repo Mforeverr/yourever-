@@ -9,6 +9,8 @@ The goal is to differentiate runtime configuration (environment variables)
 from code defaults while staying lightweight during early development.
 """
 
+from __future__ import annotations
+
 from functools import lru_cache
 import os
 from typing import Optional
@@ -37,7 +39,7 @@ class Settings(BaseModel):
     )
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         """Load settings from environment variables."""
 
         return cls(

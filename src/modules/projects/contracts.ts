@@ -152,6 +152,42 @@ export interface ProjectSettingsResponse {
   settings: ProjectSettings
 }
 
+// Workspace Snapshot Types
+export interface WorkspaceView {
+  id: string
+  type: "board" | "list" | "timeline" | "calendar" | "mindmap" | "docs"
+  name: string
+  isDefault: boolean
+  settings: Record<string, any>
+  createdBy?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ProjectCapabilities {
+  canManageProject: boolean
+  canManageViews: boolean
+  canManageMembers: boolean
+  canCreateTasks: boolean
+  canDeleteProject: boolean
+}
+
+export interface ProjectFeatureFlags {
+  projectWorkspace: boolean
+  projectSidebar: boolean
+  advancedViews: boolean
+  realTimeCollaboration: boolean
+}
+
+export interface ProjectWorkspaceSnapshot {
+  project: ProjectDetails
+  members: ProjectMember[]
+  views: WorkspaceView[]
+  capabilities: ProjectCapabilities
+  featureFlags: ProjectFeatureFlags
+  activeViewId?: string
+}
+
 export interface UpdateProjectRequest {
   name?: string
   description?: string

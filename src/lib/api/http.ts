@@ -58,11 +58,15 @@ export async function httpRequest<TResponse>(
   { signal, body, headers, meta }: RequestOptions = {},
 ): Promise<TResponse> {
   const requestId = meta?.requestId ?? generateRequestId()
+  console.log(`[API DEBUG] HTTP ${method} request to: ${endpoint}`)
+  console.log(`[API DEBUG] Request ID: ${requestId}`)
+
   const requestInit: RequestInit = {
     method,
     signal,
   }
 
+  console.log("[API DEBUG] Resolving access token...")
   const accessToken = await resolveAuthToken()
 
   const normalizedHeaders: Record<string, string> =
@@ -77,7 +81,17 @@ export async function httpRequest<TResponse>(
 
   if (accessToken) {
     normalizedHeaders.Authorization = `Bearer ${accessToken}`
+    console.log(`[API DEBUG] Authorization header set (Bearer token length: ${accessToken.length})`)
+  } else {
+    console.warn("[API DEBUG] No access token available - Authorization header will not be set")
   }
+
+  console.log("[API DEBUG] Final request headers:", {
+    ...normalizedHeaders,
+    Authorization: normalizedHeaders.Authorization ?
+      `Bearer ${normalizedHeaders.Authorization.substring(0, 20)}...` :
+      'NOT SET'
+  })
 
   requestInit.headers = normalizedHeaders
 
@@ -101,6 +115,7 @@ export async function httpRequest<TResponse>(
         notifyUnauthorized()
       }
 
+      // Enhanced error logging with more context
       logApiError({
         status: response.status,
         endpoint: requestUrl,
@@ -111,14 +126,38 @@ export async function httpRequest<TResponse>(
           requestId,
           endpoint: requestUrl,
           method,
+          responseHeaders: {
+            'x-error-code': response.headers.get('x-error-code'),
+            'x-error-details': response.headers.get('x-error-details'),
+          }
         },
       })
 
-      throw new ApiError(
-        errorBody?.detail ?? `Request to ${requestUrl} failed with status ${response.status}`,
-        response.status,
-        errorBody
-      )
+      // Extract error message with fallback strategies
+      let errorMessage = errorBody?.detail
+
+      // If no detail in body, try nested message
+      if (!errorMessage && errorBody?.message) {
+        errorMessage = errorBody.message
+      }
+
+      // If still no message, try headers
+      if (!errorMessage) {
+        const headerDetails = response.headers.get('x-error-details')
+        const headerCode = response.headers.get('x-error-code')
+        if (headerDetails && headerCode) {
+          errorMessage = `${headerCode}: ${headerDetails}`
+        } else if (headerCode) {
+          errorMessage = `Error: ${headerCode}`
+        }
+      }
+
+      // Final fallback
+      if (!errorMessage) {
+        errorMessage = `Request to ${requestUrl} failed with status ${response.status}`
+      }
+
+      throw new ApiError(errorMessage, response.status, errorBody)
     }
 
     if (response.status === 204) {

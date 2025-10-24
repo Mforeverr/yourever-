@@ -19,6 +19,10 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import jwt
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import text
+
+from ..core.config import get_settings
+from ..db.session import get_db_session
 
 http_bearer = HTTPBearer(auto_error=False)
 
@@ -246,6 +250,86 @@ async def require_current_principal(
     division_ids = _normalize_division_ids(
         _get_first(scope_claims, ["division_ids", "divisionIds"])
     )
+
+    if not org_ids:
+        settings = get_settings()
+        # Attempt to hydrate scope claims from the database when available
+        try:
+            async with get_db_session() as session:
+                membership_query = text(
+                    """
+                    SELECT om.org_id
+                    FROM public.org_memberships AS om
+                    WHERE om.user_id = :user_id
+                    """
+                )
+                membership_result = await session.execute(membership_query, {"user_id": subject})
+                membership_rows = membership_result.mappings().all()
+
+                if membership_rows:
+                    db_org_ids = [str(row["org_id"]) for row in membership_rows]
+                    divisions_query = text(
+                        """
+                        SELECT div.org_id, div.id
+                        FROM public.divisions AS div
+                        WHERE div.org_id = :org_id
+                        """
+                    )
+                    db_division_ids: Dict[str, List[str]] = {}
+                    for org_id in db_org_ids:
+                        result = await session.execute(divisions_query, {"org_id": org_id})
+                        db_division_ids[org_id] = [str(row["id"]) for row in result.mappings()]
+
+                    org_ids = db_org_ids
+                    division_ids = db_division_ids
+                    if not active_org_id and org_ids:
+                        active_org_id = org_ids[0]
+                    if not active_division_id and active_org_id:
+                        first_divisions = division_ids.get(active_org_id)
+                        if first_divisions:
+                            active_division_id = first_divisions[0]
+                    scope_claims.setdefault("org_ids", org_ids)
+                    scope_claims.setdefault("division_ids", division_ids)
+        except Exception:
+            # Database hydration is best-effort; swallow errors to avoid masking auth failures.
+            pass
+
+    if not org_ids:
+        settings = get_settings()
+        if settings.enable_mock_organization_fallback:
+            try:
+                from ..modules.organizations.mock_data import build_fallback_organizations
+
+                temp_principal = CurrentPrincipal(
+                    id=str(subject),
+                    email=token_payload.get("email"),
+                    role=token_payload.get("role"),
+                    claims=None,
+                    active_org_id=None,
+                    active_division_id=None,
+                    org_ids=[],
+                    division_ids={},
+                    scope_claims={},
+                )
+
+                fallback_orgs = build_fallback_organizations(temp_principal)
+                if fallback_orgs:
+                    org_ids = [organization.id for organization in fallback_orgs]
+                    division_ids = {
+                        organization.id: [division.id for division in organization.divisions]
+                        for organization in fallback_orgs
+                    }
+                    if not active_org_id:
+                        active_org_id = org_ids[0]
+                    if not active_division_id:
+                        first_divisions = division_ids.get(active_org_id)
+                        if first_divisions:
+                            active_division_id = first_divisions[0]
+                    scope_claims.setdefault("org_ids", org_ids)
+                    scope_claims.setdefault("division_ids", division_ids)
+            except Exception:
+                # Fallback enrichment is best-effort; ignore unexpected errors.
+                pass
 
     claims = TokenClaims(
         subject=str(subject),

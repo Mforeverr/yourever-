@@ -18,6 +18,10 @@
     "chrome-devtools": {
       "command": "npx",
       "args": ["chrome-devtools-mcp@latest"]
+    },
+    "code-index": {
+      "command": "/home/eldrie/.local/bin/code-index-mcp",
+      "args": []
     }
   }
 }

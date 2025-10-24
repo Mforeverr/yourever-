@@ -34,6 +34,7 @@ from fastapi import HTTPException, Request, status
 
 from ..dependencies import CurrentPrincipal
 from .errors import APIError
+from .organization_resolver import get_organization_resolver, OrganizationResolver
 
 logger = logging.getLogger(__name__)
 
@@ -243,10 +244,12 @@ class ScopeGuard:
         cache: Optional[ScopeCache] = None,
         rate_limiter: Optional[ScopeRateLimiter] = None,
         auditor: Optional[ScopeAuditor] = None,
+        org_resolver: Optional[OrganizationResolver] = None,
     ) -> None:
         self._cache = cache or ScopeCache()
         self._rate_limiter = rate_limiter or ScopeRateLimiter()
         self._auditor = auditor or ScopeAuditor()
+        self._org_resolver = org_resolver or get_organization_resolver()
 
     def _extract_scopes_from_principal(self, principal: CurrentPrincipal) -> Tuple[Set[str], Dict[str, List[str]]]:
         """Extract organization and division scopes from JWT principal."""
@@ -297,7 +300,27 @@ class ScopeGuard:
             APIError: If access is denied with machine-readable error code
         """
         required_permissions = required_permissions or set()
-        cache_key = self._build_cache_key(principal, organization_id, None, required_permissions)
+
+        # Use organization resolver to handle mock/UUID conversion
+        try:
+            org_resolution = self._org_resolver.validate_organization_access(
+                principal, organization_id
+            )
+            # Use the resolved UUID for scope validation
+            resolved_org_id = org_resolution.resolved_id
+        except ValueError as e:
+            # Convert ValueError to APIError for consistent API responses
+            context = ScopeContext(
+                principal=principal,
+                organization_id=organization_id,
+                division_id=None,
+                permissions=set(),
+                decision=ScopeDecision.DENY,
+                violation_type=ScopeViolationType.ORGANIZATION_ACCESS_DENIED,
+            )
+            raise self._create_scope_error_with_details(context, str(e))
+
+        cache_key = self._build_cache_key(principal, resolved_org_id, None, required_permissions)
 
         # Check cache first
         cached = await self._cache.get(cache_key)
@@ -308,7 +331,7 @@ class ScopeGuard:
         if not await self._rate_limiter.is_allowed(f"org_check:{principal.id}"):
             context = ScopeContext(
                 principal=principal,
-                organization_id=organization_id,
+                organization_id=resolved_org_id,
                 division_id=None,
                 permissions=set(),
                 decision=ScopeDecision.DENY,
@@ -319,11 +342,11 @@ class ScopeGuard:
 
         org_scopes, division_scopes = self._extract_scopes_from_principal(principal)
 
-        # Validate organization access
-        if organization_id not in org_scopes:
+        # Validate organization access with resolved UUID
+        if resolved_org_id not in org_scopes:
             context = ScopeContext(
                 principal=principal,
-                organization_id=organization_id,
+                organization_id=resolved_org_id,
                 division_id=None,
                 permissions=set(),
                 decision=ScopeDecision.DENY,
@@ -337,7 +360,7 @@ class ScopeGuard:
 
         context = ScopeContext(
             principal=principal,
-            organization_id=organization_id,
+            organization_id=resolved_org_id,
             division_id=None,
             permissions=granted_permissions,
             decision=ScopeDecision.ALLOW,
@@ -578,6 +601,21 @@ class ScopeGuard:
                 "requested_division_id": context.division_id,
                 "user_id": context.principal.id,
                 "cached_at": context.cached_at.isoformat(),
+            },
+        )
+
+    def _create_scope_error_with_details(self, context: ScopeContext, custom_message: str) -> APIError:
+        """Create an APIError with custom details for organization resolution errors."""
+        return APIError(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=custom_message,
+            code=context.violation_type.value if context.violation_type else "access_denied",
+            extra={
+                "requested_org_id": context.organization_id,
+                "requested_division_id": context.division_id,
+                "user_id": context.principal.id,
+                "cached_at": context.cached_at.isoformat(),
+                "resolution_error": True,
             },
         )
 

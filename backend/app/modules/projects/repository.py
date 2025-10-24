@@ -144,12 +144,26 @@ class SQLAlchemyProjectRepository:
     @staticmethod
     def _to_summary(record: ProjectModel) -> ProjectSummary:
         """Convert database record to project summary."""
+        # Safely convert database string values to enums with fallbacks
+        status_value = record.status if record.status else "draft"
+        priority_value = record.priority if record.priority else "medium"
+
+        try:
+            status = ProjectStatus(status_value)
+        except ValueError:
+            status = ProjectStatus.DRAFT
+
+        try:
+            priority = ProjectPriority(priority_value)
+        except ValueError:
+            priority = ProjectPriority.MEDIUM
+
         return ProjectSummary(
             id=str(record.id),
             name=record.name,
             description=record.description,
-            status=ProjectStatus(record.status) if record.status else ProjectStatus.ACTIVE,
-            priority=ProjectPriority(record.priority) if record.priority else ProjectPriority.MEDIUM,
+            status=status,
+            priority=priority,
             org_id=str(record.org_id) if record.org_id else None,
             division_id=str(record.division_id) if record.division_id else None,
             created_at=record.created_at,
@@ -159,16 +173,30 @@ class SQLAlchemyProjectRepository:
     @staticmethod
     def _to_details(record: ProjectModel) -> ProjectDetails:
         """Convert database record to project details."""
+        # Safely convert database string values to enums with fallbacks
+        status_value = record.status if record.status else "draft"
+        priority_value = record.priority if record.priority else "medium"
+
+        try:
+            status = ProjectStatus(status_value)
+        except ValueError:
+            status = ProjectStatus.DRAFT
+
+        try:
+            priority = ProjectPriority(priority_value)
+        except ValueError:
+            priority = ProjectPriority.MEDIUM
+
         return ProjectDetails(
             id=str(record.id),
             name=record.name,
             description=record.description,
-            status=ProjectStatus(record.status) if record.status else ProjectStatus.ACTIVE,
-            priority=ProjectPriority(record.priority) if record.priority else ProjectPriority.MEDIUM,
+            status=status,
+            priority=priority,
             org_id=str(record.org_id) if record.org_id else None,
             division_id=str(record.division_id) if record.division_id else None,
             owner_id=str(record.owner_id) if record.owner_id else None,
-            metadata={},  # Skip metadata field due to SQLAlchemy conflict
+            metadata=record.project_metadata or {},
             settings=record.settings or {},
             created_at=record.created_at,
             updated_at=record.updated_at,
@@ -199,6 +227,7 @@ class SQLAlchemyProjectRepository:
             org_id=project_data['org_id'],
             division_id=project_data.get('division_id'),
             owner_id=project_data.get('owner_id'),
+            project_metadata=project_data.get('metadata', {}),
             settings=project_data.get('settings', {}),
             created_at=project_data.get('created_at', datetime.utcnow()),
             updated_at=project_data['updated_at'],
@@ -297,7 +326,7 @@ class SQLAlchemyProjectRepository:
             return [
                 ProjectMember(
                     userId=str(record.user_id),
-                    role=ProjectMemberRole(record.role),
+                    role=ProjectMemberRole(record.role) if record.role else ProjectMemberRole.VIEWER,
                     invitedAt=record.invited_at,
                     joinedAt=record.joined_at
                 )
@@ -327,7 +356,7 @@ class SQLAlchemyProjectRepository:
             return [
                 WorkspaceView(
                     id=str(record.id),
-                    type=ViewType(record.view_type),  # Use view_type instead of type
+                    type=ViewType(record.view_type) if record.view_type else ViewType.BOARD,
                     name=record.name,
                     is_default=record.is_default or False,
                     settings=record.config or {},  # Use config instead of settings
@@ -359,7 +388,7 @@ class SQLAlchemyProjectRepository:
             if record:
                 return WorkspaceView(
                     id=str(record.id),
-                    type=ViewType(record.view_type),  # Use view_type instead of type
+                    type=ViewType(record.view_type) if record.view_type else ViewType.BOARD,
                     name=record.name,
                     is_default=record.is_default or False,
                     settings=record.config or {},  # Use config instead of settings
@@ -405,7 +434,7 @@ class SQLAlchemyProjectRepository:
 
             return WorkspaceView(
                 id=str(workspace_view.id),
-                type=ViewType(workspace_view.view_type),
+                type=ViewType(workspace_view.view_type) if workspace_view.view_type else ViewType.BOARD,
                 name=workspace_view.name,
                 is_default=workspace_view.is_default,
                 settings=workspace_view.config or {},
@@ -465,7 +494,7 @@ class SQLAlchemyProjectRepository:
 
                 return WorkspaceView(
                     id=str(record.id),
-                    type=ViewType(record.view_type),
+                    type=ViewType(record.view_type) if record.view_type else ViewType.BOARD,
                     name=record.name,
                     is_default=record.is_default,
                     settings=record.config or {},
@@ -542,7 +571,7 @@ class SQLAlchemyProjectRepository:
 
             return ProjectMember(
                 userId=str(project_member.user_id),
-                role=ProjectMemberRole(project_member.role),
+                role=ProjectMemberRole(project_member.role) if project_member.role else ProjectMemberRole.VIEWER,
                 invitedAt=project_member.invited_at,
                 joinedAt=project_member.joined_at
             )
@@ -578,7 +607,7 @@ class SQLAlchemyProjectRepository:
                 await self._session.refresh(record)
                 return ProjectMember(
                     userId=str(record.user_id),
-                    role=ProjectMemberRole(record.role),
+                    role=ProjectMemberRole(record.role) if record.role else ProjectMemberRole.VIEWER,
                     invitedAt=record.invited_at,
                     joinedAt=record.joined_at
                 )

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+import logging
+from typing import Any, Optional
 
 from sqlalchemy import CursorResult, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +31,18 @@ class WorkspaceRepository:
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+        self._logger = logging.getLogger(__name__)
+
+    @staticmethod
+    def _to_str(value: Any) -> str:
+        """Ensure UUIDs and other identifiers are serialized as strings."""
+        if value is None:
+            raise ValueError("Expected non-null value for identifier conversion")
+        return str(value)
+
+    @staticmethod
+    def _to_optional_str(value: Any) -> Optional[str]:
+        return str(value) if value is not None else None
 
     async def fetch_overview(
         self,
@@ -93,18 +106,20 @@ class WorkspaceRepository:
         )
         rows = result.mappings().all()
         return [
-            WorkspaceProject(
-                id=row["id"],
-                orgId=row["org_id"],
-                divisionId=row["division_id"],
-                name=row["name"],
-                description=row["description"],
-                badgeCount=row["badge_count"],
-                dotColor=row["dot_color"],
-                status=row["status"],
-                defaultView=row["default_view"],
-                isTemplate=row["is_template"],
-                updatedAt=row["updated_at"],
+            WorkspaceProject.model_validate(
+                {
+                    "id": self._to_str(row["id"]),
+                    "orgId": self._to_str(row["org_id"]),
+                    "divisionId": self._to_optional_str(row["division_id"]),
+                    "name": row["name"],
+                    "description": row["description"],
+                    "badgeCount": row["badge_count"],
+                    "dotColor": row["dot_color"],
+                    "status": row["status"],
+                    "defaultView": row["default_view"],
+                    "isTemplate": row["is_template"],
+                    "updatedAt": row["updated_at"],
+                }
             )
             for row in rows
         ]
@@ -142,17 +157,19 @@ class WorkspaceRepository:
         )
         rows = result.mappings().all()
         return [
-            WorkspaceTask(
-                id=row["id"],
-                orgId=row["org_id"],
-                divisionId=row["division_id"],
-                projectId=row["project_id"],
-                name=row["name"],
-                priority=row["priority"],
-                badgeVariant=row["badge_variant"],
-                dotColor=row["dot_color"],
-                isTemplate=row["is_template"],
-                updatedAt=row["updated_at"],
+            WorkspaceTask.model_validate(
+                {
+                    "id": self._to_str(row["id"]),
+                    "orgId": self._to_str(row["org_id"]),
+                    "divisionId": self._to_optional_str(row["division_id"]),
+                    "projectId": self._to_optional_str(row["project_id"]),
+                    "name": row["name"],
+                    "priority": row["priority"],
+                    "badgeVariant": row["badge_variant"],
+                    "dotColor": row["dot_color"],
+                    "isTemplate": row["is_template"],
+                    "updatedAt": row["updated_at"],
+                }
             )
             for row in rows
         ]
@@ -188,15 +205,17 @@ class WorkspaceRepository:
         )
         rows = result.mappings().all()
         return [
-            WorkspaceDoc(
-                id=row["id"],
-                orgId=row["org_id"],
-                divisionId=row["division_id"],
-                name=row["name"],
-                url=row["url"],
-                summary=row["summary"],
-                isTemplate=row["is_template"],
-                updatedAt=row["updated_at"],
+            WorkspaceDoc.model_validate(
+                {
+                    "id": self._to_str(row["id"]),
+                    "orgId": self._to_str(row["org_id"]),
+                    "divisionId": self._to_optional_str(row["division_id"]),
+                    "name": row["name"],
+                    "url": row["url"],
+                    "summary": row["summary"],
+                    "isTemplate": row["is_template"],
+                    "updatedAt": row["updated_at"],
+                }
             )
             for row in rows
         ]
@@ -260,20 +279,20 @@ class WorkspaceRepository:
         return ChannelListResponse(
             items=[
                 WorkspaceChannel(
-                    id=row["id"],
-                    orgId=row["org_id"],
-                    divisionId=row["division_id"],
+                    id=self._to_str(row["id"]),
+                    org_id=self._to_str(row["org_id"]),
+                    division_id=self._to_optional_str(row["division_id"]),
                     slug=row["slug"],
                     name=row["name"],
-                    channelType=row["channel_type"],
+                    channel_type=row["channel_type"],
                     topic=row["topic"],
                     description=row["description"],
-                    memberCount=row["member_count"],
-                    isFavorite=row["is_favorite"],
-                    isMuted=row["is_muted"],
-                    unreadCount=row["unread_count"],
-                    isTemplate=row["is_template"],
-                    updatedAt=row["updated_at"],
+                    member_count=row["member_count"],
+                    is_favorite=row["is_favorite"],
+                    is_muted=row["is_muted"],
+                    unread_count=row["unread_count"],
+                    is_template=row["is_template"],
+                    updated_at=row["updated_at"],
                 )
                 for row in rows
             ],
@@ -343,20 +362,22 @@ class WorkspaceRepository:
         result = await self._session.execute(stmt, params)
         rows = result.mappings().all()
         activities = [
-            WorkspaceActivity(
-                id=row["id"],
-                orgId=row["org_id"],
-                divisionId=row["division_id"],
-                activityType=row["activity_type"],
-                content=row["content"],
-                metadata=row["metadata"],
-                occurredAt=row["occurred_at"],
-                isTemplate=row["is_template"],
-                author={
-                    "id": row["actor_id"],
-                    "name": row["actor_name"] or "Workspace",  # fallback to generic name
-                    "role": row["actor_role"],
-                },
+            WorkspaceActivity.model_validate(
+                {
+                    "id": self._to_str(row["id"]),
+                    "orgId": self._to_str(row["org_id"]),
+                    "divisionId": self._to_optional_str(row["division_id"]),
+                    "activityType": row["activity_type"],
+                    "content": row["content"],
+                    "metadata": row["metadata"],
+                    "occurredAt": row["occurred_at"],
+                    "isTemplate": row["is_template"],
+                    "author": {
+                        "id": self._to_optional_str(row["actor_id"]),
+                        "name": row["actor_name"] or "Workspace",  # fallback to generic name
+                        "role": row["actor_role"],
+                    },
+                }
             )
             for row in rows
         ]
@@ -693,4 +714,3 @@ class WorkspacePermissionRepository:
         )
         if result.scalar_one_or_none() is None:
             raise PermissionError("User does not belong to this division")
-

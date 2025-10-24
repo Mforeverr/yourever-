@@ -22,6 +22,7 @@ import { useScopeStore } from '@/state/scope.store'
 import type { ProjectScopeSource } from '@/state/scope.store'
 import type { ProjectSummary } from '@/modules/projects/contracts'
 import { useProjectsByScopeQuery, useProjectDetailQuery } from '@/hooks/api/use-project-query'
+import { authDebugger } from '@/lib/debug/auth-debugger'
 
 // Breadcrumb navigation item for scope hierarchy
 interface ScopeBreadcrumbItem {
@@ -77,6 +78,19 @@ interface ProjectScopeAdapterState {
   projectData: ProjectSummary | null
 }
 
+const sanitizeSlug = (value: string | null | undefined): string =>
+  (value ?? '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+
+const computeProjectSlug = (project: ProjectSummary): string =>
+  sanitizeSlug(project.slug ?? project.name ?? project.id)
+
 class ScopeMutex {
   private current: Promise<void> = Promise.resolve()
 
@@ -123,7 +137,7 @@ const fallbackContext: ScopeContextValue = {
   exitProject: () => {},
   getProjectHierarchy: () => ({ org: null, division: null, project: null }),
   isProjectActive: () => false,
-  validateProjectScope: () => ({ valid: false, reason: 'Not authenticated' }),
+  validateProjectScope: () => ({ valid: false, reason: 'Authentication not ready - please wait' }),
 }
 
 const normalizeParam = (value: string | string[] | undefined): string | undefined => {
@@ -217,29 +231,74 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
   const params = useParams<{ orgId?: string; divisionId?: string; projectId?: string }>()
-  const { user, isAuthenticated } = useCurrentUser()
+  const { user, isAuthenticated, isLoading: isAuthLoading, sessionInitialized } = useCurrentUser()
+
+  // Enhanced authentication state tracking with proper loading states
+  const authState = useMemo(() => {
+    // When auth is loading or session is not initialized, we consider it "not ready" but don't treat as unauthenticated
+    if (isAuthLoading || !sessionInitialized) {
+      console.log('[SCOPE DEBUG] auth-not-ready:', {
+        isAuthLoading,
+        sessionInitialized,
+        hasUser: !!user,
+        userId: user?.id
+      })
+      return {
+        isAuthenticated: false,
+        isReady: false,
+        isLoading: true,
+        user: null
+      }
+    }
+
+    // Only consider authenticated when we have a confirmed user, auth is not loading, and session is initialized
+    const isUserAuthenticated = Boolean(user)
+    console.log('[SCOPE DEBUG] auth-ready:', {
+      isUserAuthenticated,
+      userId: user?.id,
+      sessionInitialized,
+      isAuthLoading
+    })
+
+    return {
+      isAuthenticated: isUserAuthenticated,
+      isReady: true,
+      isLoading: false,
+      user
+    }
+  }, [user, isAuthLoading, sessionInitialized])
+
   const { data, status: queryStatus, error: queryError, refetch, isFetching, setScopeCache, mutateScope } = useScopeQuery({
-    enabled: isAuthenticated,
+    // Only enable scope query when auth is fully ready and user is authenticated
+    enabled: authState.isReady && authState.isAuthenticated,
     retry: (failureCount, error) => {
       if (error instanceof Error && 'status' in error && (error as ApiError).status === 401) {
+        console.warn('[SCOPE DEBUG] Scope query failed with 401, user may not be properly authenticated')
         return false
       }
-      return failureCount < 1
+      if (failureCount >= 2) {
+        console.error('[SCOPE DEBUG] Scope query failed after retries', { failureCount, error })
+        return false
+      }
+      return true
     },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 5000), // Exponential backoff with 5s max
+    staleTime: 30_000, // 30 seconds
+    gcTime: 5 * 60 * 1000, // 5 minutes
   })
 
   const scopeState = data ?? undefined
   const organizations = scopeState?.organizations ?? []
   const activeOrgId = scopeState?.active?.orgId ?? null
   const activeDivisionId = scopeState?.active?.divisionId ?? null
-  const isReady = queryStatus === 'success' && Boolean(scopeState?.active || organizations.length === 0)
+  const isReady = authState.isReady && queryStatus === 'success' && Boolean(scopeState?.active || organizations.length === 0)
 
   // Fetch projects available in the current scope
   const { data: scopeProjects, isLoading: projectsLoading } = useProjectsByScopeQuery(
     activeOrgId,
     activeDivisionId,
     {
-      enabled: Boolean(activeOrgId && isReady),
+      enabled: Boolean(activeOrgId && isReady && authState.isAuthenticated),
       staleTime: 60_000, // 1 minute
       gcTime: 10 * 60 * 1000, // 10 minutes
     }
@@ -252,7 +311,8 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
   const { data: currentProjectDetails } = useProjectDetailQuery(
     routeProjectId,
     {
-      enabled: Boolean(routeProjectId && activeOrgId),
+      orgId: activeOrgId ?? undefined,
+      enabled: Boolean(routeProjectId && activeOrgId && authState.isAuthenticated && authState.isReady),
       staleTime: 30_000, // 30 seconds
       gcTime: 5 * 60 * 1000, // 5 minutes,
     }
@@ -268,8 +328,41 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     projectData: null,
   })
 
+  // Auth timeout mechanism to prevent indefinite loading states
+  const [authTimeout, setAuthTimeout] = useState(false)
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (isAuthLoading && !authTimeout) {
+      const timeout = setTimeout(() => {
+        console.error('[SCOPE DEBUG] Auth initialization timeout after 15 seconds')
+        setAuthTimeout(true)
+        toast({
+          title: 'Authentication Issue',
+          description: 'Authentication is taking longer than expected. Please refresh the page.',
+          variant: 'destructive',
+        })
+      }, 15000) // 15 second timeout
+
+      return () => clearTimeout(timeout)
+    } else if (!isAuthLoading && authTimeout) {
+      setAuthTimeout(false)
+    }
+  }, [isAuthLoading, authTimeout])
+
+  useEffect(() => {
+    // Handle auth loading state - don't clear scope when auth is still loading
+    if (authState.isLoading) {
+      // Keep existing scope state but mark as not ready
+      useScopeStore.getState().setSnapshot(prev => ({
+        ...prev,
+        isReady: false,
+        status: 'loading',
+        error: null,
+      }))
+      return
+    }
+
+    // Clear scope state when user is definitively not authenticated
+    if (!authState.isAuthenticated) {
       setMutationPending(false)
       setMutationError(null)
       setProjectScopeState({ projectId: null, source: null, reason: null, updatedAt: null, projectData: null })
@@ -293,36 +386,65 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
       })
       return
     }
-  }, [isAuthenticated])
+
+    // When auth is ready and user is authenticated, ensure scope store reflects ready state
+    if (authState.isReady && authState.isAuthenticated) {
+      useScopeStore.getState().setSnapshot(prev => ({
+        ...prev,
+        userId: authState.user?.id ?? null,
+        isReady: true,
+      }))
+    }
+  }, [authState.isAuthenticated, authState.isLoading, authState.isReady, authState.user?.id])
 
   const combinedError = useMemo<ApiError | null>(() => {
+    if (authTimeout) {
+      return new Error('Authentication initialization timed out. Please refresh the page.') as ApiError
+    }
     if (mutationError) {
       return mutationError
     }
     return queryStatus === 'error' ? queryError ?? null : null
-  }, [mutationError, queryError, queryStatus])
+  }, [authTimeout, mutationError, queryError, queryStatus])
 
   const status = useMemo<ScopeStatus>(() => {
-    if (!isAuthenticated) {
+    // When auth times out, mark scope as error
+    if (authTimeout) {
+      return 'error'
+    }
+
+    // When auth is loading, scope is also loading
+    if (authState.isLoading) {
+      return 'loading'
+    }
+
+    // When auth is ready but user is not authenticated, scope is idle
+    if (authState.isReady && !authState.isAuthenticated) {
       return 'idle'
     }
-    if (queryStatus === 'pending' || isFetching) {
-      return 'loading'
+
+    // When auth is ready and user is authenticated, check query status
+    if (authState.isReady && authState.isAuthenticated) {
+      if (queryStatus === 'pending' || isFetching) {
+        return 'loading'
+      }
+      if (mutationPending) {
+        return 'loading'
+      }
+      if (mutationError) {
+        return 'error'
+      }
+      if (queryStatus === 'error') {
+        return 'error'
+      }
+      if (queryStatus === 'success') {
+        return 'ready'
+      }
     }
-    if (mutationPending) {
-      return 'loading'
-    }
-    if (mutationError) {
-      return 'error'
-    }
-    if (queryStatus === 'error') {
-      return 'error'
-    }
-    if (queryStatus === 'success') {
-      return 'ready'
-    }
+
+    // Default fallback
     return 'idle'
-  }, [isAuthenticated, isFetching, mutationError, mutationPending, queryStatus])
+  }, [authTimeout, authState.isLoading, authState.isReady, authState.isAuthenticated, isFetching, mutationError, mutationPending, queryStatus])
 
   const currentOrganization = useMemo(() => {
     if (!activeOrgId) return null
@@ -348,49 +470,80 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     )
   }, [currentOrganization, currentDivision, projectScope.projectData, activeOrgId, activeDivisionId, projectScope.projectId])
 
-  // Project validation function
+  // Enhanced project validation function with comprehensive auth checks
   const canSwitchToProject = useCallback((projectId: string) => {
     if (!projectId) {
+      console.warn('[scope] canSwitchToProject: No project ID provided')
+      return false
+    }
+
+    // Check if user is authenticated and auth is ready
+    if (!authState.isAuthenticated || !authState.isReady) {
+      console.warn('[scope] canSwitchToProject: User not authenticated or auth not ready', {
+        isAuthenticated: authState.isAuthenticated,
+        isReady: authState.isReady,
+        isLoading: authState.isLoading
+      })
       return false
     }
 
     // Check if user has basic scope access
     const currentOrg = scopeState?.organizations?.find((organization) => organization.id === activeOrgId)
     if (!currentOrg) {
-      return Boolean(currentOrganization)
+      // Fallback to currentOrganization from context
+      if (!currentOrganization) {
+        console.warn('[scope] canSwitchToProject: No organization context available')
+        return false
+      }
+      return true
     }
 
     if (!activeDivisionId) {
+      // If no division is selected, user can access org-level projects
       return true
     }
 
     const currentDiv = currentOrg.divisions.find((division) => division.id === activeDivisionId)
     if (!currentDiv) {
+      console.warn('[scope] canSwitchToProject: Division not found in organization', { activeDivisionId })
       return false
     }
 
     // Check if project exists and is accessible in current scope
     if (!scopeProjects) {
+      console.warn('[scope] canSwitchToProject: No projects loaded for scope')
       return false
     }
 
     const project = scopeProjects.find((p) => p.id === projectId)
     if (!project) {
+      console.warn('[scope] canSwitchToProject: Project not found in scope', { projectId })
       return false
     }
 
     // Additional validation: ensure project belongs to current org/division scope
     if (project.organizationId !== activeOrgId) {
+      console.warn('[scope] canSwitchToProject: Project belongs to different organization', {
+        projectId,
+        projectOrgId: project.organizationId,
+        currentOrgId: activeOrgId
+      })
       return false
     }
 
     if (activeDivisionId && project.divisionId && project.divisionId !== activeDivisionId) {
       // If project has a specific division, it must match the current division
+      console.warn('[scope] canSwitchToProject: Project belongs to different division', {
+        projectId,
+        projectDivId: project.divisionId,
+        currentDivId: activeDivisionId
+      })
       return false
     }
 
+    console.log('[scope] canSwitchToProject: Access granted', { projectId, orgId: activeOrgId, divisionId: activeDivisionId })
     return true
-  }, [activeDivisionId, activeOrgId, currentOrganization, scopeState?.organizations, scopeProjects])
+  }, [activeDivisionId, activeOrgId, currentOrganization, scopeState?.organizations, scopeProjects, authState.isAuthenticated, authState.isReady])
 
   useEffect(() => {
     if (!routeIncludesProject) {
@@ -469,7 +622,18 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
   
   // Fixed route synchronization effect to handle direct URL access
   useEffect(() => {
-    if (!isAuthenticated || !isReady) {
+    // Wait for auth to be ready before doing any route synchronization
+    if (!authState.isReady) {
+      return
+    }
+
+    // Don't do route sync if user is not authenticated
+    if (!authState.isAuthenticated) {
+      return
+    }
+
+    // Ensure scope is ready before proceeding
+    if (!isReady) {
       return
     }
 
@@ -573,7 +737,8 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
       }
     })
   }, [
-    isAuthenticated,
+    authState.isReady,
+    authState.isAuthenticated,
     isReady,
     mutateScope,
     organizations,
@@ -587,7 +752,14 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
 
   const setScope = useCallback(
     async (orgId: string, divisionId?: string | null, options?: { reason?: string }) => {
-      if (!isAuthenticated) return
+      if (!authState.isAuthenticated || !authState.isReady) {
+        console.warn('[scope] setScope: Cannot set scope - user not authenticated or auth not ready', {
+          isAuthenticated: authState.isAuthenticated,
+          isReady: authState.isReady,
+          isLoading: authState.isLoading
+        })
+        return
+      }
       const desiredDivision = divisionId ?? null
       const optimistic = buildOptimisticState(scopeState, orgId, desiredDivision)
       const reason = options?.reason ?? 'manual-selection'
@@ -624,7 +796,7 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
         }
       })
     },
-    [isAuthenticated, mutateScope, pathname, router, scopeState, setScopeCache]
+    [authState.isAuthenticated, authState.isReady, mutateScope, pathname, router, scopeState, setScopeCache]
   )
 
   const setDivision = useCallback(
@@ -679,25 +851,55 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     projectId: string,
     options?: { view?: string; reason?: string }
   ): Promise<boolean> => {
-    if (!activeOrgId || !activeDivisionId) {
+    // Enhanced validation with detailed logging
+    if (!authState.isAuthenticated || !authState.isReady) {
+      console.error('[scope] switchToProject: User not authenticated or auth not ready', {
+        isAuthenticated: authState.isAuthenticated,
+        isReady: authState.isReady,
+        isLoading: authState.isLoading
+      })
       toast({
-        title: 'Scope Required',
-        description: 'Please select an organization and division first.',
+        title: authState.isLoading ? 'Authentication Loading' : 'Authentication Required',
+        description: authState.isLoading
+          ? 'Please wait while authentication is being verified.'
+          : 'Please sign in to access projects.',
+        variant: 'destructive',
+      })
+      return false
+    }
+
+    if (!activeOrgId) {
+      console.error('[scope] switchToProject: No organization selected')
+      toast({
+        title: 'Organization Required',
+        description: 'Please select an organization first.',
+        variant: 'destructive',
+      })
+      return false
+    }
+
+    if (!activeDivisionId) {
+      console.error('[scope] switchToProject: No division selected')
+      toast({
+        title: 'Division Required',
+        description: 'Please select a division first.',
         variant: 'destructive',
       })
       return false
     }
 
     if (!canSwitchToProject(projectId)) {
+      console.error('[scope] switchToProject: Access denied to project', { projectId, orgId: activeOrgId, divisionId: activeDivisionId })
       toast({
         title: 'Access Denied',
-        description: 'You do not have access to this project.',
+        description: 'You do not have access to this project or it may not exist.',
         variant: 'destructive',
       })
       return false
     }
 
     if (projectId === projectScope.projectId) {
+      console.log('[scope] switchToProject: Already on project', { projectId })
       return true // Already on this project
     }
 
@@ -705,10 +907,28 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
       // Find the project data to pre-populate the scope
       const projectData = scopeProjects?.find(p => p.id === projectId)
 
+      if (!projectData) {
+        console.error('[scope] switchToProject: Project data not found', { projectId })
+        toast({
+          title: 'Project Not Found',
+          description: 'The requested project could not be found.',
+          variant: 'destructive',
+        })
+        return false
+      }
+
+      console.log('[scope] switchToProject: Switching to project', {
+        projectId,
+        projectName: projectData.name,
+        orgId: activeOrgId,
+        divisionId: activeDivisionId,
+        view: options?.view
+      })
+
       setProjectScope(projectId, {
         reason: options?.reason || 'manual-switch',
         syncToRoute: true,
-        projectData: projectData || undefined,
+        projectData: projectData,
       })
 
       // Navigate to the specified view or default to board
@@ -718,22 +938,23 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
 
       return true
     } catch (error) {
-      console.error('Failed to switch to project:', error)
+      console.error('[scope] switchToProject: Failed to switch to project', { projectId, error })
       toast({
         title: 'Switch Failed',
-        description: 'Failed to switch to the selected project.',
+        description: error instanceof Error ? error.message : 'Failed to switch to the selected project.',
         variant: 'destructive',
       })
       return false
     }
-  }, [activeOrgId, activeDivisionId, canSwitchToProject, projectScope.projectId, setProjectScope, router, scopeProjects])
+  }, [authState.isAuthenticated, authState.isReady, authState.isLoading, activeOrgId, activeDivisionId, canSwitchToProject, projectScope.projectId, setProjectScope, router, scopeProjects])
 
   const switchToProjectBySlug = useCallback(async (
     slug: string,
     options?: { view?: string; reason?: string }
   ): Promise<boolean> => {
     const availableProjects = getAvailableProjects()
-    const project = availableProjects.find(p => p.slug === slug)
+    const normalizedSlug = sanitizeSlug(slug)
+    const project = availableProjects.find((candidate) => computeProjectSlug(candidate) === normalizedSlug)
 
     if (!project) {
       toast({
@@ -808,28 +1029,70 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
   }, [projectScope.projectId])
 
   const validateProjectScope = useCallback((projectId: string) => {
-    if (!isAuthenticated) {
-      return { valid: false, reason: 'Not authenticated' }
+    if (!authState.isAuthenticated || !authState.isReady) {
+      return {
+        valid: false,
+        reason: authState.isLoading
+          ? 'Authentication is still loading - please wait'
+          : 'Authentication required - please sign in'
+      }
+    }
+
+    if (!projectId) {
+      return { valid: false, reason: 'Project ID is required' }
     }
 
     if (!activeOrgId) {
-      return { valid: false, reason: 'No organization selected' }
+      return { valid: false, reason: 'Organization context required - please select an organization' }
     }
 
     if (!activeDivisionId) {
-      return { valid: false, reason: 'No division selected' }
+      return { valid: false, reason: 'Division context required - please select a division' }
+    }
+
+    if (!currentOrganization) {
+      return { valid: false, reason: 'Organization data not available' }
+    }
+
+    if (!scopeProjects || scopeProjects.length === 0) {
+      return { valid: false, reason: 'No projects available in current scope' }
     }
 
     if (!canSwitchToProject(projectId)) {
-      return { valid: false, reason: 'Access denied to project' }
+      const project = scopeProjects.find(p => p.id === projectId)
+      if (!project) {
+        return { valid: false, reason: 'Project not found or not accessible in current scope' }
+      }
+      if (project.organizationId !== activeOrgId) {
+        return { valid: false, reason: 'Project belongs to a different organization' }
+      }
+      if (activeDivisionId && project.divisionId && project.divisionId !== activeDivisionId) {
+        return { valid: false, reason: 'Project belongs to a different division' }
+      }
+      return { valid: false, reason: 'Access denied to project - insufficient permissions' }
     }
 
+    console.log('[scope] validateProjectScope: Project scope validation passed', {
+      projectId,
+      orgId: activeOrgId,
+      divisionId: activeDivisionId
+    })
+
     return { valid: true }
-  }, [isAuthenticated, activeOrgId, activeDivisionId, canSwitchToProject])
+  }, [authState.isAuthenticated, authState.isReady, authState.isLoading, activeOrgId, activeDivisionId, currentOrganization, scopeProjects, canSwitchToProject])
 
   const value = useMemo<ScopeContextValue>(() => {
     // Always return a valid context value, even during authentication loading
-    if (!isAuthenticated) {
+    if (!authState.isReady) {
+      // Return loading context when auth is not ready
+      return {
+        ...fallbackContext,
+        status: 'loading',
+        error: null,
+      }
+    }
+
+    if (!authState.isAuthenticated) {
       return fallbackContext
     }
 
@@ -869,7 +1132,9 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
     currentDivision,
     currentOrganization,
     combinedError,
-    isAuthenticated,
+    authState.isAuthenticated,
+    authState.isReady,
+    authState.isLoading,
     isReady,
     organizations,
     refresh,

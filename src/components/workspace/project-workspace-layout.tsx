@@ -30,7 +30,7 @@ import { ProjectSettingsView } from './project-settings-view'
 
 type ViewType = "board" | "list" | "timeline" | "calendar" | "mindmap" | "docs" | "settings"
 
-const views = [
+const staticViews = [
   { id: "board", label: "Board", icon: LayoutGrid },
   { id: "list", label: "List", icon: List },
   { id: "timeline", label: "Timeline", icon: GanttChart },
@@ -40,19 +40,45 @@ const views = [
   { id: "settings", label: "Settings", icon: Settings },
 ] as const
 
+type AvailableView = {
+  id: string
+  label: string
+  icon: React.ComponentType<any>
+  isDefault?: boolean
+  settings?: Record<string, any>
+}
+
 interface ProjectWorkspaceLayoutProps {
   currentView: string
   className?: string
 }
 
 export function ProjectWorkspaceLayout({ currentView, className }: ProjectWorkspaceLayoutProps) {
-  const { project, isLoading, canView, navigateToView } = useProject()
+  const { project, workspace, isLoading, canView, navigateToView } = useProject()
   const { exitProject } = useScope()
   const params = useParams<{ orgId: string; divisionId: string; projectId: string }>()
 
+  // Use workspace views from snapshot if available, otherwise fallback to static views
+  const availableViews = React.useMemo((): AvailableView[] => {
+    if (workspace?.views && workspace.views.length > 0) {
+      // Map workspace views to our view structure
+      return workspace.views.map(workspaceView => {
+        const staticView = staticViews.find(view => view.id === workspaceView.type)
+        return {
+          id: workspaceView.type,
+          label: workspaceView.name || staticView?.label || workspaceView.type,
+          icon: staticView?.icon || FileText,
+          isDefault: workspaceView.isDefault,
+          settings: workspaceView.settings
+        }
+      })
+    }
+    return staticViews
+  }, [workspace?.views])
+
   const activeView = React.useMemo(() => {
-    return views.find(view => view.id === currentView) || views[0]
-  }, [currentView])
+    return availableViews.find(view => view.id === currentView) || availableViews[0]
+  }, [currentView, availableViews])
 
   const handleViewChange = React.useCallback((viewId: ViewType) => {
     if (activeView.id === viewId) {
@@ -99,7 +125,7 @@ export function ProjectWorkspaceLayout({ currentView, className }: ProjectWorksp
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {views.map((view) => (
+            {availableViews.map((view) => (
               <Skeleton key={view.id} className="h-12 w-24" />
             ))}
           </div>
@@ -149,11 +175,21 @@ export function ProjectWorkspaceLayout({ currentView, className }: ProjectWorksp
           {project.description && (
             <p className="text-muted-foreground mt-1">{project.description}</p>
           )}
+
+          {/* Workspace capabilities indicator */}
+          {workspace && (
+            <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
+              <span>✓ Workspace Loaded</span>
+              <span>• {workspace.members.length} members</span>
+              <span>• {workspace.views.length} views</span>
+              {workspace.featureFlags.realTimeCollaboration && <span>• Real-time sync</span>}
+            </div>
+          )}
         </div>
 
         {/* View Menu */}
         <div className="flex items-center gap-2 flex-wrap">
-          {views.map((view) => {
+          {availableViews.map((view) => {
             const Icon = view.icon
             const isActive = activeView.id === view.id
 

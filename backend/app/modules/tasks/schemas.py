@@ -17,6 +17,8 @@ Models include:
 - User assignments and permissions
 """
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Optional, Any, Dict, List
 from enum import Enum
@@ -152,7 +154,7 @@ class Comment(BaseModelWithId):
 
     # Nested relationships
     author: Optional[UserSummary] = Field(None, description="Comment author information")
-    replies: Optional[List["Comment"]] = Field(default_factory=list, description="Reply comments")
+    replies: Optional[List[Comment]] = Field(default_factory=list, description="Reply comments")
 
     # Resolve forward reference
     model_config["arbitrary_types_allowed"] = True
@@ -446,7 +448,7 @@ class TaskResponse(BaseModel):
     message: Optional[str] = Field(None, description="Operation message")
 
     @classmethod
-    def from_entity(cls, entity: Any) -> "TaskResponse":
+    def from_entity(cls, entity: Any) -> TaskResponse:
         """Create response from a task entity."""
         if hasattr(entity, 'dict'):
             return cls(task=Task(**entity.dict()))
@@ -497,7 +499,7 @@ class BoardResponse(BaseModel):
     message: Optional[str] = Field(None, description="Operation message")
 
     @classmethod
-    def from_entity(cls, entity: Any) -> "BoardResponse":
+    def from_entity(cls, entity: Any) -> BoardResponse:
         """Create response from a board entity."""
         if hasattr(entity, 'dict'):
             return cls(board=Board(**entity.dict()))

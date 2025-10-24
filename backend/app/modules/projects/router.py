@@ -16,6 +16,7 @@ Security Implementation:
 - Audit logging for security violations
 """
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import Optional
 
@@ -36,11 +37,14 @@ from .schemas import (
     ProjectMember,
     ProjectMemberRole,
     ProjectMemberAddRequest,
-    ProjectMemberUpdateRequest
+    ProjectMemberUpdateRequest,
+    ProjectDetailEnvelope,
 )
 from .service import ProjectService
 from .error_handlers import handle_service_error
 from .errors import ProjectError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["projects"])
 
@@ -68,14 +72,14 @@ async def list_organization_projects(
         raise handle_service_error(e)
 
 
-@router.post("/organizations/{org_id}/projects", response_model=ProjectResponse)
+@router.post("/organizations/{org_id}/projects", response_model=ProjectDetailEnvelope)
 async def create_organization_project(
     org_id: str,
     project_request: ProjectCreateRequest,
     scope_ctx: ScopeContext = Depends(require_organization_access_with_id({"project:create"})),
     principal: CurrentPrincipal = Depends(require_current_principal),
     service: ProjectService = Depends(get_project_service),
-) -> ProjectResponse:
+) -> ProjectDetailEnvelope:
     """
     Create a new project within a specific organization.
 
@@ -84,12 +88,17 @@ async def create_organization_project(
     """
     try:
         project = await service.create_project_for_organization(principal, org_id, project_request)
-        return ProjectResponse.from_entity(project)
+        response = ProjectDetailEnvelope.from_project(project)
+        logger.info(
+            "projects.create_organization_project.success",
+            extra={"project": response.model_dump(by_alias=True)}
+        )
+        return response
     except ProjectError as e:
         raise handle_service_error(e)
 
 
-@router.get("/organizations/{org_id}/projects/{project_id}", response_model=ProjectResponse)
+@router.get("/organizations/{org_id}/projects/{project_id}", response_model=ProjectDetailEnvelope)
 async def get_organization_project(
     org_id: str,
     project_id: str,
@@ -110,10 +119,10 @@ async def get_organization_project(
             detail="Project not found",
             code="project_not_found"
         )
-    return ProjectResponse.from_entity(project)
+    return ProjectDetailEnvelope.from_project(project)
 
 
-@router.patch("/organizations/{org_id}/projects/{project_id}", response_model=ProjectResponse)
+@router.patch("/organizations/{org_id}/projects/{project_id}", response_model=ProjectDetailEnvelope)
 async def update_organization_project(
     org_id: str,
     project_id: str,
@@ -136,7 +145,7 @@ async def update_organization_project(
             detail="Project not found",
             code="project_not_found"
         )
-    return ProjectResponse.from_entity(project)
+    return ProjectDetailEnvelope.from_project(project)
 
 
 @router.delete("/organizations/{org_id}/projects/{project_id}")
@@ -182,7 +191,7 @@ async def list_division_projects(
     return ProjectListResponse(results=projects)
 
 
-@router.post("/organizations/{org_id}/divisions/{div_id}/projects", response_model=ProjectResponse)
+@router.post("/organizations/{org_id}/divisions/{div_id}/projects", response_model=ProjectDetailEnvelope)
 async def create_division_project(
     org_id: str,
     div_id: str,
@@ -198,10 +207,15 @@ async def create_division_project(
     Project will be associated with the validated division.
     """
     project = await service.create_project_for_division(principal, org_id, div_id, project_request)
-    return ProjectResponse.from_entity(project)
+    response = ProjectDetailEnvelope.from_project(project)
+    logger.info(
+        "projects.create_division_project.success",
+        extra={"project": response.model_dump(by_alias=True)}
+    )
+    return response
 
 
-@router.get("/organizations/{org_id}/divisions/{div_id}/projects/{project_id}", response_model=ProjectResponse)
+@router.get("/organizations/{org_id}/divisions/{div_id}/projects/{project_id}", response_model=ProjectDetailEnvelope)
 async def get_division_project(
     org_id: str,
     div_id: str,
@@ -223,10 +237,10 @@ async def get_division_project(
             detail="Project not found",
             code="project_not_found"
         )
-    return ProjectResponse.from_entity(project)
+    return ProjectDetailEnvelope.from_project(project)
 
 
-@router.patch("/organizations/{org_id}/divisions/{div_id}/projects/{project_id}", response_model=ProjectResponse)
+@router.patch("/organizations/{org_id}/divisions/{div_id}/projects/{project_id}", response_model=ProjectDetailEnvelope)
 async def update_division_project(
     org_id: str,
     div_id: str,
@@ -250,7 +264,7 @@ async def update_division_project(
             detail="Project not found",
             code="project_not_found"
         )
-    return ProjectResponse.from_entity(project)
+    return ProjectDetailEnvelope.from_project(project)
 
 
 @router.delete("/organizations/{org_id}/divisions/{div_id}/projects/{project_id}")

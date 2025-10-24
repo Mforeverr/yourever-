@@ -9,6 +9,8 @@ This module defines the data models for huddle management operations with
 proper validation, serialization, and security considerations.
 """
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Optional, Any, Dict, List
 from enum import Enum
@@ -169,7 +171,7 @@ class HuddleResponse(BaseModel):
     updated_at: datetime = Field(..., alias="updatedAt", description="Last update timestamp")
 
     @classmethod
-    def from_entity(cls, entity: Any) -> "HuddleResponse":
+    def from_entity(cls, entity: Any) -> HuddleResponse:
         """Create response from a huddle entity (for future ORM integration)."""
         if hasattr(entity, 'dict'):
             return cls(**entity.dict())

@@ -11,6 +11,7 @@ export const useCurrentUser = () => {
     userStatus,
     userError,
     refetchUser,
+    sessionInitialized,
     ...auth
   } = useAuth()
 
@@ -22,6 +23,7 @@ export const useCurrentUser = () => {
     refetchUser,
     isAuthenticated: !!user,
     isDevUser: user?.email === 'dev@yourever.com',
+    sessionInitialized,
     canAccessOrg: (orgId: string) => user?.organizations.some((org) => org.id === orgId) ?? false,
     canAccessDivision: (orgId: string, divisionId: string) => {
       const org = user?.organizations.find((candidate) => candidate.id === orgId)

@@ -7,6 +7,7 @@ import { OnboardingWatcher } from "@/components/onboarding/onboarding-watcher";
 import { AuthProvider } from "@/contexts/auth-context";
 import { CommandPaletteProvider } from "@/components/global/command-palette";
 import { QueryProvider } from "@/components/providers/query-client";
+import "@/lib/debug/auth-debug-helper";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

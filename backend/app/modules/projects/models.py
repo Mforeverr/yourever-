@@ -43,10 +43,9 @@ class ProjectModel(Base):
     status = Column(Text, nullable=False, default="active", index=True)
     priority = Column(Text, nullable=False, default="medium", index=True)
 
-    # Ownership and metadata (skip metadata field to avoid reserved word conflict)
+    # Ownership and metadata
     owner_id = Column(UUID(as_uuid=True), nullable=True, index=True)
-    # Note: metadata field skipped due to SQLAlchemy reserved word conflict
-    # Can be accessed via direct SQL if needed
+    project_metadata = Column(JSON, nullable=False, default={})
     settings = Column(JSON, nullable=False, default={})
 
     # Template functionality

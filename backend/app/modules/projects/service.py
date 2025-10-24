@@ -116,6 +116,20 @@ class ProjectService(ScopedService):
         validated_status = validate_project_status(project_request.status)
         validated_priority = validate_project_priority(project_request.priority)
 
+        # Handle frontend field mapping
+        metadata = project_request.metadata or {}
+        settings = project_request.settings or {}
+
+        # Store frontend-specific fields in metadata/settings for compatibility
+        if project_request.visibility:
+            metadata["visibility"] = project_request.visibility
+        if project_request.tags:
+            metadata["tags"] = project_request.tags
+        if project_request.target_date:
+            metadata["target_date"] = project_request.target_date
+        if project_request.default_view:
+            settings["default_view"] = project_request.default_view
+
         project_data = {
             "id": str(uuid.uuid4()),
             "name": validated_name,
@@ -125,8 +139,8 @@ class ProjectService(ScopedService):
             "org_id": organization_id,
             "division_id": None,
             "owner_id": principal.id,
-            "metadata": project_request.metadata or {},
-            "settings": project_request.settings or {},
+            "metadata": metadata,
+            "settings": settings,
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
         }
@@ -264,17 +278,37 @@ class ProjectService(ScopedService):
             principal, organization_id, division_id, {"project:create"}
         )
 
+        # Validate request data
+        validated_name = validate_project_name(project_request.name)
+        validated_description = validate_project_description(project_request.description)
+        validated_status = validate_project_status(project_request.status)
+        validated_priority = validate_project_priority(project_request.priority)
+
+        # Handle frontend field mapping
+        metadata = project_request.metadata or {}
+        settings = project_request.settings or {}
+
+        # Store frontend-specific fields in metadata/settings for compatibility
+        if project_request.visibility:
+            metadata["visibility"] = project_request.visibility
+        if project_request.tags:
+            metadata["tags"] = project_request.tags
+        if project_request.target_date:
+            metadata["target_date"] = project_request.target_date
+        if project_request.default_view:
+            settings["default_view"] = project_request.default_view
+
         project_data = {
             "id": str(uuid.uuid4()),
-            "name": project_request.name,
-            "description": project_request.description,
-            "status": project_request.status,
-            "priority": project_request.priority,
+            "name": validated_name,
+            "description": validated_description,
+            "status": validated_status,
+            "priority": validated_priority,
             "org_id": organization_id,
             "division_id": division_id,
             "owner_id": principal.id,
-            "metadata": project_request.metadata or {},
-            "settings": project_request.settings or {},
+            "metadata": metadata,
+            "settings": settings,
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
         }

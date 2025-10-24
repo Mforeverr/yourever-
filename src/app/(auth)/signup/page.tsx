@@ -43,7 +43,7 @@ const handlePostSignupRedirect = (router: ReturnType<typeof useRouter>, user: Wo
 
 function SignupPageContent() {
   const router = useRouter()
-  const { login, strategy, user, isLoading } = useAuth()
+  const { strategy, user, isLoading } = useAuth()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSocialLoading, setIsSocialLoading] = useState(false)
 
@@ -64,9 +64,6 @@ function SignupPageContent() {
     setIsSubmitting(true)
 
     try {
-      // For now, we'll simulate signup with the existing mock system
-      // In a real implementation, this would call the signup API
-
       if (strategy === 'supabase') {
         // TODO: Implement real Supabase signup
         // const { error } = await supabase.auth.signUp({
@@ -88,34 +85,7 @@ function SignupPageContent() {
         router.replace('/auth/verify-email')
         return true
       }
-
-      // Mock signup - simulate successful registration and auto-login
-      await new Promise(resolve => setTimeout(resolve, 1500))
-
-      // Simulate login after successful signup
-      const loginSuccess = await login(data.email, data.password)
-
-      if (loginSuccess) {
-        // Mock user data - in real implementation, this would come from the API
-        const fullName = `${data.firstName} ${data.lastName}`.trim()
-        const mockUser: WorkspaceUser = {
-          id: 'new-user-' + Date.now(),
-          email: data.email,
-          firstName: data.firstName,
-          lastName: data.lastName,
-          fullName: fullName,
-          displayName: fullName, // Use full name as display name initially
-          avatar: null,
-          organizations: [], // New users start with no organizations
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }
-
-        handlePostSignupRedirect(router, mockUser)
-        return true
-      }
-
-      throw new Error('Failed to complete signup process')
+      throw new Error('Supabase signup is not configured')
 
     } catch (error) {
       console.error('Signup error:', error)
@@ -132,7 +102,7 @@ function SignupPageContent() {
     try {
       if (strategy === 'supabase') {
         // TODO: Implement real Supabase OAuth
-        const dismissToast = authToasts.socialAuthLoading(provider)
+        authToasts.socialAuthLoading(provider)
 
         // const { error } = await supabase.auth.signInWithOAuth({
         //   provider,
@@ -150,17 +120,6 @@ function SignupPageContent() {
         setTimeout(() => {
           authToasts.socialAuthError(provider)
         }, 2000)
-      } else {
-        // Mock social signup for development
-        await new Promise(resolve => setTimeout(resolve, 1500))
-
-        const fallbackUserEmail = provider === 'github' ? 'dev@yourever.com' : 'member@yourever.com'
-        const success = await login(fallbackUserEmail, 'any-password')
-
-        if (success) {
-          authToasts.signupSuccess(fallbackUserEmail)
-          router.replace('/workspace-hub')
-        }
       }
     } catch (error) {
       console.error('Social signup error:', error)

@@ -4,6 +4,7 @@ import * as React from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { useScope } from '@/contexts/scope-context'
+
 import { useWorkspaceOverviewQuery } from '@/hooks/api/use-workspace-overview-query'
 import { AlertCircle, Flag, Zap } from 'lucide-react'
 

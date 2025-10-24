@@ -37,6 +37,19 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Add health check endpoint
+    @app.get("/health")
+    async def health_check():
+        """Health check endpoint for frontend connectivity testing."""
+        return {
+            "status": "healthy",
+            "timestamp": settings.api_name,
+            "version": settings.api_version,
+            "debug": settings.debug,
+            "supabase_configured": bool(settings.supabase_jwt_secret),
+            "database_configured": bool(settings.database_url)
+        }
+
     register_exception_handlers(app)
     app.include_router(api_router)
 

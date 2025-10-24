@@ -35,6 +35,7 @@ import {
   Archive,
 } from 'lucide-react'
 import { useScope } from '@/contexts/scope-context'
+import { useAuth } from '@/contexts/auth-context'
 import { useProjectsByScopeQuery } from '@/hooks/api/use-project-query'
 import { ProjectCrudForm } from './project-crud-form'
 import { ProjectCard } from './project-card'
@@ -84,6 +85,8 @@ export function ProjectList({
   const [sortDirection, setSortDirection] = React.useState<SortDirection>('desc')
   const [filterStatus, setFilterStatus] = React.useState<FilterOption>('all')
   const [viewMode, setViewMode] = React.useState<ViewMode>(compact ? 'list' : 'card')
+
+  const { isAuthenticated, user } = useAuth()
 
   const {
     currentOrgId,
@@ -201,12 +204,25 @@ export function ProjectList({
     }))
   }, [projects])
 
+  if (!isAuthenticated) {
+    return (
+      <div className={cn('flex flex-col h-full', className)}>
+        <div className="flex items-center justify-center h-full p-8 text-center">
+          <AlertCircle className="h-8 w-8 text-destructive mb-2" />
+          <p className="text-sm text-destructive mb-2">Authentication Required</p>
+          <p className="text-xs text-muted-foreground">Please sign in to view projects</p>
+        </div>
+      </div>
+    )
+  }
+
   if (!currentOrgId) {
     return (
       <div className={cn('flex flex-col h-full', className)}>
         <div className="flex items-center justify-center h-full p-8 text-center">
           <AlertCircle className="h-8 w-8 text-muted-foreground mb-2" />
-          <p className="text-sm text-muted-foreground">Select an organization to view projects</p>
+          <p className="text-sm text-muted-foreground mb-2">Organization Required</p>
+          <p className="text-xs text-muted-foreground">Please select an organization to view projects</p>
         </div>
       </div>
     )
@@ -312,6 +328,16 @@ export function ProjectList({
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <AlertCircle className="h-8 w-8 text-destructive mb-2" />
               <p className="text-sm text-destructive mb-2">Failed to load projects</p>
+              <p className="text-xs text-muted-foreground mb-3">
+                {error.message.includes('401') || error.message.includes('unauthorized')
+                  ? 'Please sign in again to access your projects.'
+                  : error.message.includes('403') || error.message.includes('forbidden')
+                  ? 'You do not have permission to access projects in this organization.'
+                  : error.message.includes('network') || error.message.includes('fetch')
+                  ? 'Network connection error. Please check your internet connection.'
+                  : 'Please try again or contact support if the problem persists.'
+                }
+              </p>
               <Button variant="outline" size="sm" onClick={() => handleRefresh()}>
                 Try again
               </Button>

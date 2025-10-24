@@ -58,47 +58,48 @@ def handle_service_error(exc: Exception) -> HTTPException:
     if isinstance(exc, (ProjectNotFoundError, ProjectMemberNotFoundError)):
         return HTTPException(
             status_code=404,
-            detail={
-                "code": exc.code,
-                "message": exc.detail,
-                "details": exc.extra
+            detail=exc.detail,  # Primary message for frontend compatibility
+            headers={
+                "X-Error-Code": exc.code,
+                "X-Error-Details": str(exc.extra) if exc.extra else ""
             }
         )
     elif isinstance(exc, (ProjectAccessDeniedError, ProjectOwnerOperationError)):
         return HTTPException(
             status_code=403,
-            detail={
-                "code": exc.code,
-                "message": exc.detail,
-                "details": exc.extra
+            detail=exc.detail,  # Primary message for frontend compatibility
+            headers={
+                "X-Error-Code": exc.code,
+                "X-Error-Details": str(exc.extra) if exc.extra else ""
             }
         )
     elif isinstance(exc, ProjectMemberAlreadyExistsError):
         return HTTPException(
             status_code=409,
-            detail={
-                "code": exc.code,
-                "message": exc.detail,
-                "details": exc.extra
+            detail=exc.detail,  # Primary message for frontend compatibility
+            headers={
+                "X-Error-Code": exc.code,
+                "X-Error-Details": str(exc.extra) if exc.extra else ""
             }
         )
     elif isinstance(exc, (ProjectValidationError, ProjectWorkspaceError)):
         return HTTPException(
             status_code=400,
-            detail={
-                "code": exc.code,
-                "message": exc.detail,
-                "details": exc.extra
+            detail=exc.detail,  # Primary message for frontend compatibility
+            headers={
+                "X-Error-Code": exc.code,
+                "X-Error-Details": str(exc.extra) if exc.extra else ""
             }
         )
     else:
         # Unknown exception - return generic error
+        error_message = str(exc) if str(exc) else "An unexpected error occurred"
         return HTTPException(
             status_code=500,
-            detail={
-                "code": "internal_server_error",
-                "message": "An unexpected error occurred",
-                "details": {"type": type(exc).__name__}
+            detail=error_message,  # Primary message for frontend compatibility
+            headers={
+                "X-Error-Code": "internal_server_error",
+                "X-Error-Details": type(exc).__name__
             }
         )
 

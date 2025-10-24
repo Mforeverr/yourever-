@@ -10,11 +10,12 @@ import React, {
 } from 'react'
 import { useParams, useRouter, usePathname } from 'next/navigation'
 import { useScope } from '@/contexts/scope-context'
-import { useProjectDetailQuery, useProjectsByScopeQuery } from '@/hooks/api/use-project-query'
+import { useAuth } from '@/contexts/auth-context'
+import { useProjectDetailQuery, useProjectsByScopeQuery, useProjectWorkspaceSnapshotQuery } from '@/hooks/api/use-project-query'
 import { useUpdateProjectMutation } from '@/hooks/api/use-project-mutations'
 import { buildProjectRoute, buildDivisionRoute, buildOrgRoute } from '@/lib/routing'
 import { toast } from '@/hooks/use-toast'
-import type { ProjectDetails, ProjectMember, ProjectSettings, ProjectSummary } from '@/modules/projects/contracts'
+import type { ProjectDetails, ProjectMember, ProjectSettings, ProjectSummary, ProjectWorkspaceSnapshot } from '@/modules/projects/contracts'
 
 // Project-specific context for workspace pages
 interface ProjectContextValue {
@@ -22,6 +23,7 @@ interface ProjectContextValue {
   project: ProjectDetails | null
   members: ProjectMember[]
   settings: ProjectSettings | null
+  workspace: ProjectWorkspaceSnapshot | null
   isLoading: boolean
   error: Error | null
   isValidating: boolean
@@ -62,6 +64,19 @@ interface ProjectProviderProps {
   projectId?: string
 }
 
+const sanitizeSlug = (value: string | null | undefined): string =>
+  (value ?? '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+
+const computeProjectSlug = (project: ProjectSummary): string =>
+  sanitizeSlug(project.slug ?? project.name ?? project.id)
+
 // Extract view from URL path
 const extractViewFromPath = (pathname: string | null): string => {
   if (!pathname) return 'board'
@@ -89,6 +104,9 @@ export function ProjectProvider({ children, projectId }: ProjectProviderProps) {
   const router = useRouter()
   const pathname = usePathname()
   const params = useParams<{ orgId?: string; divisionId?: string; projectId?: string }>()
+
+  // Get auth context for user information
+  const { user, isAuthenticated } = useAuth()
 
   // Get scope context
   const {
@@ -129,7 +147,20 @@ export function ProjectProvider({ children, projectId }: ProjectProviderProps) {
     refetch: refreshProject,
     isFetching: isValidating,
   } = useProjectDetailQuery(effectiveProjectId, {
+    orgId: currentOrgId ?? undefined,
     enabled: Boolean(effectiveProjectId && currentOrgId),
+  })
+
+  // Workspace snapshot query - comprehensive project workspace data
+  const {
+    data: workspaceData,
+    isLoading: isWorkspaceLoading,
+    error: workspaceError,
+    refetch: refreshWorkspace,
+  } = useProjectWorkspaceSnapshotQuery(effectiveProjectId, {
+    orgId: currentOrgId,
+    divisionId: currentDivisionId,
+    enabled: Boolean(effectiveProjectId && currentOrgId && currentDivisionId),
   })
 
   // Enhanced scope synchronization with project data
@@ -179,26 +210,99 @@ export function ProjectProvider({ children, projectId }: ProjectProviderProps) {
     }
   }, [effectiveProjectId, canSwitchToProject, scopeExitProject])
 
-  // Compute permissions with enhanced access checking
+  // Combine loading states and errors from both queries
+  const combinedIsLoading = isLoading || isWorkspaceLoading
+  const combinedError = workspaceError || error
+  const combinedIsValidating = isValidating || isWorkspaceLoading
+
+  // Enhanced permissions with actual user context integration
   const permissions = useMemo(() => {
-    if (!projectData?.members) {
+    // Prefer workspace data for permissions if available, fallback to project data
+    const members = workspaceData?.members || projectData?.members
+
+    if (!members) {
+      console.warn('[project] No member data available for permission checking')
       return { isOwner: false, canEdit: false, canView: false, hasAccess: false }
     }
 
-    // This would typically use the current user's ID from auth context
-    // For now, using a simple permission model based on member roles
-    const hasOwner = projectData.members.some(member => member.role === 'owner')
-    const hasEditor = projectData.members.some(member => member.role === 'editor')
-    const hasViewer = projectData.members.some(member => member.role === 'viewer')
-    const hasAnyRole = hasOwner || hasEditor || hasViewer
+    // Get current user ID from auth context
+    const currentUserId = user?.id || null
+    const project = workspaceData?.project || projectData?.project
+    const memberCount = members.length
 
-    return {
-      isOwner: hasOwner,
-      canEdit: hasOwner || hasEditor,
-      canView: hasOwner || hasEditor || hasViewer,
-      hasAccess: hasAnyRole,
+    console.log('[project] Computing permissions for user', {
+      currentUserId,
+      isAuthenticated,
+      projectId: project?.id,
+      memberCount,
+      hasWorkspaceData: !!workspaceData,
+      hasProjectData: !!projectData
+    })
+
+    // If user is not authenticated, deny all permissions
+    if (!isAuthenticated || !currentUserId) {
+      console.warn('[project] User not authenticated for permission checking')
+      return {
+        isOwner: false,
+        canEdit: false,
+        canView: false,
+        hasAccess: false,
+      }
     }
-  }, [projectData?.members])
+
+    // Find the current user's membership
+    const userMembership = members.find(member => member.userId === currentUserId)
+
+    if (!userMembership) {
+      console.warn('[project] User not found in project member list', { currentUserId })
+      // Fallback: check if user is the project owner
+      const projectOwnerId = project?.ownerId
+      const isProjectOwner = projectOwnerId === currentUserId
+
+      if (isProjectOwner) {
+        console.log('[project] User identified as project owner via ownerId field')
+        return {
+          isOwner: true,
+          canEdit: true,
+          canView: true,
+          hasAccess: true,
+        }
+      }
+
+      // If project has no members yet, allow the creator (owner) to access it
+      if (memberCount === 0 && isProjectOwner) {
+        return {
+          isOwner: true,
+          canEdit: true,
+          canView: true,
+          hasAccess: true,
+        }
+      }
+
+      return {
+        isOwner: false,
+        canEdit: false,
+        canView: false, // Don't allow view if user is not a member
+        hasAccess: false,
+      }
+    }
+
+    const permissionLevel = {
+      isOwner: userMembership.role === 'owner',
+      canEdit: ['owner', 'editor'].includes(userMembership.role),
+      canView: ['owner', 'editor', 'viewer'].includes(userMembership.role),
+      hasAccess: true, // User is a member, so has some access
+    }
+
+    console.log('[project] User permissions computed', {
+      currentUserId,
+      role: userMembership.role,
+      projectId: project?.id,
+      ...permissionLevel
+    })
+
+    return permissionLevel
+  }, [workspaceData?.members, projectData?.members, workspaceData?.project?.id, projectData?.project?.id, user?.id, isAuthenticated])
 
   // Enhanced navigation functions
   const navigateToView = useCallback((view: string) => {
@@ -271,7 +375,8 @@ export function ProjectProvider({ children, projectId }: ProjectProviderProps) {
       return false
     }
 
-    const project = availableProjects.find(p => p.slug === slug)
+    const normalizedSlug = sanitizeSlug(slug)
+    const project = availableProjects.find(candidate => computeProjectSlug(candidate) === normalizedSlug)
     if (!project) {
       toast({
         title: 'Project Not Found',
@@ -343,31 +448,56 @@ export function ProjectProvider({ children, projectId }: ProjectProviderProps) {
 
   // Project breadcrumb support
   const getProjectBreadcrumb = useCallback(() => {
-    if (!projectData?.project || !currentOrgId || !currentDivisionId) {
+    const project = workspaceData?.project || projectData?.project
+    if (!project || !currentOrgId || !currentDivisionId) {
       return null
     }
 
     return {
-      id: projectData.project.id,
-      name: projectData.project.name,
-      href: buildProjectRoute(currentOrgId, currentDivisionId, projectData.project.id, 'board'),
+      id: project.id,
+      name: project.name,
+      href: buildProjectRoute(currentOrgId, currentDivisionId, project.id, 'board'),
     }
-  }, [projectData?.project, currentOrgId, currentDivisionId])
+  }, [workspaceData?.project, projectData?.project, currentOrgId, currentDivisionId])
 
   // Get update mutation
   const updateProjectMutation = useUpdateProjectMutation()
 
-  // Project actions with actual API integration
+  // Enhanced project actions with comprehensive error handling and auth validation
   const updateProject = useCallback(async (updates: Partial<ProjectDetails>) => {
+    console.log('[project] Starting project update', { effectiveProjectId, updates: Object.keys(updates) })
+
+    // Pre-update validation
     if (!effectiveProjectId) {
-      throw new Error('No project selected for update')
+      const error = new Error('No project selected for update')
+      console.error('[project] Update failed: No project ID', error)
+      throw error
     }
 
     if (!currentOrgId) {
-      throw new Error('No organization context available for update')
+      const error = new Error('No organization context available for update')
+      console.error('[project] Update failed: No organization context', error)
+      throw error
+    }
+
+    if (!permissions.canEdit) {
+      const error = new Error('Insufficient permissions to update project')
+      console.error('[project] Update failed: Permission denied', {
+        projectId: effectiveProjectId,
+        userId: user?.id || 'unknown',
+        isAuthenticated,
+        currentPermissions: permissions
+      })
+      throw error
     }
 
     try {
+      console.log('[project] Calling update API', {
+        projectId: effectiveProjectId,
+        orgId: currentOrgId,
+        updateFields: Object.keys(updates).filter(key => updates[key as keyof ProjectDetails] !== undefined)
+      })
+
       await updateProjectMutation.mutateAsync({
         projectId: effectiveProjectId,
         orgId: currentOrgId,
@@ -384,11 +514,38 @@ export function ProjectProvider({ children, projectId }: ProjectProviderProps) {
           progressPercent: updates.progressPercent,
         }
       })
+
+      console.log('[project] Project update completed successfully', {
+        projectId: effectiveProjectId,
+        updatedFields: Object.keys(updates)
+      })
+
     } catch (error) {
-      console.error('Failed to update project:', error)
+      console.error('[project] Failed to update project', {
+        projectId: effectiveProjectId,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      })
+
+      // Enhanced error handling with user-friendly messages
+      if (error instanceof Error) {
+        if (error.message.includes('401') || error.message.includes('unauthorized')) {
+          throw new Error('Authentication required - please sign in again')
+        }
+        if (error.message.includes('403') || error.message.includes('forbidden')) {
+          throw new Error('You do not have permission to update this project')
+        }
+        if (error.message.includes('404') || error.message.includes('not found')) {
+          throw new Error('Project not found or may have been deleted')
+        }
+        if (error.message.includes('network') || error.message.includes('fetch')) {
+          throw new Error('Network error - please check your connection and try again')
+        }
+      }
+
       throw error
     }
-  }, [effectiveProjectId, currentOrgId, updateProjectMutation])
+  }, [effectiveProjectId, currentOrgId, updateProjectMutation, permissions])
 
   const updateSettings = useCallback(async (settings: Partial<ProjectSettings>) => {
     if (!effectiveProjectId) return
@@ -416,12 +573,13 @@ export function ProjectProvider({ children, projectId }: ProjectProviderProps) {
 
   const value: ProjectContextValue = useMemo(() => ({
     // Project data
-    project: projectData?.project ?? null,
-    members: projectData?.members ?? [],
+    project: workspaceData?.project || projectData?.project ?? null,
+    members: workspaceData?.members || projectData?.members ?? [],
     settings: null, // TODO: Load settings when available
-    isLoading,
-    error: error as Error | null,
-    isValidating,
+    workspace: workspaceData ?? null,
+    isLoading: combinedIsLoading,
+    error: combinedError as Error | null,
+    isValidating: combinedIsValidating,
 
     // Project state
     isOwner: permissions.isOwner,
@@ -452,9 +610,10 @@ export function ProjectProvider({ children, projectId }: ProjectProviderProps) {
     getProjectBreadcrumb,
   }), [
     projectData,
-    isLoading,
-    isValidating,
-    error,
+    workspaceData,
+    combinedIsLoading,
+    combinedIsValidating,
+    combinedError,
     permissions,
     switchToProject,
     switchToProjectBySlug,
